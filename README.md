@@ -6,27 +6,41 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 # CircuitJSON Toolkit
 
-CircuitJSON Toolkit is an ESM JavaScript library for validating, parsing,
+CircuitJSON Toolkit is an ESM JavaScript library for parsing, validating,
 indexing, and inspecting serialized CircuitJSON element arrays.
 
 The package was extracted from [ECAD Forge](https://ecadforge.app/), where it
 is used as the shared CircuitJSON runtime utility layer between ECAD parsers,
-viewer adapters, and browser-based import flows. It is intentionally separate
-from `pcb-scene3d-viewer`, which owns Three.js rendering.
+viewer adapters, and browser-based import flows. Its parser-style API,
+metadata conventions, and local-first behavior are designed to line up with
+packages such as `altium-toolkit` and `kicad-toolkit`, while remaining
+independent of any source ECAD format.
+
+This package is intentionally separate from
+[`pcb-scene3d-viewer`](https://www.npmjs.com/package/pcb-scene3d-viewer).
+`circuitjson-toolkit` owns CircuitJSON parsing, validation, indexing, and unit
+helpers. `pcb-scene3d-viewer` owns Three.js runtime rendering and consumes this
+package as a normal npm dependency.
 
 ## Features
 
-- Parse standalone CircuitJSON JSON text and bytes
-- Validate serialized CircuitJSON element arrays
+- Parse standalone CircuitJSON `.json` text from strings, `ArrayBuffer`, or
+  `Uint8Array` input
+- Validate serialized CircuitJSON element arrays with a small, stable document
+  API
 - Attach parser-style metadata such as `fileName`, `fileType`, `kind`, and
-  `sourceFormat`
+  `sourceFormat`, matching the conventions used by the ECAD toolkit packages
 - Build lookup indexes by element type and stable CircuitJSON identifiers
-- Resolve source component and PCB component maps for viewer or reporting
-  integrations
-- Convert CircuitJSON millimeter dimensions and points into mils for renderer
-  adapters
+- Resolve source component and PCB component maps for viewer, QA, export, or
+  reporting integrations
+- Preserve unknown element types instead of imposing renderer-specific
+  semantics
+- Convert CircuitJSON millimeter dimensions and points into mils for render
+  adapters that use PCB imperial units internally
+- Provide root and parser-focused ESM entrypoints
 - Run in browser and Node ESM environments
-- Stay dependency-free at runtime and local-first by default
+- Run entirely with local input data; no network calls are made by the parser
+- Stay dependency-free at runtime
 
 ## Install
 
@@ -38,6 +52,8 @@ npm install circuitjson-toolkit
 ```
 
 ## Usage
+
+Parse a standalone CircuitJSON file or string:
 
 ```js
 import {
@@ -53,11 +69,58 @@ const index = CircuitJsonIndexer.index(circuitJson)
 console.log(index.elementsByType.get('pcb_board'))
 ```
 
-Parser-focused imports are also available through the `parser` subpath:
+The parser also accepts bytes, mirroring the parser style used by the source
+ECAD toolkits:
+
+```js
+import { CircuitJsonParser } from 'circuitjson-toolkit'
+
+const documentModel = CircuitJsonParser.parseBytes(arrayBuffer, {
+    fileName: file.name
+})
+```
+
+Parser-focused imports are available through the `parser` subpath:
 
 ```js
 import { CircuitJsonParser } from 'circuitjson-toolkit/parser'
 ```
+
+Build an index for renderer or reporting integrations:
+
+```js
+import { CircuitJsonIndexer } from 'circuitjson-toolkit'
+
+const index = CircuitJsonIndexer.index(documentModel)
+const board = index.elementsByType.get('pcb_board')?.[0]
+const components = index.elementsByType.get('pcb_component') || []
+const source = index.sourceComponentById.get('source_component_1')
+```
+
+Convert CircuitJSON millimeter coordinates for renderer adapters:
+
+```js
+import { CircuitJsonUnits } from 'circuitjson-toolkit'
+
+const centerMil = CircuitJsonUnits.pointMmToMil(board.center)
+const widthMil = CircuitJsonUnits.mmToMil(board.width)
+```
+
+Pass CircuitJSON to the 3D renderer as a separate step:
+
+```js
+import { CircuitJsonParser } from 'circuitjson-toolkit'
+import { PcbScene3dController } from 'pcb-scene3d-viewer'
+
+const circuitJson = CircuitJsonParser.parseText(fileText, {
+    fileName: 'board.circuitjson'
+})
+
+const controller = new PcbScene3dController(viewportNode, circuitJson)
+```
+
+`circuitjson-toolkit` does not render, fetch, or load external model assets.
+That behavior belongs in host applications or renderer packages.
 
 ## Documentation
 
@@ -65,6 +128,19 @@ import { CircuitJsonParser } from 'circuitjson-toolkit/parser'
 - [Model Format](docs/model-format.md)
 - [Testing](docs/testing.md)
 - [Scope](spec/library-scope.md)
+
+## Package Scope
+
+This package owns reusable CircuitJSON utility behavior only:
+
+- parser-style document ingestion for serialized CircuitJSON;
+- validation and diagnostics for element-array inputs;
+- indexing and lookup maps for common CircuitJSON IDs;
+- small unit conversion helpers for downstream renderer adapters.
+
+It does not include native Altium or KiCad parsing, schematic/PCB SVG
+rendering, Three.js rendering, browser UI controls, network fetching, or
+format-specific scene-description builders.
 
 ## Test
 
@@ -88,6 +164,10 @@ distribute modified versions, run modified versions as a network service, or
 create larger works based on this project, they must comply with the AGPL,
 including source-code availability requirements.
 
+The full AGPL license text is included in
+[LICENSES/AGPL-3.0-or-later.txt](LICENSES/AGPL-3.0-or-later.txt). The root
+[LICENSE](LICENSE) file summarizes the package's public software license.
+
 ### 2. Commercial/proprietary license
 
 For use in closed-source, proprietary, or otherwise AGPL-incompatible products,
@@ -95,10 +175,16 @@ a separate paid commercial license is required.
 
 Commercial licensing contact: https://github.com/SunboX
 
+See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md). That file is a licensing
+notice, not a commercial license grant.
+
 ### Documentation and notices
 
 Documentation and non-code text are licensed under Creative Commons
 Attribution-ShareAlike 4.0 (`CC-BY-SA-4.0`) unless otherwise marked.
+
+The full CC-BY-SA license text is included in
+[LICENSES/CC-BY-SA-4.0.txt](LICENSES/CC-BY-SA-4.0.txt).
 
 Copyright (C) 2026 André Fiedler.
 
@@ -106,3 +192,5 @@ Copyright, license, attribution, and source-origin notices must be preserved as
 required by the AGPL, CC-BY-SA-4.0, and the notice files in this repository.
 See [LICENSE](LICENSE), [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md), and
 [NOTICE.md](NOTICE.md).
+
+Package-manager dependencies retain their own license terms and notices.
