@@ -1,0 +1,59 @@
+{
+    "name": "circuitjson-toolkit",
+    "version": "1.0.1",
+    "description": "Dependency-free CircuitJSON parsing, validation, indexing, and utility helpers",
+    "keywords": [
+        "circuitjson",
+        "circuit-json",
+        "pcb",
+        "eda",
+        "ecad",
+        "electronics",
+        "parser",
+        "json",
+        "board",
+        "javascript",
+        "esm"
+    ],
+    "homepage": "https://github.com/SunboX/circuitjson-toolkit#readme",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/SunboX/circuitjson-toolkit.git"
+    },
+    "bugs": {
+        "url": "https://github.com/SunboX/circuitjson-toolkit/issues"
+    },
+    "license": "AGPL-3.0-or-later",
+    "type": "module",
+    "main": "./src/index.mjs",
+    "exports": {
+        ".": "./src/index.mjs",
+        "./parser": "./src/parser.mjs"
+    },
+    "files": [
+        "src",
+        "docs/api.md",
+        "docs/model-format.md",
+        "docs/testing.md",
+        "spec",
+        "LICENSE",
+        "LICENSES",
+        "COMMERCIAL-LICENSE.md",
+        "CONTRIBUTING.md",
+        "NOTICE.md",
+        "README.md",
+        "AGENTS.md",
+        "REUSE.toml"
+    ],
+    "scripts": {
+        "test": "node --test",
+        "format": "prettier --write .",
+        "check:format": "prettier --check ."
+    },
+    "devDependencies": {
+        "prettier": "^3.4.2"
+    },
+    "engines": {
+        "node": ">=20"
+    }
+}
