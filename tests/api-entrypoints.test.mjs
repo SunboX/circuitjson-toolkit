@@ -9,6 +9,8 @@ test('root entrypoint exports CircuitJSON toolkit APIs', () => {
     assert.equal(typeof rootApi.CircuitJsonIndexer, 'function')
     assert.equal(typeof rootApi.CircuitJsonParser, 'function')
     assert.equal(typeof rootApi.CircuitJsonUnits, 'function')
+    assert.equal(typeof rootApi.SpiceCompatibilityPreprocessor, 'function')
+    assert.equal(typeof rootApi.SpiceSimulationService, 'function')
 })
 
 test('parser entrypoint exports parser APIs', () => {

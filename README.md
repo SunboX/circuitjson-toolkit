@@ -33,10 +33,12 @@ package as a normal npm dependency.
 - Build lookup indexes by element type and stable CircuitJSON identifiers
 - Resolve source component and PCB component maps for viewer, QA, export, or
   reporting integrations
-- Preserve unknown element types instead of imposing renderer-specific
-  semantics
+- Reject unknown element types and invalid core element fields before consumers
+  render or query the model
 - Convert CircuitJSON millimeter dimensions and points into mils for render
   adapters that use PCB imperial units internally
+- Run dependency-free SPICE transient examples or normalize injected simulator
+  results into complete CircuitJSON simulation experiment element sets
 - Provide root and parser-focused ESM entrypoints
 - Run in browser and Node ESM environments
 - Run entirely with local input data; no network calls are made by the parser
@@ -106,6 +108,22 @@ const centerMil = CircuitJsonUnits.pointMmToMil(board.center)
 const widthMil = CircuitJsonUnits.mmToMil(board.width)
 ```
 
+Run a local SPICE transient example and receive CircuitJSON experiment output:
+
+```js
+import { SpiceSimulationService } from 'circuitjson-toolkit'
+
+const result = await SpiceSimulationService.simulate(`
+Vmain out 0 DC 3.3
+.PRINT TRAN V(out)
+.tran 1ms 2ms
+.END
+`)
+
+console.log(result.simulationCircuitJson)
+console.log(result.graphSummary)
+```
+
 Pass CircuitJSON to the 3D renderer as a separate step:
 
 ```js
@@ -137,6 +155,7 @@ This package owns reusable CircuitJSON utility behavior only:
 - validation and diagnostics for element-array inputs;
 - indexing and lookup maps for common CircuitJSON IDs;
 - small unit conversion helpers for downstream renderer adapters.
+- local SPICE transient graph helpers that return CircuitJSON elements.
 
 It does not include native Altium or KiCad parsing, schematic/PCB SVG
 rendering, Three.js rendering, browser UI controls, network fetching, or

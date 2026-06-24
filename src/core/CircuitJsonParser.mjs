@@ -1,4 +1,8 @@
 import { CircuitJsonDocument } from './CircuitJsonDocument.mjs'
+import { CircuitJsonBomBuilder } from './CircuitJsonBomBuilder.mjs'
+import { CircuitJsonIndexer } from './CircuitJsonIndexer.mjs'
+import { CircuitJsonManufacturingBuilder } from './CircuitJsonManufacturingBuilder.mjs'
+import { CircuitJsonSupportMatrixBuilder } from './CircuitJsonSupportMatrixBuilder.mjs'
 
 /**
  * Parses standalone CircuitJSON files.
@@ -22,10 +26,15 @@ export class CircuitJsonParser {
         }
 
         CircuitJsonDocument.assertModel(parsed)
+        const index = CircuitJsonIndexer.index(parsed)
         return CircuitJsonDocument.attachMetadata(parsed, {
             fileName: options.fileName || '',
             fileType: 'circuitjson',
-            kind: CircuitJsonParser.#resolveKind(parsed)
+            kind: CircuitJsonParser.#resolveKind(index),
+            diagnostics: index.diagnostics,
+            bom: CircuitJsonBomBuilder.build(parsed),
+            supportMatrix: CircuitJsonSupportMatrixBuilder.build(parsed),
+            manufacturing: CircuitJsonManufacturingBuilder.build(parsed, index)
         })
     }
 
@@ -44,12 +53,19 @@ export class CircuitJsonParser {
 
     /**
      * Resolves a broad document kind from available elements.
-     * @param {object[]} model CircuitJSON model.
+     * @param {{ elementsByType?: Map<string, object[]> }} index Model index.
      * @returns {string}
      */
-    static #resolveKind(model) {
-        return model.some((element) => String(element?.type) === 'pcb_board')
-            ? 'pcb'
-            : 'circuitjson'
+    static #resolveKind(index) {
+        if (index.elementsByType?.has('pcb_board')) return 'pcb'
+        if (
+            [...(index.elementsByType?.keys() || [])].some((type) =>
+                String(type).startsWith('schematic_')
+            )
+        ) {
+            return 'schematic'
+        }
+
+        return 'circuitjson'
     }
 }

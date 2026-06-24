@@ -11,6 +11,7 @@ The expected top-level value is an array:
     {
         "type": "pcb_board",
         "pcb_board_id": "board_1",
+        "center": { "x": 0, "y": 0 },
         "width": 50,
         "height": 30,
         "thickness": 1.6
@@ -18,9 +19,11 @@ The expected top-level value is an array:
 ]
 ```
 
-Every element must be an object with a non-empty string `type` field. The
-toolkit intentionally does not require every possible CircuitJSON field because
-hosts may use partial files, future element types, or renderer-specific subsets.
+Every element must be an object with a known non-empty string `type` field and
+the required fields for that element. The validator also checks the standard
+identifier convention for known element types, plus strict core fields for
+boards, source components, source ports, schematic components, PCB components,
+and SMT pads.
 
 ## Metadata
 

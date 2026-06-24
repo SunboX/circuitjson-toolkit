@@ -1,3 +1,5 @@
+import { CircuitJsonElementValidator } from './CircuitJsonElementValidator.mjs'
+
 /**
  * Validates serialized CircuitJSON element arrays.
  */
@@ -8,12 +10,7 @@ export class CircuitJsonDocument {
      * @returns {boolean}
      */
     static isElement(value) {
-        return (
-            Boolean(value) &&
-            typeof value === 'object' &&
-            typeof value.type === 'string' &&
-            value.type.trim().length > 0
-        )
+        return CircuitJsonElementValidator.validateElement(value).length === 0
     }
 
     /**
@@ -22,10 +19,16 @@ export class CircuitJsonDocument {
      * @returns {boolean}
      */
     static isModel(value) {
-        return (
-            Array.isArray(value) &&
-            value.every((element) => CircuitJsonDocument.isElement(element))
-        )
+        return CircuitJsonElementValidator.validateModel(value).length === 0
+    }
+
+    /**
+     * Returns validation errors for a candidate CircuitJSON element array.
+     * @param {unknown} value Candidate model.
+     * @returns {string[]}
+     */
+    static validateModel(value) {
+        return CircuitJsonElementValidator.validateModel(value)
     }
 
     /**
@@ -34,8 +37,9 @@ export class CircuitJsonDocument {
      * @returns {void}
      */
     static assertModel(value) {
-        if (!CircuitJsonDocument.isModel(value)) {
-            throw new TypeError('Expected a CircuitJSON element array.')
+        const errors = CircuitJsonDocument.validateModel(value)
+        if (errors.length) {
+            throw new TypeError(errors[0])
         }
     }
 
@@ -43,7 +47,7 @@ export class CircuitJsonDocument {
      * Attaches non-serialized metadata to a CircuitJSON array.
      * @template {object[]} T
      * @param {T} circuitJson CircuitJSON model.
-     * @param {{ fileName?: string, fileType?: string, kind?: string }} [metadata]
+     * @param {{ fileName?: string, fileType?: string, kind?: string, diagnostics?: object[], bom?: object[], supportMatrix?: object, manufacturing?: object }} [metadata]
      * @returns {T}
      */
     static attachMetadata(circuitJson, metadata = {}) {
@@ -71,6 +75,35 @@ export class CircuitJsonDocument {
                 configurable: true,
                 enumerable: true,
                 value: 'circuitjson',
+                writable: true
+            },
+            diagnostics: {
+                configurable: true,
+                enumerable: true,
+                value: Array.isArray(metadata.diagnostics)
+                    ? metadata.diagnostics
+                    : [],
+                writable: true
+            },
+            bom: {
+                configurable: true,
+                enumerable: true,
+                value: Array.isArray(metadata.bom) ? metadata.bom : [],
+                writable: true
+            },
+            supportMatrix: {
+                configurable: true,
+                enumerable: true,
+                value: metadata.supportMatrix || null,
+                writable: true
+            },
+            manufacturing: {
+                configurable: true,
+                enumerable: true,
+                value: metadata.manufacturing || {
+                    pickAndPlaceRows: [],
+                    routingDsn: ''
+                },
                 writable: true
             }
         })
