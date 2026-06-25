@@ -63,6 +63,21 @@ Indexed element IDs are stored with a type prefix, such as
 `pcb_board:board_1`, so different element classes can reuse local IDs without
 colliding.
 
+PCB courtyard artwork rows use the normal `type_id` identifier convention. The
+validator accepts generic `pcb_courtyard` rows plus shape-specific variants such
+as `pcb_courtyard_rect`, `pcb_courtyard_circle`, `pcb_courtyard_outline`,
+`pcb_courtyard_path`, and `pcb_courtyard_line`.
+
+## Group Indexing
+
+`CircuitJsonIndexer` builds `groupsById` and `elementsByGroupId` from direct
+group fields such as `source_group_id`, `pcb_group_id`,
+`schematic_group_id`, `group_id`, and `group_ids`. It also treats member-style
+fields such as `member_source_group_ids`, `member_pcb_group_ids`,
+`member_schematic_group_ids`, and `member_group_ids` as group memberships, so
+source nets and other non-group elements can participate in group indexes
+without duplicating direct group fields.
+
 ## Units
 
 CircuitJSON PCB coordinates and dimensions are millimeter-based. The toolkit

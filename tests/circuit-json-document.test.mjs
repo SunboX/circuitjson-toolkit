@@ -5,6 +5,7 @@ import {
     CircuitJsonDocument,
     CircuitJsonElementValidator,
     CircuitJsonParser,
+    CircuitJsonSourceMetadata,
     CircuitJsonUnits
 } from '../src/index.mjs'
 
@@ -61,6 +62,31 @@ test('CircuitJsonDocument rejects unknown element types', () => {
             ]),
         /Unsupported CircuitJSON element type: made_up_element/
     )
+})
+
+test('CircuitJsonDocument accepts open courtyard artwork elements', () => {
+    const model = [
+        {
+            type: 'pcb_courtyard_path',
+            pcb_courtyard_path_id: 'courtyard_path_1',
+            route: [
+                { x: 0, y: 0 },
+                { x: 1, y: 0 },
+                { x: 1, y: 1 }
+            ],
+            layer: 'top_courtyard'
+        },
+        {
+            type: 'pcb_courtyard_line',
+            pcb_courtyard_line_id: 'courtyard_line_1',
+            start: { x: 2, y: 0 },
+            end: { x: 3, y: 0 },
+            layer: 'top_courtyard'
+        }
+    ]
+
+    assert.equal(CircuitJsonDocument.isModel(model), true)
+    assert.doesNotThrow(() => CircuitJsonDocument.assertModel(model))
 })
 
 test('CircuitJsonDocument rejects invalid core element fields', () => {
@@ -127,6 +153,58 @@ test('CircuitJsonDocument rejects invalid core element fields', () => {
                 }
             ]),
         /source_component supplier_part_numbers must be an object/
+    )
+})
+
+test('CircuitJsonDocument validates oscilloscope trace references and units', () => {
+    assert.doesNotThrow(() =>
+        CircuitJsonDocument.assertModel([
+            {
+                type: 'simulation_oscilloscope_trace',
+                simulation_oscilloscope_trace_id: 'scope_trace_vout',
+                simulation_transient_voltage_graph_id: 'graph_vout',
+                display_name: 'VOUT',
+                color: '#00aaff',
+                volts_per_div: 1
+            }
+        ])
+    )
+    assert.throws(
+        () =>
+            CircuitJsonDocument.assertModel([
+                {
+                    type: 'simulation_oscilloscope_trace',
+                    simulation_oscilloscope_trace_id: 'scope_trace_invalid',
+                    simulation_transient_voltage_graph_id: 'graph_vout',
+                    simulation_voltage_probe_id: 'probe_vout',
+                    volts_per_div: 1
+                }
+            ]),
+        /simulation_oscilloscope_trace must reference exactly one graph or probe/
+    )
+    assert.throws(
+        () =>
+            CircuitJsonDocument.assertModel([
+                {
+                    type: 'simulation_oscilloscope_trace',
+                    simulation_oscilloscope_trace_id: 'scope_trace_bad_units',
+                    simulation_transient_voltage_graph_id: 'graph_vout',
+                    amps_per_div: 0.01
+                }
+            ]),
+        /voltage oscilloscope traces must use volts_per_div/
+    )
+    assert.throws(
+        () =>
+            CircuitJsonDocument.assertModel([
+                {
+                    type: 'simulation_oscilloscope_trace',
+                    simulation_oscilloscope_trace_id: 'scope_trace_bad_current',
+                    simulation_current_probe_id: 'probe_iload',
+                    volts_per_div: 1
+                }
+            ]),
+        /current oscilloscope traces must use amps_per_div/
     )
 })
 
@@ -258,6 +336,85 @@ test('CircuitJsonElementValidator compares schema snapshots', () => {
         true
     )
     assert.equal(comparison.matches, false)
+})
+
+test('CircuitJsonElementValidator compares schema variant snapshots', () => {
+    const snapshot = CircuitJsonElementValidator.schemaSnapshot()
+    const comparison = CircuitJsonElementValidator.compareSchemaSnapshot({
+        elementTypes: snapshot.elementTypes,
+        idFieldExceptions: snapshot.idFieldExceptions,
+        variantSets: {
+            ...snapshot.variantSets,
+            pcbSmtPadShapes: ['rect'],
+            sourceComponentFtypes: ['simple_resistor']
+        }
+    })
+
+    assert.equal(
+        snapshot.variantSets.pcbSmtPadShapes.includes('rounded_rect'),
+        true
+    )
+    assert.equal(snapshot.variantSets.pcbHoleShapes.includes('round'), true)
+    assert.equal(
+        snapshot.variantSets.pcbCopperPourShapes.includes('brep'),
+        true
+    )
+    assert.equal(
+        snapshot.variantSets.sourceComponentFtypes.includes('interconnect'),
+        true
+    )
+    assert.equal(
+        snapshot.variantSets.pcbPlatedHoleShapes.includes(
+            'hole_with_polygon_pad'
+        ),
+        true
+    )
+    assert.equal(
+        snapshot.variantSets.pcbSolderPasteShapes.includes('rotated_rect'),
+        true
+    )
+    assert.equal(snapshot.variantSets.pcbBoardShapes.includes('polygon'), true)
+    assert.equal(
+        snapshot.variantSets.simulationWaveShapes.includes('sinewave'),
+        true
+    )
+    assert.equal(
+        snapshot.variantSets.simulationExperimentMethods.includes('gear'),
+        true
+    )
+    assert.equal(snapshot.elementTypes.includes('source_interconnect'), false)
+    assert.equal(comparison.matches, false)
+    assert.deepEqual(comparison.missingVariants, [])
+    assert.equal(
+        comparison.unexpectedVariants.some(
+            (variant) =>
+                variant.set === 'pcbSmtPadShapes' &&
+                variant.value === 'rounded_rect'
+        ),
+        true
+    )
+    assert.equal(
+        comparison.unexpectedVariants.some(
+            (variant) =>
+                variant.set === 'sourceComponentFtypes' &&
+                variant.value === 'simple_capacitor'
+        ),
+        true
+    )
+})
+
+test('CircuitJsonDocument accepts interconnect source component ftype', () => {
+    const model = [
+        {
+            type: 'source_component',
+            source_component_id: 'source_link_1',
+            name: 'LINK1',
+            ftype: 'interconnect'
+        }
+    ]
+
+    assert.equal(CircuitJsonDocument.isModel(model), true)
+    assert.doesNotThrow(() => CircuitJsonDocument.assertModel(model))
 })
 
 test('CircuitJsonDocument accepts a valid selected-part element set', () => {
@@ -415,9 +572,94 @@ test('CircuitJsonParser derives BOM rows from source components', () => {
             value: '10k',
             pattern: 'simple_resistor',
             source: 'RC0402-10K',
-            supplierPartNumber: 'DIST-10K'
+            supplierPartNumber: 'DIST-10K',
+            supplierPartNumbers: { supplier: 'DIST-10K' },
+            sourceFtype: 'simple_resistor',
+            componentType: 'resistor',
+            componentIcon: 'resistor'
         }
     ])
+})
+
+test('CircuitJsonSourceMetadata normalizes source net and port names', () => {
+    const usedNames = new Set(['net_1V8_A'])
+
+    assert.equal(
+        CircuitJsonSourceMetadata.normalizeSourceNetName('+3V3'),
+        '_P3V3'
+    )
+    assert.equal(
+        CircuitJsonSourceMetadata.normalizeSourceNetName('1V8-A', {
+            usedNames
+        }),
+        'net_1V8_A_2'
+    )
+    assert.equal(
+        CircuitJsonSourceMetadata.normalizeSourceNetName('GPIO[0]'),
+        'GPIO_0'
+    )
+    assert.equal(CircuitJsonSourceMetadata.normalizeSourcePortName('1'), 'pin1')
+    assert.equal(CircuitJsonSourceMetadata.normalizeSourcePortName(2), 'pin2')
+    assert.equal(CircuitJsonSourceMetadata.normalizeSourcePortName('A1'), 'A1')
+})
+
+test('CircuitJsonParser normalizes source component type and supplier metadata', () => {
+    const model = CircuitJsonParser.parseText(
+        JSON.stringify([
+            {
+                type: 'pcb_board',
+                pcb_board_id: 'board_1',
+                center: { x: 0, y: 0 },
+                width: 10,
+                height: 5
+            },
+            {
+                type: 'source_component',
+                source_component_id: 'source_d1',
+                name: 'D1',
+                footprint: 'Indicator_LED_0603',
+                supplier_part_numbers: {
+                    assembly: 'SUP-LED-0603'
+                }
+            },
+            {
+                type: 'source_component',
+                source_component_id: 'source_tp1',
+                name: 'TP1',
+                supplier_part_number: 'SUP-TP-1'
+            }
+        ]),
+        { fileName: 'board.json' }
+    )
+
+    assert.deepEqual(
+        model.bom.map((row) => ({
+            designators: row.designators,
+            supplierPartNumber: row.supplierPartNumber,
+            supplierPartNumbers: row.supplierPartNumbers,
+            sourceFtype: row.sourceFtype,
+            componentType: row.componentType,
+            componentIcon: row.componentIcon
+        })),
+        [
+            {
+                designators: ['D1'],
+                supplierPartNumber: 'SUP-LED-0603',
+                supplierPartNumbers: { assembly: 'SUP-LED-0603' },
+                sourceFtype: 'simple_led',
+                componentType: 'led',
+                componentIcon: 'led'
+            },
+            {
+                designators: ['TP1'],
+                supplierPartNumber: 'SUP-TP-1',
+                supplierPartNumbers: { supplier: 'SUP-TP-1' },
+                sourceFtype: 'simple_test_point',
+                componentType: 'test-point',
+                componentIcon: 'test-point'
+            }
+        ]
+    )
 })
 
 test('CircuitJsonParser attaches support coverage metadata', () => {
@@ -446,13 +688,18 @@ test('CircuitJsonParser attaches support coverage metadata', () => {
                 center: { x: 0, y: 0 },
                 width: 2,
                 height: 1
+            },
+            {
+                type: 'cad_component',
+                cad_component_id: 'cad_1',
+                model_3mf_url: 'models/body.3mf'
             }
         ]),
         { fileName: 'coverage.json' }
     )
 
     assert.equal(model.supportMatrix.sourceFormat, 'circuitjson')
-    assert.equal(model.supportMatrix.totals.presentElementTypes, 3)
+    assert.equal(model.supportMatrix.totals.presentElementTypes, 4)
     assert.equal(
         model.supportMatrix.rows.find((row) => row.type === 'pcb_smtpad')
             .capabilities.pcb,
@@ -465,6 +712,11 @@ test('CircuitJsonParser attaches support coverage metadata', () => {
         'rendered'
     )
     assert.equal(
+        model.supportMatrix.rows.find((row) => row.type === 'cad_component')
+            .capabilities.scene3d,
+        'external-model'
+    )
+    assert.equal(
         model.supportMatrix.gaps.some(
             (gap) =>
                 gap.type === 'pcb_smtpad' &&
@@ -473,6 +725,62 @@ test('CircuitJsonParser attaches support coverage metadata', () => {
         ),
         true
     )
+    assert.equal(
+        model.supportMatrix.variantRows.some(
+            (row) =>
+                row.type === 'pcb_smtpad' &&
+                row.group === 'shape' &&
+                row.value === 'rect' &&
+                row.present
+        ),
+        true
+    )
+    assert.equal(
+        model.supportMatrix.variantRows.some(
+            (row) =>
+                row.type === 'source_component' &&
+                row.group === 'ftype' &&
+                row.value === 'simple_resistor' &&
+                !row.present
+        ),
+        true
+    )
+    assert.equal(model.supportMatrix.totals.knownVariantValues > 20, true)
+})
+
+test('CircuitJsonParser carries diagnostic relation metadata', () => {
+    const model = CircuitJsonParser.parseText(
+        JSON.stringify([
+            {
+                type: 'source_component',
+                source_component_id: 'source_u1',
+                name: 'U1',
+                ftype: 'simple_chip'
+            },
+            {
+                type: 'source_component_pins_underspecified_warning',
+                source_component_pins_underspecified_warning_id: 'warning_1',
+                warning_type: 'source_component_pins_underspecified_warning',
+                source_component_id: 'source_u1',
+                source_port_id: 'source_port_1',
+                message: 'Pin definition is incomplete.'
+            }
+        ]),
+        { fileName: 'diagnostics.json' }
+    )
+
+    assert.deepEqual(model.diagnostics, [
+        {
+            severity: 'warning',
+            sourceFormat: 'circuitjson',
+            type: 'source_component_pins_underspecified_warning',
+            category: 'pin-definition',
+            message: 'Pin definition is incomplete.',
+            elementId: 'warning_1',
+            sourceComponentId: 'source_u1',
+            sourcePortId: 'source_port_1'
+        }
+    ])
 })
 
 test('CircuitJsonParser derives manufacturing placement and routing exchange data', () => {

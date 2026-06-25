@@ -37,7 +37,8 @@ test('required project files exist', async () => {
         'docs/testing.md',
         'spec/library-scope.md',
         'src/index.mjs',
-        'src/parser.mjs'
+        'src/parser.mjs',
+        'src/renderers.mjs'
     ]
 
     for (const relativePath of required) {
@@ -57,6 +58,7 @@ test('package exports public entrypoints', async () => {
     assert.equal(pkg.type, 'module')
     assert.equal(pkg.exports['.'], './src/index.mjs')
     assert.equal(pkg.exports['./parser'], './src/parser.mjs')
+    assert.equal(pkg.exports['./renderers'], './src/renderers.mjs')
     assert.equal(
         pkg.repository.url,
         'git+https://github.com/SunboX/circuitjson-toolkit.git'

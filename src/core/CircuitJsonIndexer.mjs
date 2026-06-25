@@ -19,6 +19,20 @@ const ID_FIELDS_BY_TYPE = {
 }
 
 const GROUP_TYPES = new Set(['source_group', 'pcb_group', 'schematic_group'])
+const SCHEMATIC_PRIMITIVE_TYPES = new Set([
+    'schematic_arc',
+    'schematic_box',
+    'schematic_circle',
+    'schematic_line',
+    'schematic_net_label',
+    'schematic_path',
+    'schematic_rect',
+    'schematic_table',
+    'schematic_table_cell',
+    'schematic_text',
+    'schematic_trace',
+    'schematic_voltage_probe'
+])
 
 /**
  * Builds lookup maps for CircuitJSON element arrays.
@@ -27,7 +41,7 @@ export class CircuitJsonIndexer {
     /**
      * Indexes a CircuitJSON model.
      * @param {object[]} circuitJson CircuitJSON model.
-     * @returns {{ elements: object[], elementsByType: Map<string, object[]>, elementsById: Map<string, object>, relationsByField: Map<string, Map<string, object[]>>, sourceComponentById: Map<string, object>, pcbComponentById: Map<string, object>, componentsBySourceId: Map<string, object>, groupsById: Map<string, object>, elementsByGroupId: Map<string, object[]>, elementsBySubcircuitId: Map<string, object[]>, diagnostics: object[] }}
+     * @returns {{ elements: object[], elementsByType: Map<string, object[]>, elementsById: Map<string, object>, relationsByField: Map<string, Map<string, object[]>>, sourceComponentById: Map<string, object>, pcbComponentById: Map<string, object>, sourceTraceById: Map<string, object>, sourceTraceConnectivity: Map<string, object>, componentsBySourceId: Map<string, object>, groupsById: Map<string, object>, elementsByGroupId: Map<string, object[]>, elementsBySubcircuitId: Map<string, object[]>, diagnostics: object[] }}
      */
     static index(circuitJson) {
         CircuitJsonDocument.assertModel(circuitJson)
@@ -36,6 +50,7 @@ export class CircuitJsonIndexer {
         const relationsByField = new Map()
         const sourceComponentById = new Map()
         const pcbComponentById = new Map()
+        const sourceTraceById = new Map()
 
         circuitJson.forEach((element) => {
             const type = String(element?.type || '')
@@ -54,8 +69,13 @@ export class CircuitJsonIndexer {
             if (type === 'pcb_component' && id) {
                 pcbComponentById.set(id, element)
             }
+            if (type === 'source_trace' && id) {
+                sourceTraceById.set(id, element)
+            }
             CircuitJsonIndexer.#indexRelations(element, relationsByField)
         })
+        const sourceTraceConnectivity =
+            CircuitJsonIndexer.#sourceTraceConnectivity(sourceTraceById)
 
         return {
             elements: circuitJson,
@@ -64,6 +84,8 @@ export class CircuitJsonIndexer {
             relationsByField,
             sourceComponentById,
             pcbComponentById,
+            sourceTraceById,
+            sourceTraceConnectivity,
             componentsBySourceId: CircuitJsonIndexer.#componentsBySourceId(
                 sourceComponentById,
                 relationsByField
@@ -73,7 +95,14 @@ export class CircuitJsonIndexer {
                 CircuitJsonIndexer.#elementsByGroupId(circuitJson),
             elementsBySubcircuitId:
                 CircuitJsonIndexer.#elementsBySubcircuitId(circuitJson),
-            diagnostics: CircuitJsonIndexer.collectDiagnostics(circuitJson)
+            diagnostics: [
+                ...CircuitJsonIndexer.collectDiagnostics(circuitJson),
+                ...CircuitJsonIndexer.#referenceDiagnostics(
+                    elementsByType,
+                    sourceTraceById,
+                    sourceTraceConnectivity
+                )
+            ]
         }
     }
 
@@ -135,7 +164,9 @@ export class CircuitJsonIndexer {
      * @returns {string[]}
      */
     static #relationValues(value) {
-        const values = Array.isArray(value) ? value : [value]
+        const values = Array.isArray(value)
+            ? value.flatMap((entry) => (Array.isArray(entry) ? entry : [entry]))
+            : [value]
         return values.map((entry) => String(entry || '').trim()).filter(Boolean)
     }
 
@@ -167,6 +198,413 @@ export class CircuitJsonIndexer {
         }
 
         return bySource
+    }
+
+    /**
+     * Builds connectivity summaries keyed by source trace id.
+     * @param {Map<string, object>} sourceTraceById Source trace lookup.
+     * @returns {Map<string, object>}
+     */
+    static #sourceTraceConnectivity(sourceTraceById) {
+        const connectivity = new Map()
+        for (const [sourceTraceId, sourceTrace] of sourceTraceById) {
+            connectivity.set(sourceTraceId, {
+                sourceTraceId,
+                connectedSourcePortIds: CircuitJsonIndexer.#relationValues([
+                    sourceTrace.connected_source_port_id,
+                    sourceTrace.source_port_id,
+                    sourceTrace.connected_source_port_ids,
+                    sourceTrace.source_port_ids
+                ]),
+                connectedSourceNetIds: CircuitJsonIndexer.#relationValues([
+                    sourceTrace.connected_source_net_id,
+                    sourceTrace.source_net_id,
+                    sourceTrace.connected_source_net_ids,
+                    sourceTrace.source_net_ids
+                ])
+            })
+        }
+        return connectivity
+    }
+
+    /**
+     * Builds generated diagnostics for broken source-trace references.
+     * @param {Map<string, object[]>} elementsByType Element rows by type.
+     * @param {Map<string, object>} sourceTraceById Source trace lookup.
+     * @param {Map<string, object>} sourceTraceConnectivity Connectivity lookup.
+     * @returns {object[]}
+     */
+    static #referenceDiagnostics(
+        elementsByType,
+        sourceTraceById,
+        sourceTraceConnectivity
+    ) {
+        const sourcePortIds = new Set(
+            CircuitJsonIndexer.#all(elementsByType, 'source_port')
+                .map((port) => String(port.source_port_id || '').trim())
+                .filter(Boolean)
+        )
+        const sourceNetIds = new Set(
+            CircuitJsonIndexer.#all(elementsByType, 'source_net')
+                .map((net) => String(net.source_net_id || '').trim())
+                .filter(Boolean)
+        )
+        const schematicSymbolIds = CircuitJsonIndexer.#elementIds(
+            elementsByType,
+            'schematic_symbol'
+        )
+        const schematicComponentIds = CircuitJsonIndexer.#elementIds(
+            elementsByType,
+            'schematic_component'
+        )
+        return [
+            ...CircuitJsonIndexer.#missingSourceTracePortDiagnostics(
+                sourceTraceConnectivity,
+                sourcePortIds
+            ),
+            ...CircuitJsonIndexer.#missingSourceTraceNetDiagnostics(
+                sourceTraceConnectivity,
+                sourceNetIds
+            ),
+            ...CircuitJsonIndexer.#missingPcbSourceTraceDiagnostics(
+                elementsByType,
+                sourceTraceById
+            ),
+            ...CircuitJsonIndexer.#missingSchematicComponentSymbolDiagnostics(
+                elementsByType,
+                schematicSymbolIds
+            ),
+            ...CircuitJsonIndexer.#missingSchematicPortComponentDiagnostics(
+                elementsByType,
+                schematicComponentIds
+            ),
+            ...CircuitJsonIndexer.#missingSchematicPortSourcePortDiagnostics(
+                elementsByType,
+                sourcePortIds
+            ),
+            ...CircuitJsonIndexer.#missingSchematicPrimitiveDiagnostics(
+                elementsByType,
+                schematicSymbolIds,
+                schematicComponentIds
+            )
+        ]
+    }
+
+    /**
+     * Builds source-trace missing source-port diagnostics.
+     * @param {Map<string, object>} sourceTraceConnectivity Connectivity lookup.
+     * @param {Set<string>} sourcePortIds Known source port ids.
+     * @returns {object[]}
+     */
+    static #missingSourceTracePortDiagnostics(
+        sourceTraceConnectivity,
+        sourcePortIds
+    ) {
+        return [...sourceTraceConnectivity.values()].flatMap((trace) =>
+            trace.connectedSourcePortIds
+                .filter((sourcePortId) => !sourcePortIds.has(sourcePortId))
+                .map((sourcePortId) => ({
+                    isGenerated: true,
+                    severity: 'warning',
+                    sourceFormat: 'circuitjson',
+                    type: 'source_trace_missing_source_port_warning',
+                    category: 'connectivity',
+                    message:
+                        'Source trace ' +
+                        trace.sourceTraceId +
+                        ' references missing source port ' +
+                        sourcePortId +
+                        '.',
+                    elementId:
+                        trace.sourceTraceId + ':missing-port:' + sourcePortId,
+                    sourceTraceId: trace.sourceTraceId,
+                    sourcePortId
+                }))
+        )
+    }
+
+    /**
+     * Builds source-trace missing source-net diagnostics.
+     * @param {Map<string, object>} sourceTraceConnectivity Connectivity lookup.
+     * @param {Set<string>} sourceNetIds Known source net ids.
+     * @returns {object[]}
+     */
+    static #missingSourceTraceNetDiagnostics(
+        sourceTraceConnectivity,
+        sourceNetIds
+    ) {
+        return [...sourceTraceConnectivity.values()].flatMap((trace) =>
+            trace.connectedSourceNetIds
+                .filter((sourceNetId) => !sourceNetIds.has(sourceNetId))
+                .map((sourceNetId) => ({
+                    isGenerated: true,
+                    severity: 'warning',
+                    sourceFormat: 'circuitjson',
+                    type: 'source_trace_missing_source_net_warning',
+                    category: 'connectivity',
+                    message:
+                        'Source trace ' +
+                        trace.sourceTraceId +
+                        ' references missing source net ' +
+                        sourceNetId +
+                        '.',
+                    elementId:
+                        trace.sourceTraceId + ':missing-net:' + sourceNetId,
+                    sourceTraceId: trace.sourceTraceId,
+                    sourceNetId
+                }))
+        )
+    }
+
+    /**
+     * Builds PCB-trace missing source-trace diagnostics.
+     * @param {Map<string, object[]>} elementsByType Element rows by type.
+     * @param {Map<string, object>} sourceTraceById Source trace lookup.
+     * @returns {object[]}
+     */
+    static #missingPcbSourceTraceDiagnostics(elementsByType, sourceTraceById) {
+        return CircuitJsonIndexer.#all(elementsByType, 'pcb_trace')
+            .map((trace) => ({
+                pcbTraceId: String(trace.pcb_trace_id || '').trim(),
+                sourceTraceId: String(trace.source_trace_id || '').trim()
+            }))
+            .filter(
+                (trace) =>
+                    trace.sourceTraceId &&
+                    !sourceTraceById.has(trace.sourceTraceId)
+            )
+            .map((trace) => ({
+                isGenerated: true,
+                severity: 'warning',
+                sourceFormat: 'circuitjson',
+                type: 'pcb_trace_missing_source_trace_warning',
+                category: 'connectivity',
+                message:
+                    'PCB trace ' +
+                    trace.pcbTraceId +
+                    ' references missing source trace ' +
+                    trace.sourceTraceId +
+                    '.',
+                elementId:
+                    trace.pcbTraceId +
+                    ':missing-source-trace:' +
+                    trace.sourceTraceId,
+                sourceTraceId: trace.sourceTraceId,
+                pcbTraceId: trace.pcbTraceId
+            }))
+    }
+
+    /**
+     * Builds schematic-component missing symbol diagnostics.
+     * @param {Map<string, object[]>} elementsByType Element rows by type.
+     * @param {Set<string>} schematicSymbolIds Known schematic symbol ids.
+     * @returns {object[]}
+     */
+    static #missingSchematicComponentSymbolDiagnostics(
+        elementsByType,
+        schematicSymbolIds
+    ) {
+        return CircuitJsonIndexer.#all(elementsByType, 'schematic_component')
+            .map((component) => ({
+                schematicComponentId:
+                    CircuitJsonIndexer.getElementId(component),
+                schematicSymbolId: String(
+                    component.schematic_symbol_id || ''
+                ).trim()
+            }))
+            .filter(
+                (component) =>
+                    component.schematicSymbolId &&
+                    !schematicSymbolIds.has(component.schematicSymbolId)
+            )
+            .map((component) => ({
+                isGenerated: true,
+                severity: 'warning',
+                sourceFormat: 'circuitjson',
+                type: 'schematic_component_missing_schematic_symbol_warning',
+                category: 'layout',
+                message:
+                    'Schematic component ' +
+                    component.schematicComponentId +
+                    ' references missing schematic symbol ' +
+                    component.schematicSymbolId +
+                    '.',
+                elementId:
+                    component.schematicComponentId +
+                    ':missing-symbol:' +
+                    component.schematicSymbolId,
+                schematicComponentId: component.schematicComponentId,
+                schematicSymbolId: component.schematicSymbolId
+            }))
+    }
+
+    /**
+     * Builds schematic-port missing component diagnostics.
+     * @param {Map<string, object[]>} elementsByType Element rows by type.
+     * @param {Set<string>} schematicComponentIds Known schematic component ids.
+     * @returns {object[]}
+     */
+    static #missingSchematicPortComponentDiagnostics(
+        elementsByType,
+        schematicComponentIds
+    ) {
+        return CircuitJsonIndexer.#all(elementsByType, 'schematic_port')
+            .map((port) => ({
+                schematicPortId: CircuitJsonIndexer.getElementId(port),
+                schematicComponentId: String(
+                    port.schematic_component_id || ''
+                ).trim()
+            }))
+            .filter(
+                (port) =>
+                    port.schematicComponentId &&
+                    !schematicComponentIds.has(port.schematicComponentId)
+            )
+            .map((port) => ({
+                isGenerated: true,
+                severity: 'warning',
+                sourceFormat: 'circuitjson',
+                type: 'schematic_port_missing_schematic_component_warning',
+                category: 'layout',
+                message:
+                    'Schematic port ' +
+                    port.schematicPortId +
+                    ' references missing schematic component ' +
+                    port.schematicComponentId +
+                    '.',
+                elementId:
+                    port.schematicPortId +
+                    ':missing-component:' +
+                    port.schematicComponentId,
+                schematicComponentId: port.schematicComponentId,
+                schematicPortId: port.schematicPortId
+            }))
+    }
+
+    /**
+     * Builds schematic-port missing source-port diagnostics.
+     * @param {Map<string, object[]>} elementsByType Element rows by type.
+     * @param {Set<string>} sourcePortIds Known source port ids.
+     * @returns {object[]}
+     */
+    static #missingSchematicPortSourcePortDiagnostics(
+        elementsByType,
+        sourcePortIds
+    ) {
+        return CircuitJsonIndexer.#all(elementsByType, 'schematic_port')
+            .map((port) => ({
+                schematicPortId: CircuitJsonIndexer.getElementId(port),
+                sourcePortId: String(port.source_port_id || '').trim()
+            }))
+            .filter(
+                (port) =>
+                    port.sourcePortId && !sourcePortIds.has(port.sourcePortId)
+            )
+            .map((port) => ({
+                isGenerated: true,
+                severity: 'warning',
+                sourceFormat: 'circuitjson',
+                type: 'schematic_port_missing_source_port_warning',
+                category: 'connectivity',
+                message:
+                    'Schematic port ' +
+                    port.schematicPortId +
+                    ' references missing source port ' +
+                    port.sourcePortId +
+                    '.',
+                elementId:
+                    port.schematicPortId +
+                    ':missing-source-port:' +
+                    port.sourcePortId,
+                schematicPortId: port.schematicPortId,
+                sourcePortId: port.sourcePortId
+            }))
+    }
+
+    /**
+     * Builds schematic primitive missing relation diagnostics.
+     * @param {Map<string, object[]>} elementsByType Element rows by type.
+     * @param {Set<string>} schematicSymbolIds Known schematic symbol ids.
+     * @param {Set<string>} schematicComponentIds Known schematic component ids.
+     * @returns {object[]}
+     */
+    static #missingSchematicPrimitiveDiagnostics(
+        elementsByType,
+        schematicSymbolIds,
+        schematicComponentIds
+    ) {
+        return [...SCHEMATIC_PRIMITIVE_TYPES].flatMap((type) =>
+            CircuitJsonIndexer.#all(elementsByType, type).flatMap((element) =>
+                CircuitJsonIndexer.#missingSchematicPrimitiveElementDiagnostics(
+                    element,
+                    schematicSymbolIds,
+                    schematicComponentIds
+                )
+            )
+        )
+    }
+
+    /**
+     * Builds schematic primitive diagnostics for one element.
+     * @param {object} element Schematic primitive row.
+     * @param {Set<string>} schematicSymbolIds Known schematic symbol ids.
+     * @param {Set<string>} schematicComponentIds Known schematic component ids.
+     * @returns {object[]}
+     */
+    static #missingSchematicPrimitiveElementDiagnostics(
+        element,
+        schematicSymbolIds,
+        schematicComponentIds
+    ) {
+        const primitiveId = CircuitJsonIndexer.getElementId(element)
+        const diagnostics = []
+        const schematicSymbolId = String(
+            element.schematic_symbol_id || ''
+        ).trim()
+        const schematicComponentId = String(
+            element.schematic_component_id || ''
+        ).trim()
+
+        if (schematicSymbolId && !schematicSymbolIds.has(schematicSymbolId)) {
+            diagnostics.push({
+                isGenerated: true,
+                severity: 'warning',
+                sourceFormat: 'circuitjson',
+                type: 'schematic_primitive_missing_schematic_symbol_warning',
+                category: 'layout',
+                message:
+                    'Schematic primitive ' +
+                    primitiveId +
+                    ' references missing schematic symbol ' +
+                    schematicSymbolId +
+                    '.',
+                elementId: primitiveId + ':missing-symbol:' + schematicSymbolId,
+                schematicSymbolId
+            })
+        }
+        if (
+            schematicComponentId &&
+            !schematicComponentIds.has(schematicComponentId)
+        ) {
+            diagnostics.push({
+                isGenerated: true,
+                severity: 'warning',
+                sourceFormat: 'circuitjson',
+                type: 'schematic_primitive_missing_schematic_component_warning',
+                category: 'layout',
+                message:
+                    'Schematic primitive ' +
+                    primitiveId +
+                    ' references missing schematic component ' +
+                    schematicComponentId +
+                    '.',
+                elementId:
+                    primitiveId + ':missing-component:' + schematicComponentId,
+                schematicComponentId
+            })
+        }
+
+        return diagnostics
     }
 
     /**
@@ -227,6 +665,20 @@ export class CircuitJsonIndexer {
     }
 
     /**
+     * Builds a set of known element ids for one type.
+     * @param {Map<string, object[]>} elementsByType Element rows by type.
+     * @param {string} type Element type.
+     * @returns {Set<string>}
+     */
+    static #elementIds(elementsByType, type) {
+        return new Set(
+            CircuitJsonIndexer.#all(elementsByType, type)
+                .map((element) => CircuitJsonIndexer.getElementId(element))
+                .filter(Boolean)
+        )
+    }
+
+    /**
      * Resolves group ids from common group fields.
      * @param {object} element Element row.
      * @returns {string[]}
@@ -237,10 +689,34 @@ export class CircuitJsonIndexer {
             element?.pcb_group_id,
             element?.schematic_group_id,
             element?.group_id,
-            ...(Array.isArray(element?.group_ids) ? element.group_ids : [])
+            element?.member_source_group_id,
+            element?.member_pcb_group_id,
+            element?.member_schematic_group_id,
+            element?.member_group_id,
+            ...CircuitJsonIndexer.#relationValues(element?.group_ids),
+            ...CircuitJsonIndexer.#relationValues(
+                element?.member_source_group_ids
+            ),
+            ...CircuitJsonIndexer.#relationValues(
+                element?.member_pcb_group_ids
+            ),
+            ...CircuitJsonIndexer.#relationValues(
+                element?.member_schematic_group_ids
+            ),
+            ...CircuitJsonIndexer.#relationValues(element?.member_group_ids)
         ]
             .map((value) => String(value || '').trim())
             .filter(Boolean)
+    }
+
+    /**
+     * Returns indexed element rows by type.
+     * @param {Map<string, object[]>} elementsByType Element rows by type.
+     * @param {string} type Element type.
+     * @returns {object[]}
+     */
+    static #all(elementsByType, type) {
+        return elementsByType.get(type) || []
     }
 
     /**
@@ -272,8 +748,37 @@ export class CircuitJsonIndexer {
             type,
             category: CircuitJsonIndexer.#diagnosticCategory(type),
             message: String(element?.message || type || 'CircuitJSON issue'),
-            elementId: CircuitJsonIndexer.getElementId(element)
+            elementId: CircuitJsonIndexer.getElementId(element),
+            ...CircuitJsonIndexer.#diagnosticRelations(element)
         }
+    }
+
+    /**
+     * Extracts optional relation ids from one diagnostic element.
+     * @param {object} element Diagnostic element.
+     * @returns {object}
+     */
+    static #diagnosticRelations(element) {
+        return Object.fromEntries(
+            [
+                ['sourceComponentId', element?.source_component_id],
+                ['sourcePortId', element?.source_port_id],
+                ['sourceNetId', element?.source_net_id],
+                ['sourceTraceId', element?.source_trace_id],
+                ['pcbComponentId', element?.pcb_component_id],
+                ['pcbPortId', element?.pcb_port_id],
+                ['pcbTraceId', element?.pcb_trace_id],
+                ['pcbSmtpadId', element?.pcb_smtpad_id],
+                ['pcbViaId', element?.pcb_via_id],
+                ['pcbPlatedHoleId', element?.pcb_plated_hole_id],
+                ['pcbHoleId', element?.pcb_hole_id],
+                ['schematicComponentId', element?.schematic_component_id],
+                ['schematicSymbolId', element?.schematic_symbol_id],
+                ['schematicPortId', element?.schematic_port_id]
+            ]
+                .map(([key, value]) => [key, String(value || '').trim()])
+                .filter(([_key, value]) => value)
+        )
     }
 
     /**

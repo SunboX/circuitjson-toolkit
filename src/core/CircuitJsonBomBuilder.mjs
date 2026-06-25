@@ -1,3 +1,5 @@
+import { CircuitJsonSourceMetadata } from './CircuitJsonSourceMetadata.mjs'
+
 /**
  * Builds app-compatible BOM rows from source component elements.
  */
@@ -14,16 +16,24 @@ export class CircuitJsonBomBuilder {
             const designator = CircuitJsonBomBuilder.#designator(component)
             if (!designator) continue
 
-            const key = CircuitJsonBomBuilder.#groupKey(component)
+            const metadata =
+                CircuitJsonSourceMetadata.normalizeSourceComponent(component)
+            const key = CircuitJsonBomBuilder.#groupKey(component, metadata)
             if (!groups.has(key)) {
                 groups.set(key, {
                     designators: [],
                     quantity: 0,
                     value: CircuitJsonBomBuilder.#value(component),
-                    pattern: CircuitJsonBomBuilder.#pattern(component),
+                    pattern: CircuitJsonBomBuilder.#pattern(
+                        component,
+                        metadata
+                    ),
                     source: CircuitJsonBomBuilder.#source(component),
-                    supplierPartNumber:
-                        CircuitJsonBomBuilder.#supplierPartNumber(component)
+                    supplierPartNumber: metadata.supplierPartNumber,
+                    supplierPartNumbers: metadata.supplierPartNumbers,
+                    sourceFtype: metadata.sourceFtype,
+                    componentType: metadata.componentType,
+                    componentIcon: metadata.componentIcon
                 })
             }
             const row = groups.get(key)
@@ -57,14 +67,16 @@ export class CircuitJsonBomBuilder {
     /**
      * Builds a stable grouping key from BOM-facing fields.
      * @param {object} component Source component.
+     * @param {object} metadata Normalized source metadata.
      * @returns {string}
      */
-    static #groupKey(component) {
+    static #groupKey(component, metadata) {
         return [
             CircuitJsonBomBuilder.#value(component),
-            CircuitJsonBomBuilder.#pattern(component),
+            CircuitJsonBomBuilder.#pattern(component, metadata),
             CircuitJsonBomBuilder.#source(component),
-            CircuitJsonBomBuilder.#supplierPartNumber(component)
+            metadata.supplierPartNumber,
+            metadata.sourceFtype
         ].join('\u001f')
     }
 
@@ -88,14 +100,15 @@ export class CircuitJsonBomBuilder {
     /**
      * Resolves a footprint/package pattern label.
      * @param {object} component Source component.
+     * @param {object} metadata Normalized source metadata.
      * @returns {string}
      */
-    static #pattern(component) {
+    static #pattern(component, metadata) {
         return String(
             component.footprint ??
                 component.package ??
                 component.package_name ??
-                component.ftype ??
+                metadata.sourceFtype ??
                 ''
         ).trim()
     }
@@ -113,22 +126,6 @@ export class CircuitJsonBomBuilder {
                 component.supplier_part_number ??
                 ''
         ).trim()
-    }
-
-    /**
-     * Resolves a supplier part number.
-     * @param {object} component Source component.
-     * @returns {string}
-     */
-    static #supplierPartNumber(component) {
-        if (component.supplier_part_number) {
-            return String(component.supplier_part_number).trim()
-        }
-        const numbers = component.supplier_part_numbers
-        if (!numbers || typeof numbers !== 'object' || Array.isArray(numbers)) {
-            return ''
-        }
-        return String(Object.values(numbers).find(Boolean) || '').trim()
     }
 
     /**

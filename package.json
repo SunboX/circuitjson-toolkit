@@ -1,6 +1,6 @@
 {
     "name": "circuitjson-toolkit",
-    "version": "1.0.10",
+    "version": "1.0.16",
     "description": "Dependency-free CircuitJSON parsing, validation, indexing, and utility helpers",
     "keywords": [
         "circuitjson",
@@ -28,7 +28,8 @@
     "main": "./src/index.mjs",
     "exports": {
         ".": "./src/index.mjs",
-        "./parser": "./src/parser.mjs"
+        "./parser": "./src/parser.mjs",
+        "./renderers": "./src/renderers.mjs"
     },
     "files": [
         "src",

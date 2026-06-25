@@ -16,7 +16,9 @@ const KNOWN_ELEMENT_TYPES = new Set([
     'pcb_copper_text',
     'pcb_courtyard',
     'pcb_courtyard_circle',
+    'pcb_courtyard_line',
     'pcb_courtyard_outline',
+    'pcb_courtyard_path',
     'pcb_courtyard_overlap_error',
     'pcb_courtyard_pill',
     'pcb_courtyard_polygon',
@@ -111,7 +113,6 @@ const KNOWN_ELEMENT_TYPES = new Set([
     'source_failed_to_create_component_error',
     'source_group',
     'source_i2c_misconfigured_error',
-    'source_interconnect',
     'source_invalid_component_property_error',
     'source_manually_placed_via',
     'source_missing_manufacturer_part_number_warning',
@@ -143,6 +144,7 @@ const ID_FIELD_EXCEPTIONS = new Set([
 ])
 
 const SOURCE_COMPONENT_FTYPES = new Set([
+    'interconnect',
     'simple_ammeter',
     'simple_battery',
     'simple_capacitor',
@@ -172,16 +174,9 @@ const SOURCE_COMPONENT_FTYPES = new Set([
     'simple_voltage_source'
 ])
 
-const LAYERS = new Set([
-    'top',
-    'bottom',
-    'inner1',
-    'inner2',
-    'inner3',
-    'inner4',
-    'inner5',
-    'inner6'
-])
+const LAYERS = new Set(
+    'top bottom inner1 inner2 inner3 inner4 inner5 inner6'.split(' ')
+)
 
 const SMT_PAD_SHAPES = new Set([
     'circle',
@@ -189,8 +184,87 @@ const SMT_PAD_SHAPES = new Set([
     'rotated_rect',
     'rotated_pill',
     'pill',
-    'polygon'
+    'polygon',
+    'rounded_rect'
 ])
+
+const PCB_HOLE_SHAPES = new Set([
+    'circle',
+    'circle_or_square',
+    'oval',
+    'pill',
+    'rect',
+    'rotated_pill',
+    'round'
+])
+
+const PCB_PLATED_HOLE_SHAPES = new Set([
+    'circle',
+    'circular_hole_with_rect_pad',
+    'hole_with_polygon_pad',
+    'oval',
+    'pill',
+    'pill_hole_with_rect_pad',
+    'rotated_pill_hole_with_rect_pad'
+])
+
+const PCB_PLATED_HOLE_HOLE_SHAPES = new Set([
+    'circle',
+    'oval',
+    'pill',
+    'rotated_pill'
+])
+
+const PCB_SOLDER_PASTE_SHAPES = new Set([
+    'circle',
+    'oval',
+    'pill',
+    'rect',
+    'rotated_rect'
+])
+
+const PCB_BOARD_SHAPES = new Set(['polygon', 'rect'])
+
+const PCB_CUTOUT_SHAPES = new Set(['circle', 'path', 'polygon', 'rect'])
+
+const PCB_COPPER_POUR_SHAPES = new Set(['brep', 'polygon', 'rect'])
+
+const SIMULATION_SOURCE_KINDS = new Set(['ac', 'dc'])
+
+const SIMULATION_WAVE_SHAPES = new Set(
+    'sawtooth sinewave square triangle'.split(' ')
+)
+
+const SIMULATION_EXPERIMENT_METHODS = new Set(['gear', 'trap'])
+
+const VARIANT_SETS = {
+    sourceComponentFtypes: SOURCE_COMPONENT_FTYPES,
+    pcbBoardShapes: PCB_BOARD_SHAPES,
+    pcbSmtPadShapes: SMT_PAD_SHAPES,
+    pcbHoleShapes: PCB_HOLE_SHAPES,
+    pcbPlatedHoleShapes: PCB_PLATED_HOLE_SHAPES,
+    pcbPlatedHoleHoleShapes: PCB_PLATED_HOLE_HOLE_SHAPES,
+    pcbSolderPasteShapes: PCB_SOLDER_PASTE_SHAPES,
+    pcbCutoutShapes: PCB_CUTOUT_SHAPES,
+    pcbCopperPourShapes: PCB_COPPER_POUR_SHAPES,
+    simulationSourceKinds: SIMULATION_SOURCE_KINDS,
+    simulationWaveShapes: SIMULATION_WAVE_SHAPES,
+    simulationExperimentMethods: SIMULATION_EXPERIMENT_METHODS
+}
+
+const SORTED_VARIANT_SET_NAMES = Object.keys(VARIANT_SETS).sort()
+
+/**
+ * @typedef {{ set: string, value: string }} CircuitJsonVariantDiff
+ */
+
+/**
+ * @typedef {{ elementTypes: string[], idFieldExceptions: string[], variantSets: Record<string, string[]> }} CircuitJsonSchemaSnapshot
+ */
+
+/**
+ * @typedef {{ matches: boolean, missingElementTypes: string[], unexpectedElementTypes: string[], missingIdFieldExceptions: string[], unexpectedIdFieldExceptions: string[], missingVariants: CircuitJsonVariantDiff[], unexpectedVariants: CircuitJsonVariantDiff[] }} CircuitJsonSchemaSnapshotComparison
+ */
 
 /**
  * Validates serialized CircuitJSON element objects without external runtime
@@ -256,9 +330,34 @@ export class CircuitJsonElementValidator {
     }
 
     /**
+     * Returns schema metadata suitable for drift snapshots.
+     * @returns {CircuitJsonSchemaSnapshot}
+     */
+    static schemaSnapshot() {
+        return {
+            elementTypes: CircuitJsonElementValidator.knownElementTypes(),
+            idFieldExceptions: CircuitJsonElementValidator.idFieldExceptions(),
+            variantSets: CircuitJsonElementValidator.variantSets()
+        }
+    }
+
+    /**
+     * Returns known variant discriminants from the active schema metadata.
+     * @returns {Record<string, string[]>}
+     */
+    static variantSets() {
+        return Object.fromEntries(
+            SORTED_VARIANT_SET_NAMES.map((name) => [
+                name,
+                [...VARIANT_SETS[name]].sort()
+            ])
+        )
+    }
+
+    /**
      * Compares current schema metadata against a saved snapshot.
-     * @param {{ elementTypes?: string[], idFieldExceptions?: string[] }} snapshot Schema snapshot.
-     * @returns {{ matches: boolean, missingElementTypes: string[], unexpectedElementTypes: string[], missingIdFieldExceptions: string[], unexpectedIdFieldExceptions: string[] }}
+     * @param {{ elementTypes?: string[], idFieldExceptions?: string[], variantSets?: Record<string, string[]> }} snapshot Schema snapshot.
+     * @returns {CircuitJsonSchemaSnapshotComparison}
      */
     static compareSchemaSnapshot(snapshot = {}) {
         const elementComparison = CircuitJsonElementValidator.#compareSets(
@@ -269,17 +368,25 @@ export class CircuitJsonElementValidator {
             new Set(snapshot.idFieldExceptions || []),
             ID_FIELD_EXCEPTIONS
         )
+        const variantComparison =
+            CircuitJsonElementValidator.#compareVariantSets(
+                snapshot.variantSets || {}
+            )
 
         return {
             matches:
                 elementComparison.missing.length === 0 &&
                 elementComparison.unexpected.length === 0 &&
                 exceptionComparison.missing.length === 0 &&
-                exceptionComparison.unexpected.length === 0,
+                exceptionComparison.unexpected.length === 0 &&
+                variantComparison.missing.length === 0 &&
+                variantComparison.unexpected.length === 0,
             missingElementTypes: elementComparison.missing,
             unexpectedElementTypes: elementComparison.unexpected,
             missingIdFieldExceptions: exceptionComparison.missing,
-            unexpectedIdFieldExceptions: exceptionComparison.unexpected
+            unexpectedIdFieldExceptions: exceptionComparison.unexpected,
+            missingVariants: variantComparison.missing,
+            unexpectedVariants: variantComparison.unexpected
         }
     }
 
@@ -342,6 +449,14 @@ export class CircuitJsonElementValidator {
 
         if (type === 'pcb_smtpad') {
             CircuitJsonElementValidator.#validatePcbSmtPad(element, errors)
+            return
+        }
+
+        if (type === 'simulation_oscilloscope_trace') {
+            CircuitJsonElementValidator.#validateSimulationOscilloscopeTrace(
+                element,
+                errors
+            )
         }
     }
 
@@ -567,6 +682,55 @@ export class CircuitJsonElementValidator {
     }
 
     /**
+     * Validates oscilloscope trace reference and unit constraints.
+     * @param {Record<string, unknown>} element Element.
+     * @param {string[]} errors Error sink.
+     * @returns {void}
+     */
+    static #validateSimulationOscilloscopeTrace(element, errors) {
+        const voltageReferences = [
+            element.simulation_transient_voltage_graph_id,
+            element.simulation_voltage_probe_id
+        ].filter((value) =>
+            CircuitJsonElementValidator.#isNonEmptyString(value)
+        ).length
+        const currentReferences = [
+            element.simulation_transient_current_graph_id,
+            element.simulation_current_probe_id
+        ].filter((value) =>
+            CircuitJsonElementValidator.#isNonEmptyString(value)
+        ).length
+
+        if (voltageReferences + currentReferences !== 1) {
+            errors.push(
+                'simulation_oscilloscope_trace must reference exactly one graph or probe.'
+            )
+        }
+        if (voltageReferences > 0 && Object.hasOwn(element, 'amps_per_div')) {
+            errors.push(
+                'voltage oscilloscope traces must use volts_per_div, not amps_per_div.'
+            )
+        }
+        if (currentReferences > 0 && Object.hasOwn(element, 'volts_per_div')) {
+            errors.push(
+                'current oscilloscope traces must use amps_per_div, not volts_per_div.'
+            )
+        }
+        CircuitJsonElementValidator.#optionalPositiveNumber(
+            element,
+            'simulation_oscilloscope_trace',
+            'volts_per_div',
+            errors
+        )
+        CircuitJsonElementValidator.#optionalPositiveNumber(
+            element,
+            'simulation_oscilloscope_trace',
+            'amps_per_div',
+            errors
+        )
+    }
+
+    /**
      * Requires a non-empty string field.
      * @param {Record<string, unknown>} element Element.
      * @param {string} type Element type.
@@ -663,6 +827,24 @@ export class CircuitJsonElementValidator {
             CircuitJsonUnits.optionalAngle(element[field]) === null
         ) {
             errors.push(type + ' ' + field + ' must be a finite angle.')
+        }
+    }
+
+    /**
+     * Validates an optional positive finite number field.
+     * @param {Record<string, unknown>} element Element.
+     * @param {string} type Element type.
+     * @param {string} field Field name.
+     * @param {string[]} errors Error sink.
+     * @returns {void}
+     */
+    static #optionalPositiveNumber(element, type, field, errors) {
+        if (!Object.hasOwn(element, field)) {
+            return
+        }
+        const value = Number(element[field])
+        if (!Number.isFinite(value) || value <= 0) {
+            errors.push(type + ' ' + field + ' must be a positive number.')
         }
     }
 
@@ -769,5 +951,40 @@ export class CircuitJsonElementValidator {
                 .filter((value) => !expected.has(value))
                 .sort((left, right) => left.localeCompare(right))
         }
+    }
+
+    /**
+     * Compares expected and actual variant metadata sets.
+     * @param {Record<string, string[]>} snapshotSets Snapshot variant sets.
+     * @returns {{ missing: CircuitJsonVariantDiff[], unexpected: CircuitJsonVariantDiff[] }}
+     */
+    static #compareVariantSets(snapshotSets) {
+        const missing = []
+        const unexpected = []
+        const setNames = new Set([
+            ...SORTED_VARIANT_SET_NAMES,
+            ...Object.keys(snapshotSets || {})
+        ])
+
+        for (const setName of [...setNames].sort()) {
+            const comparison = CircuitJsonElementValidator.#compareSets(
+                new Set((snapshotSets?.[setName] || []).map(String)),
+                new Set(VARIANT_SETS[setName] || [])
+            )
+            missing.push(
+                ...comparison.missing.map((value) => ({
+                    set: setName,
+                    value
+                }))
+            )
+            unexpected.push(
+                ...comparison.unexpected.map((value) => ({
+                    set: setName,
+                    value
+                }))
+            )
+        }
+
+        return { missing, unexpected }
     }
 }

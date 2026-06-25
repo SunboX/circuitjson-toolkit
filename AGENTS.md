@@ -34,9 +34,11 @@
 ## Library Scope
 
 - Include CircuitJSON element-array validation, parsing, indexing, unit helpers,
-  and small summary helpers.
-- Do not include renderer code, Three.js code, ECAD parser logic, UI wiring, or
-  source-format-specific compatibility adapters.
+  deterministic renderer-neutral primitive helpers, deterministic SVG renderers,
+  and small summary/export helpers.
+- Do not include Three.js code, ECAD parser logic, UI wiring, host app state,
+  DOM event orchestration, download UI, or source-format-specific compatibility
+  adapters.
 
 ## Testing Guidelines
 
