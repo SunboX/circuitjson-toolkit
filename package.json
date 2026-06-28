@@ -1,6 +1,6 @@
 {
     "name": "circuitjson-toolkit",
-    "version": "1.0.16",
+    "version": "1.0.17",
     "description": "Dependency-free CircuitJSON parsing, validation, indexing, and utility helpers",
     "keywords": [
         "circuitjson",
