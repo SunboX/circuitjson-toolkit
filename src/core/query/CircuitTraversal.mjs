@@ -165,17 +165,17 @@ export class CircuitTraversal {
      */
     static #takeSortedUnique(sources, limit, excluded = new Set()) {
         if (limit <= 0) return []
-        const states = sources
+        const heap = sources
             .map((source, index) =>
                 CircuitTraversal.#iteratorState(source, index)
             )
             .filter(Boolean)
+        CircuitTraversal.#heapify(heap)
         const seen = new Set(excluded)
         const result = []
 
-        while (states.length && result.length < limit) {
-            states.sort(CircuitTraversal.#compareIteratorStates)
-            const current = states.shift()
+        while (heap.length && result.length < limit) {
+            const current = CircuitTraversal.#popHeap(heap)
             const accepted = !seen.has(current.id)
             if (accepted) {
                 seen.add(current.id)
@@ -185,7 +185,7 @@ export class CircuitTraversal {
             const next = current.iterator.next()
             if (!next.done) {
                 current.id = String(next.value)
-                states.push(current)
+                CircuitTraversal.#pushHeap(heap, current)
             }
         }
         return result
@@ -223,6 +223,94 @@ export class CircuitTraversal {
             ComponentGrouping.compareIds(left.key, right.key) ||
             left.index - right.index
         )
+    }
+
+    /**
+     * Builds a minimum heap of active iterator heads in linear time.
+     * @param {object[]} heap Iterator state heap.
+     * @returns {void}
+     */
+    static #heapify(heap) {
+        for (
+            let index = Math.floor(heap.length / 2) - 1;
+            index >= 0;
+            index -= 1
+        ) {
+            CircuitTraversal.#siftDown(heap, index)
+        }
+    }
+
+    /**
+     * Removes the smallest active iterator head.
+     * @param {object[]} heap Iterator state heap.
+     * @returns {object} Smallest iterator state.
+     */
+    static #popHeap(heap) {
+        const first = heap[0]
+        const last = heap.pop()
+        if (heap.length) {
+            heap[0] = last
+            CircuitTraversal.#siftDown(heap, 0)
+        }
+        return first
+    }
+
+    /**
+     * Adds one active iterator head while preserving heap order.
+     * @param {object[]} heap Iterator state heap.
+     * @param {object} state Iterator state.
+     * @returns {void}
+     */
+    static #pushHeap(heap, state) {
+        let index = heap.length
+        heap.push(state)
+        while (index > 0) {
+            const parentIndex = Math.floor((index - 1) / 2)
+            const parent = heap[parentIndex]
+            if (CircuitTraversal.#compareIteratorStates(parent, state) <= 0) {
+                break
+            }
+            heap[index] = parent
+            index = parentIndex
+        }
+        heap[index] = state
+    }
+
+    /**
+     * Restores minimum-heap order below one replaced iterator head.
+     * @param {object[]} heap Iterator state heap.
+     * @param {number} startIndex Replaced head index.
+     * @returns {void}
+     */
+    static #siftDown(heap, startIndex) {
+        const state = heap[startIndex]
+        let index = startIndex
+        while (true) {
+            const leftIndex = index * 2 + 1
+            if (leftIndex >= heap.length) break
+            const rightIndex = leftIndex + 1
+            let childIndex = leftIndex
+            if (
+                rightIndex < heap.length &&
+                CircuitTraversal.#compareIteratorStates(
+                    heap[rightIndex],
+                    heap[leftIndex]
+                ) < 0
+            ) {
+                childIndex = rightIndex
+            }
+            if (
+                CircuitTraversal.#compareIteratorStates(
+                    heap[childIndex],
+                    state
+                ) >= 0
+            ) {
+                break
+            }
+            heap[index] = heap[childIndex]
+            index = childIndex
+        }
+        heap[index] = state
     }
 
     /**

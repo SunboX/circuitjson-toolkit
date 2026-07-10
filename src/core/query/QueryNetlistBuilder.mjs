@@ -1,4 +1,5 @@
 import { ToolkitDiagnostic } from '../contracts/ToolkitDiagnostic.mjs'
+import { ToolkitError } from '../contracts/ToolkitError.mjs'
 import { ComponentGrouping } from './ComponentGrouping.mjs'
 
 /**
@@ -74,7 +75,7 @@ export class QueryNetlistBuilder {
      * @returns {object[]} Stable internal-connection records.
      */
     static #internalConnections(elements) {
-        const records = []
+        const recordsById = new Map()
         for (const component of elements.elementsByType.get(
             'source_component'
         ) || []) {
@@ -90,7 +91,7 @@ export class QueryNetlistBuilder {
                 const normalizedPortIds =
                     QueryNetlistBuilder.#ids(sourcePortIds)
                 if (!sourceComponentId || normalizedPortIds.length < 2) return
-                records.push({
+                QueryNetlistBuilder.#addInternalConnection(recordsById, {
                     id: QueryNetlistBuilder.#inlineConnectionId(
                         sourceComponentId,
                         normalizedPortIds
@@ -113,10 +114,61 @@ export class QueryNetlistBuilder {
                 connection.source_port_ids
             )
             if (!id || !sourceComponentId || sourcePortIds.length < 2) continue
-            records.push({ id, sourceComponentId, sourcePortIds })
+            QueryNetlistBuilder.#addInternalConnection(recordsById, {
+                id,
+                sourceComponentId,
+                sourcePortIds
+            })
         }
-        return records.sort((left, right) =>
+        return [...recordsById.values()].sort((left, right) =>
             ComponentGrouping.compareIds(left.id, right.id)
+        )
+    }
+
+    /**
+     * Adds one unique connection or rejects a conflicting canonical id.
+     * @param {Map<string, object>} recordsById Connection records by id.
+     * @param {{ id: string, sourceComponentId: string, sourcePortIds: string[] }} record Connection record.
+     * @returns {void}
+     */
+    static #addInternalConnection(recordsById, record) {
+        const existing = recordsById.get(record.id)
+        if (!existing) {
+            recordsById.set(record.id, record)
+            return
+        }
+        if (QueryNetlistBuilder.#sameInternalConnection(existing, record)) {
+            return
+        }
+        throw new ToolkitError(
+            'Conflicting source internal connections use the same canonical id.',
+            {
+                code: 'ERR_QUERY_CONNECTIVITY_ID',
+                category: 'validation',
+                format: 'circuitjson',
+                details: {
+                    id: record.id,
+                    existing,
+                    conflicting: record
+                }
+            }
+        )
+    }
+
+    /**
+     * Tests whether two normalized internal-connection records are identical.
+     * @param {object} left Existing connection.
+     * @param {object} right Candidate connection.
+     * @returns {boolean} Whether both records describe the same connection.
+     */
+    static #sameInternalConnection(left, right) {
+        return (
+            left.sourceComponentId === right.sourceComponentId &&
+            left.sourcePortIds.length === right.sourcePortIds.length &&
+            left.sourcePortIds.every(
+                (sourcePortId, index) =>
+                    sourcePortId === right.sourcePortIds[index]
+            )
         )
     }
 

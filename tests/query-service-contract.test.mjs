@@ -4,6 +4,7 @@ import test from 'node:test'
 import { CircuitJsonDocumentContext } from '../src/core/context/CircuitJsonDocumentContext.mjs'
 import { DocumentResult } from '../src/core/contracts/DocumentResult.mjs'
 import { CircuitTraversal } from '../src/core/query/CircuitTraversal.mjs'
+import { ComponentGrouping } from '../src/core/query/ComponentGrouping.mjs'
 import { QueryService } from '../src/core/query/QueryService.mjs'
 
 /**
@@ -596,7 +597,8 @@ test('QueryService query matrix is stable across labels, order, and Unicode', ()
 test('inline internal-connection ids derive from stable port membership', () => {
     const groups = [
         ['port_4', 'port_3'],
-        ['port_2', 'port_1']
+        ['port_2', 'port_1'],
+        ['port_1', 'port_2']
     ]
     const createDocument = (connectionGroups) => [
         {
@@ -629,6 +631,47 @@ test('inline internal-connection ids derive from stable port membership', () => 
     )
 })
 
+test('CircuitTraversal avoids quadratic work across overlapping connectors', () => {
+    const small = connectorComparisonCount(100)
+    const large = connectorComparisonCount(200)
+
+    assert.equal(small.resultCount, 1)
+    assert.equal(large.resultCount, 1)
+    assert.equal(small.yieldCount, 100)
+    assert.equal(large.yieldCount, 200)
+    assert.equal(large.comparisonCount < small.comparisonCount * 3, true)
+})
+
+test('QueryService rejects conflicting canonical internal-connection ids', () => {
+    const model = [
+        {
+            type: 'source_component',
+            source_component_id: 'component_a',
+            name: 'U1',
+            ftype: 'simple_chip',
+            internally_connected_source_port_ids: [['port_1', 'port_2']]
+        },
+        ...Array.from({ length: 4 }, (_, index) => ({
+            type: 'source_port',
+            source_port_id: `port_${index + 1}`,
+            source_component_id: 'component_a',
+            name: String(index + 1),
+            pin_number: index + 1
+        })),
+        {
+            type: 'source_component_internal_connection',
+            source_component_internal_connection_id:
+                'component_a:internal:port_1+port_2',
+            source_component_id: 'component_a',
+            source_port_ids: ['port_3', 'port_4']
+        }
+    ]
+
+    assert.throws(() => QueryService.create(model), {
+        code: 'ERR_QUERY_CONNECTIVITY_ID'
+    })
+})
+
 /**
  * Wraps sorted ids with a deterministic yield counter.
  * @param {string[]} ids Sorted trace ids.
@@ -643,5 +686,53 @@ function countedIterable(ids, counter) {
                 yield id
             }
         }
+    }
+}
+
+/**
+ * Counts comparator work for many overlapping one-entry memberships.
+ * @param {number} portCount Number of connector memberships.
+ * @returns {{ comparisonCount: number, resultCount: number, yieldCount: number }} Probe result.
+ */
+function connectorComparisonCount(portCount) {
+    const portIds = Array.from(
+        { length: portCount },
+        (_, index) => `port_${String(index).padStart(4, '0')}`
+    )
+    const trace = {
+        id: 'trace_0000',
+        sourcePortIds: portIds,
+        sourceNetIds: [],
+        sourceComponentIds: [],
+        internalConnectionIds: []
+    }
+    const graph = CircuitTraversal.prepare({ traces: [trace] })
+    const yielded = { count: 0 }
+    for (const portId of portIds) {
+        graph.traceIdsByMembership.set(
+            `port:${portId}`,
+            countedIterable([trace.id], yielded)
+        )
+    }
+    const compareIds = ComponentGrouping.compareIds
+    let comparisonCount = 0
+    ComponentGrouping.compareIds = (left, right) => {
+        comparisonCount += 1
+        return compareIds(left, right)
+    }
+    let result
+    try {
+        result = CircuitTraversal.trace(
+            graph,
+            { sourceTraceId: trace.id },
+            { maxDepth: 64, maxResults: 2 }
+        )
+    } finally {
+        ComponentGrouping.compareIds = compareIds
+    }
+    return {
+        comparisonCount,
+        resultCount: result.length,
+        yieldCount: yielded.count
     }
 }
