@@ -23,9 +23,12 @@ export class ToolkitDiagnostic {
      * @returns {{ code: string, severity: string, message: string, source: string, location: any, details: any }} Normalized diagnostic.
      */
     static create(fields = {}) {
+        const severity = String(fields.severity || 'info')
         return {
             code: String(fields.code || 'TOOLKIT_DIAGNOSTIC'),
-            severity: String(fields.severity || 'info'),
+            severity: ['info', 'warning', 'error'].includes(severity)
+                ? severity
+                : 'info',
             message: String(fields.message || ''),
             source: String(fields.source || ''),
             location: cloneSafeValue(fields.location, null),

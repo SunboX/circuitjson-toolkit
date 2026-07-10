@@ -73,15 +73,18 @@ export class DocumentResult {
     static extensionForSource(format, extensions) {
         if (format === 'circuitjson') return {}
         const candidate = extensions?.[format]
-        if (!candidate || typeof candidate !== 'object') return {}
-        const cloned = cloneSafeValue(candidate, {})
+        const hasCandidate = candidate && typeof candidate === 'object'
+        const cloned = hasCandidate ? cloneSafeValue(candidate, {}) : {}
         const metadata = cloned.$meta || {}
         delete cloned.$meta
         return {
             [format]: {
                 $meta: {
                     schema: String(metadata.schema || EXTENSION_SCHEMA),
-                    completeness: String(metadata.completeness || 'canonical'),
+                    completeness: String(
+                        metadata.completeness ||
+                            (hasCandidate ? 'canonical' : 'none')
+                    ),
                     included: Array.isArray(metadata.included)
                         ? metadata.included.map(String)
                         : [],

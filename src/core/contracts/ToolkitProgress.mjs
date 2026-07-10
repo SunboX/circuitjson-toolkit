@@ -83,7 +83,7 @@ export class ToolkitProgress {
     static #error(code, message) {
         return new ToolkitError(message, {
             code,
-            category: 'progress'
+            category: 'runtime'
         })
     }
 }

@@ -1,5 +1,13 @@
 import { cloneSafeValue } from './ToolkitDiagnostic.mjs'
 
+const ERROR_CATEGORIES = new Set([
+    'parse',
+    'validation',
+    'unsupported',
+    'cancelled',
+    'runtime'
+])
+
 /**
  * Shared typed toolkit failure with clone-safe serialization.
  */
@@ -13,7 +21,8 @@ export class ToolkitError extends Error {
         super(String(message || 'Toolkit operation failed.'))
         this.name = 'ToolkitError'
         this.code = String(fields.code || 'ERR_TOOLKIT_RUNTIME')
-        this.category = String(fields.category || 'runtime')
+        const category = String(fields.category || 'runtime')
+        this.category = ERROR_CATEGORIES.has(category) ? category : 'runtime'
         this.format = String(fields.format || 'circuitjson')
         this.source = String(fields.source || '')
         this.location = cloneSafeValue(fields.location, null)

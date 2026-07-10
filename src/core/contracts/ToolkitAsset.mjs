@@ -20,7 +20,7 @@ export class ToolkitAsset {
             kind,
             name,
             mediaType: String(fields.mediaType || 'application/octet-stream'),
-            byteLength: ToolkitAsset.#byteLength(data),
+            byteLength: ToolkitAsset.#byteLength(data, fields.byteLength),
             data,
             source: cloneSafeValue(fields.source, null)
         }
@@ -32,7 +32,7 @@ export class ToolkitAsset {
      * @returns {any} Copied clone-safe payload.
      */
     static #copyData(data) {
-        if (data instanceof ArrayBuffer) return data.slice(0)
+        if (data instanceof ArrayBuffer) return new Uint8Array(data.slice(0))
         if (ArrayBuffer.isView(data)) {
             const bytes = new Uint8Array(
                 data.buffer,
@@ -41,19 +41,22 @@ export class ToolkitAsset {
             )
             return new Uint8Array(bytes)
         }
-        return cloneSafeValue(data, null)
+        return typeof data === 'string' ? data : null
     }
 
     /**
      * Measures one normalized asset payload.
      * @param {unknown} data Asset payload.
+     * @param {unknown} declaredByteLength Declared metadata byte length.
      * @returns {number} Byte length.
      */
-    static #byteLength(data) {
+    static #byteLength(data, declaredByteLength) {
         if (data instanceof ArrayBuffer) return data.byteLength
         if (ArrayBuffer.isView(data)) return data.byteLength
         if (typeof data === 'string')
             return new TextEncoder().encode(data).length
+        const declared = Number(declaredByteLength)
+        if (Number.isFinite(declared) && declared >= 0) return declared
         return 0
     }
 

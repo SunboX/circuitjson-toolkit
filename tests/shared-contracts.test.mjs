@@ -83,6 +83,35 @@ test('DocumentResult derives ids from source identity and keeps one native exten
     assert.doesNotThrow(() => structuredClone(first))
 })
 
+test('native results keep metadata-only extension namespaces when payloads are omitted', () => {
+    const document = DocumentResult.create({
+        source: {
+            format: 'gerber',
+            fileName: 'top.gbr',
+            fileType: 'gbr'
+        },
+        model: []
+    })
+    const project = ProjectResult.create({
+        source: { format: 'gerber', entryNames: ['top.gbr'] },
+        documents: [document],
+        project: null
+    })
+
+    for (const extensions of [document.extensions, project.extensions]) {
+        assert.deepEqual(extensions, {
+            gerber: {
+                $meta: {
+                    schema: 'ecad-toolkit.extension.v1',
+                    completeness: 'none',
+                    included: [],
+                    omitted: []
+                }
+            }
+        })
+    }
+})
+
 test('ToolkitDiagnostic and ToolkitAsset normalize clone-safe records', () => {
     const details = { record: 7 }
     const diagnostic = ToolkitDiagnostic.create({
@@ -124,6 +153,29 @@ test('ToolkitDiagnostic and ToolkitAsset normalize clone-safe records', () => {
     assert.notEqual(asset.data, bytes)
     assert.deepEqual([...asset.data], [1, 2, 3])
     assert.doesNotThrow(() => structuredClone({ diagnostic, asset }))
+})
+
+test('ToolkitAsset preserves metadata sizes and emits only canonical payload types', () => {
+    const bufferAsset = ToolkitAsset.create({
+        name: 'body.step',
+        data: new Uint8Array([4, 5]).buffer
+    })
+    const metadataAsset = ToolkitAsset.create({
+        name: 'preview.png',
+        byteLength: 42,
+        data: null
+    })
+    const unsupportedAsset = ToolkitAsset.create({
+        name: 'invalid.bin',
+        data: { bytes: [1, 2] }
+    })
+
+    assert.equal(bufferAsset.data instanceof Uint8Array, true)
+    assert.deepEqual([...bufferAsset.data], [4, 5])
+    assert.equal(metadataAsset.data, null)
+    assert.equal(metadataAsset.byteLength, 42)
+    assert.equal(unsupportedAsset.data, null)
+    assert.equal(unsupportedAsset.byteLength, 0)
 })
 
 test('ToolkitError serializes a normalized cause', () => {
@@ -196,6 +248,37 @@ test('ProjectResult creates a clone-safe envelope without duplicating document-o
     assert.doesNotThrow(() => structuredClone(first))
 })
 
+test('ProjectResult preserves null projects and completes present project metadata', () => {
+    const document = DocumentResult.create({
+        fileName: 'board.json',
+        model: []
+    })
+    const absent = ProjectResult.create({
+        source: { format: 'circuitjson', entryNames: ['board.json'] },
+        documents: [document],
+        project: null
+    })
+    const present = ProjectResult.create({
+        source: { format: 'kicad', entryNames: ['design.kicad_pro'] },
+        documents: [document],
+        project: { name: 'design' }
+    })
+
+    assert.equal(absent.project, null)
+    assert.deepEqual(Object.keys(present.project), [
+        'id',
+        'name',
+        'format',
+        'documentIds',
+        'relationships'
+    ])
+    assert.equal(present.project.id.length > 0, true)
+    assert.equal(present.project.name, 'design')
+    assert.equal(present.project.format, 'kicad')
+    assert.deepEqual(present.project.documentIds, [document.id])
+    assert.deepEqual(present.project.relationships, [])
+})
+
 test('ToolkitProgress keeps source detail behind common ordered stages', () => {
     const detected = ToolkitProgress.create({
         stage: 'detect',
@@ -248,6 +331,21 @@ test('ToolkitProgress rejects invalid count contracts with typed errors', () => 
         () => ToolkitProgress.create({ stage: 'decode', completed: -1 }),
         { code: 'ERR_PROGRESS_COUNT' }
     )
+})
+
+test('ToolkitError categories and diagnostic severities stay inside canonical unions', () => {
+    const error = new ToolkitError('bad progress', { category: 'progress' })
+    const diagnostic = ToolkitDiagnostic.create({ severity: 'fatal' })
+    let progressError = null
+    try {
+        ToolkitProgress.create({ stage: 'unknown' })
+    } catch (caught) {
+        progressError = caught
+    }
+
+    assert.equal(error.category, 'runtime')
+    assert.equal(diagnostic.severity, 'info')
+    assert.equal(progressError.category, 'runtime')
 })
 
 test('ToolkitCapabilities inventories every frozen capability with stable clone-safe rows', async () => {

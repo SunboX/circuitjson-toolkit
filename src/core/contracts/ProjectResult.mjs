@@ -17,16 +17,23 @@ export class ProjectResult {
             : []
         const source = ProjectResult.#source(fields.source, documents)
         const documentIds = documents.map((document) => String(document.id))
-        const project = cloneSafeValue(fields.project, {})
+        const id = String(
+            fields.id || DocumentResult.sourceId('project', source)
+        )
         return {
             schema: 'ecad-toolkit.project.v1',
-            id: String(fields.id || DocumentResult.sourceId('project', source)),
+            id,
             source,
             documents,
-            project: {
-                ...project,
-                documentIds
-            },
+            project:
+                fields.project == null
+                    ? null
+                    : ProjectResult.#project(
+                          fields.project,
+                          id,
+                          source,
+                          documentIds
+                      ),
             extensions: DocumentResult.extensionForSource(
                 source.format,
                 fields.extensions
@@ -40,6 +47,27 @@ export class ProjectResult {
                   )
                 : [],
             statistics: cloneSafeValue(fields.statistics, {})
+        }
+    }
+
+    /**
+     * Normalizes a present project descriptor to the exact common shape.
+     * @param {unknown} project Project candidate.
+     * @param {string} resultId Project-result id.
+     * @param {Record<string, any>} source Normalized project source.
+     * @param {string[]} documentIds Loaded document ids.
+     * @returns {{ id: string, name: string, format: string, documentIds: string[], relationships: object[] }} Canonical project descriptor.
+     */
+    static #project(project, resultId, source, documentIds) {
+        const provided = cloneSafeValue(project, {})
+        return {
+            id: String(provided.id || `${resultId}-project`),
+            name: String(provided.name || ''),
+            format: String(provided.format || source.format),
+            documentIds,
+            relationships: Array.isArray(provided.relationships)
+                ? provided.relationships
+                : []
         }
     }
 
