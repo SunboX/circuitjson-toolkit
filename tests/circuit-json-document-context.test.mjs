@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
 import { CircuitJsonDocument } from '../src/core/CircuitJsonDocument.mjs'
@@ -258,6 +259,86 @@ test('public unit-parser monkey-patching cannot mint validation proofs', () => {
         CircuitJsonUnits.optionalPoint = originalOptionalPoint
         CircuitJsonUnits.optionalLength = originalOptionalLength
     }
+})
+
+test('unit-parser import order cannot poison proof validation', () => {
+    const unitsUrl = new URL(
+        '../src/core/CircuitJsonUnits.mjs',
+        import.meta.url
+    ).href
+    const documentResultUrl = new URL(
+        '../src/core/contracts/DocumentResult.mjs',
+        import.meta.url
+    ).href
+    const script = `
+        const { CircuitJsonUnits } = await import(${JSON.stringify(unitsUrl)})
+        CircuitJsonUnits.optionalLength = () => 0
+        CircuitJsonUnits.optionalPoint = () => ({ x: 0, y: 0 })
+        CircuitJsonUnits.optionalSize = () => ({ width: 1, height: 1 })
+        const { DocumentResult } = await import(${JSON.stringify(documentResultUrl)})
+        try {
+            DocumentResult.createValidated({
+                fileName: 'load-order.json',
+                model: [{
+                    type: 'pcb_board',
+                    pcb_board_id: 'load-order',
+                    center: {},
+                    width: {},
+                    height: {}
+                }]
+            })
+            process.exit(1)
+        } catch (error) {
+            if (!/pcb_board center is required/.test(String(error?.message))) {
+                console.error(error)
+                process.exit(2)
+            }
+        }
+    `
+    const result = spawnSync(
+        process.execPath,
+        ['--input-type=module', '--eval', script],
+        { encoding: 'utf8' }
+    )
+
+    assert.equal(result.status, 0, result.stderr || result.stdout)
+})
+
+test('element-validator import order cannot poison proof validation', () => {
+    const validatorUrl = new URL(
+        '../src/core/CircuitJsonElementValidator.mjs',
+        import.meta.url
+    ).href
+    const documentResultUrl = new URL(
+        '../src/core/contracts/DocumentResult.mjs',
+        import.meta.url
+    ).href
+    const script = `
+        const { CircuitJsonElementValidator } = await import(${JSON.stringify(validatorUrl)})
+        try {
+            CircuitJsonElementValidator.validateElement = () => []
+        } catch {}
+        const { DocumentResult } = await import(${JSON.stringify(documentResultUrl)})
+        try {
+            DocumentResult.createValidated({
+                fileName: 'validator-load-order.json',
+                model: [{ type: 'not_a_circuitjson_element' }]
+            })
+            process.exit(1)
+        } catch (error) {
+            if (!/Unsupported CircuitJSON element type/.test(String(error?.message))) {
+                console.error(error)
+                process.exit(2)
+            }
+        }
+    `
+    const result = spawnSync(
+        process.execPath,
+        ['--input-type=module', '--eval', script],
+        { encoding: 'utf8' }
+    )
+
+    assert.equal(result.status, 0, result.stderr || result.stdout)
 })
 
 test('proof attachment rejects accessor-backed envelope models', () => {

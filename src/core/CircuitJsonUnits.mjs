@@ -1,108 +1,6 @@
+import * as UnitParsers from './CircuitJsonUnitParsers.mjs'
+
 const MILS_PER_MM = 39.37007874015748
-const LENGTH_FACTORS_TO_MM = new Map([
-    ['mm', 1],
-    ['millimeter', 1],
-    ['millimeters', 1],
-    ['cm', 10],
-    ['centimeter', 10],
-    ['centimeters', 10],
-    ['m', 1000],
-    ['meter', 1000],
-    ['meters', 1000],
-    ['in', 25.4],
-    ['inch', 25.4],
-    ['inches', 25.4],
-    ['mil', 0.0254],
-    ['mils', 0.0254],
-    ['um', 0.001],
-    ['micrometer', 0.001],
-    ['micrometers', 0.001]
-])
-const ANGLE_FACTORS_TO_DEG = new Map([
-    ['deg', 1],
-    ['degree', 1],
-    ['degrees', 1],
-    ['rad', 180 / Math.PI],
-    ['radian', 180 / Math.PI],
-    ['radians', 180 / Math.PI]
-])
-
-/**
- * Rounds unit conversions to stable precision.
- * @param {number} value Numeric value.
- * @returns {number} Rounded value.
- */
-function roundUnitValue(value) {
-    return Math.round(value * 1_000_000) / 1_000_000
-}
-
-/**
- * Parses one numeric value with an optional unit suffix.
- * @param {unknown} value Value candidate.
- * @param {Map<string, number>} unitFactors Unit factor lookup.
- * @returns {number | null} Parsed value or null.
- */
-function parseUnitValue(value, unitFactors) {
-    if (typeof value === 'number') {
-        return Number.isFinite(value) ? roundUnitValue(value) : null
-    }
-
-    const text = String(value ?? '').trim()
-    if (!text) return null
-
-    const match = text.match(
-        /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)\s*([a-z]+)?$/iu
-    )
-    if (!match) return null
-
-    const number = Number(match[1])
-    if (!Number.isFinite(number)) return null
-
-    const unit = String(match[2] || '').toLowerCase()
-    const factor = unit ? unitFactors.get(unit) : 1
-    if (!Number.isFinite(factor)) return null
-    return roundUnitValue(number * factor)
-}
-
-/**
- * Parses an optional millimeter length through module-private dependencies.
- * @param {unknown} value Length candidate.
- * @returns {number | null} Parsed length or null.
- */
-function optionalLengthValue(value) {
-    return parseUnitValue(value, LENGTH_FACTORS_TO_MM)
-}
-
-/**
- * Parses an optional degree angle through module-private dependencies.
- * @param {unknown} value Angle candidate.
- * @returns {number | null} Parsed angle or null.
- */
-function optionalAngleValue(value) {
-    return parseUnitValue(value, ANGLE_FACTORS_TO_DEG)
-}
-
-/**
- * Parses an optional point through module-private dependencies.
- * @param {{ x?: unknown, y?: unknown } | null | undefined} point Point.
- * @returns {{ x: number, y: number } | null} Parsed point or null.
- */
-function optionalPointValue(point) {
-    const x = optionalLengthValue(point?.x)
-    const y = optionalLengthValue(point?.y)
-    return x === null || y === null ? null : { x, y }
-}
-
-/**
- * Parses an optional size through module-private dependencies.
- * @param {{ width?: unknown, height?: unknown } | null | undefined} size Size.
- * @returns {{ width: number, height: number } | null} Parsed size or null.
- */
-function optionalSizeValue(size) {
-    const width = optionalLengthValue(size?.width)
-    const height = optionalLengthValue(size?.height)
-    return width === null || height === null ? null : { width, height }
-}
 
 /**
  * Unit helpers for CircuitJSON's millimeter-based PCB dimensions.
@@ -115,7 +13,7 @@ export class CircuitJsonUnits {
      * @returns {number}
      */
     static length(value, fallback = 0) {
-        return optionalLengthValue(value) ?? roundUnitValue(fallback)
+        return UnitParsers.optionalLength(value) ?? UnitParsers.round(fallback)
     }
 
     /**
@@ -124,7 +22,7 @@ export class CircuitJsonUnits {
      * @returns {number | null}
      */
     static optionalLength(value) {
-        return optionalLengthValue(value)
+        return UnitParsers.optionalLength(value)
     }
 
     /**
@@ -134,7 +32,7 @@ export class CircuitJsonUnits {
      * @returns {number}
      */
     static angle(value, fallback = 0) {
-        return optionalAngleValue(value) ?? roundUnitValue(fallback)
+        return UnitParsers.optionalAngle(value) ?? UnitParsers.round(fallback)
     }
 
     /**
@@ -143,7 +41,7 @@ export class CircuitJsonUnits {
      * @returns {number | null}
      */
     static optionalAngle(value) {
-        return optionalAngleValue(value)
+        return UnitParsers.optionalAngle(value)
     }
 
     /**
@@ -153,8 +51,8 @@ export class CircuitJsonUnits {
      */
     static point(point) {
         return {
-            x: optionalLengthValue(point?.x) ?? 0,
-            y: optionalLengthValue(point?.y) ?? 0
+            x: UnitParsers.optionalLength(point?.x) ?? 0,
+            y: UnitParsers.optionalLength(point?.y) ?? 0
         }
     }
 
@@ -164,7 +62,7 @@ export class CircuitJsonUnits {
      * @returns {{ x: number, y: number } | null}
      */
     static optionalPoint(point) {
-        return optionalPointValue(point)
+        return UnitParsers.optionalPoint(point)
     }
 
     /**
@@ -173,7 +71,7 @@ export class CircuitJsonUnits {
      * @returns {{ width: number, height: number } | null}
      */
     static optionalSize(size) {
-        return optionalSizeValue(size)
+        return UnitParsers.optionalSize(size)
     }
 
     /**
@@ -183,8 +81,8 @@ export class CircuitJsonUnits {
      * @returns {number}
      */
     static mmToMil(value, fallback = 0) {
-        return roundUnitValue(
-            (optionalLengthValue(value) ?? roundUnitValue(fallback)) *
+        return UnitParsers.round(
+            (UnitParsers.optionalLength(value) ?? UnitParsers.round(fallback)) *
                 MILS_PER_MM
         )
     }

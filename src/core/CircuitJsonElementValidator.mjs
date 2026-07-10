@@ -253,11 +253,9 @@ const VARIANT_SETS = {
 }
 
 const SORTED_VARIANT_SET_NAMES = Object.keys(VARIANT_SETS).sort()
-
 /**
  * @typedef {{ set: string, value: string }} CircuitJsonVariantDiff
  */
-
 /**
  * @typedef {{ elementTypes: string[], idFieldExceptions: string[], variantSets: Record<string, string[]> }} CircuitJsonSchemaSnapshot
  */
@@ -997,3 +995,5 @@ export class CircuitJsonElementValidator {
         return { missing, unexpected }
     }
 }
+Object.freeze(CircuitJsonElementValidator.prototype)
+Object.freeze(CircuitJsonElementValidator)
