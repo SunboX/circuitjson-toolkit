@@ -123,6 +123,30 @@ test('Parser normalizes extension, raw, and asset selection without polluting th
     })
 })
 
+test('Parser rejects falsy values outside the exact asset and source enums', () => {
+    const input = { fileName: 'options.json', data: '[]' }
+
+    for (const decodeAssets of ['', false, 0, null]) {
+        assert.throws(() => Parser.parse(input, { decodeAssets }), {
+            name: 'ToolkitError',
+            code: 'ERR_CIRCUITJSON_PARSE',
+            category: 'parse',
+            format: 'circuitjson',
+            source: 'options.json'
+        })
+    }
+
+    for (const retainSource of ['', false, 0, null]) {
+        assert.throws(() => Parser.parse(input, { retainSource }), {
+            name: 'ToolkitError',
+            code: 'ERR_CIRCUITJSON_PARSE',
+            category: 'parse',
+            format: 'circuitjson',
+            source: 'options.json'
+        })
+    }
+})
+
 test('Parser enforces direct, unavailable-worker, and cancellation boundaries', async () => {
     const input = { fileName: 'board.json', data: '[]' }
 

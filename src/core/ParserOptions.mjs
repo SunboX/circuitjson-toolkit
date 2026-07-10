@@ -29,7 +29,11 @@ export class ParserOptions {
             throw new TypeError('CircuitJSON parser assets must be an array.')
         }
 
-        const decodeAssets = String(options.decodeAssets || 'metadata')
+        const decodeAssets = String(
+            options.decodeAssets === undefined
+                ? 'metadata'
+                : options.decodeAssets
+        )
         if (!ASSET_MODES.has(decodeAssets)) {
             throw new TypeError(
                 `Unsupported CircuitJSON asset decode mode: ${decodeAssets}.`
@@ -37,7 +41,9 @@ export class ParserOptions {
         }
         const extensions = ParserOptions.#extensions(options.extensions)
         const reports = ParserOptions.#stringList(options.reports, 'report')
-        const retainSource = String(options.retainSource || 'none')
+        const retainSource = String(
+            options.retainSource === undefined ? 'none' : options.retainSource
+        )
         if (!RETAIN_SOURCE_MODES.has(retainSource)) {
             throw new TypeError(
                 `Unsupported CircuitJSON source retention mode: ${retainSource}.`
