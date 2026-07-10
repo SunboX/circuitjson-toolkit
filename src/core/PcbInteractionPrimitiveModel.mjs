@@ -84,21 +84,44 @@ export class PcbInteractionPrimitiveModel {
      * @returns {object[]}
      */
     static hitTest(documentModel, point, options = {}) {
+        const model = PcbInteractionPrimitiveModel.build(documentModel)
+        return PcbInteractionPrimitiveModel.hitTestPrimitives(
+            model.primitives,
+            point,
+            options,
+            model.groups
+        )
+    }
+
+    /**
+     * Applies the legacy exact narrow phase to prepared primitive candidates.
+     * @param {object[]} primitives Prepared primitive candidates.
+     * @param {{ x?: unknown, y?: unknown }} point Board-space point.
+     * @param {{ side?: 'top' | 'bottom', hiddenLayers?: string[], hiddenObjects?: string[], tolerance?: number }} [options] Hit-test options.
+     * @param {object[]} [groups] Prepared group rows.
+     * @returns {object[]} Prioritized hit candidates.
+     */
+    static hitTestPrimitives(primitives, point, options = {}, groups = []) {
         const normalizedPoint = PcbInteractionPrimitiveModel.#point(point)
         if (!normalizedPoint) return []
-
+        const preparedOptions =
+            PcbInteractionPrimitiveModel.#visibilityOptions(options)
         const tolerance = PcbInteractionPrimitiveModel.#number(
             options.tolerance,
             0.2
         )
-        const model = PcbInteractionPrimitiveModel.build(documentModel)
         const groupsById = new Map(
-            (model.groups || []).map((group) => [String(group.id || ''), group])
+            (groups || []).map((group) => [String(group.id || ''), group])
         )
         const hits = []
 
-        for (const primitive of model.primitives) {
-            if (!PcbInteractionPrimitiveModel.#isVisible(primitive, options)) {
+        for (const primitive of primitives || []) {
+            if (
+                !PcbInteractionPrimitiveModel.#isVisible(
+                    primitive,
+                    preparedOptions
+                )
+            ) {
                 continue
             }
             const distance = PcbInteractionPrimitiveModel.#hitDistance(
@@ -123,6 +146,43 @@ export class PcbInteractionPrimitiveModel {
                     PcbInteractionPrimitiveModel.#priority(right.kind) ||
                 left.distance - right.distance
         )
+    }
+
+    /**
+     * Resolves conservative exact-geometry bounds for spatial indexing.
+     * @param {object} primitive Prepared PCB primitive.
+     * @returns {{ minX: number, minY: number, maxX: number, maxY: number } | null} Interaction bounds.
+     */
+    static interactionBounds(primitive) {
+        const points = Array.isArray(primitive?.points)
+            ? primitive.points
+                  .map(PcbInteractionPrimitiveModel.#point)
+                  .filter(Boolean)
+            : []
+        if (points.length >= 2) {
+            return PcbInteractionPrimitiveModel.#pointsBounds(points)
+        }
+        const center = PcbInteractionPrimitiveModel.#point(primitive)
+        const width = PcbInteractionPrimitiveModel.#finite(primitive?.width)
+        const height = PcbInteractionPrimitiveModel.#finite(primitive?.height)
+        const rotation = PcbInteractionPrimitiveModel.#number(
+            primitive?.rotation,
+            0
+        )
+        if (center && width !== null && height !== null) {
+            const radians = (rotation * Math.PI) / 180
+            const cos = Math.abs(Math.cos(radians))
+            const sin = Math.abs(Math.sin(radians))
+            const halfWidth = (width * cos + height * sin) / 2
+            const halfHeight = (width * sin + height * cos) / 2
+            return {
+                minX: center.x - halfWidth,
+                minY: center.y - halfHeight,
+                maxX: center.x + halfWidth,
+                maxY: center.y + halfHeight
+            }
+        }
+        return PcbInteractionPrimitiveModel.#normalizedBounds(primitive?.bounds)
     }
 
     /**
@@ -164,37 +224,57 @@ export class PcbInteractionPrimitiveModel {
      * @returns {boolean}
      */
     static #isVisible(primitive, options) {
-        const hiddenLayers = new Set(
-            (Array.isArray(options.hiddenLayers) ? options.hiddenLayers : [])
-                .map(String)
-                .filter(Boolean)
-        )
-        if (primitive.layer && hiddenLayers.has(String(primitive.layer))) {
+        if (
+            primitive.layer &&
+            options.hiddenLayers.has(String(primitive.layer))
+        ) {
             return false
         }
 
-        const hiddenObjects = new Set(
-            (Array.isArray(options.hiddenObjects) ? options.hiddenObjects : [])
-                .map(String)
-                .filter(Boolean)
-        )
         if (
-            hiddenObjects.has(
+            options.hiddenObjects.has(
                 PcbInteractionPrimitiveModel.#componentSideObjectKey(primitive)
             )
         ) {
             return false
         }
         if (
-            hiddenObjects.has(
+            options.hiddenObjects.has(
                 PcbInteractionPrimitiveModel.#objectKey(primitive)
             )
         ) {
             return false
         }
 
-        const side = String(options.side || '')
+        const side = options.side
         return !side || !primitive.side || primitive.side === side
+    }
+
+    /**
+     * Builds visibility lookup sets once per hit-test call.
+     * @param {object} options Raw legacy hit options.
+     * @returns {{ side: string, hiddenLayers: Set<string>, hiddenObjects: Set<string> }} Prepared options.
+     */
+    static #visibilityOptions(options) {
+        return {
+            side: String(options.side || ''),
+            hiddenLayers: new Set(
+                (Array.isArray(options.hiddenLayers)
+                    ? options.hiddenLayers
+                    : []
+                )
+                    .map(String)
+                    .filter(Boolean)
+            ),
+            hiddenObjects: new Set(
+                (Array.isArray(options.hiddenObjects)
+                    ? options.hiddenObjects
+                    : []
+                )
+                    .map(String)
+                    .filter(Boolean)
+            )
+        }
     }
 
     /**
@@ -268,27 +348,40 @@ export class PcbInteractionPrimitiveModel {
             return distance <= width / 2 + tolerance ? distance : null
         }
         if (primitive.kind === 'via') {
-            if (String(primitive.shape || 'circle') !== 'circle') {
-                return PcbInteractionPrimitiveModel.#inside(
-                    point,
-                    primitive.bounds,
-                    tolerance
-                )
-                    ? 0
-                    : null
-            }
-            const distance = Math.sqrt(
-                PcbInteractionPrimitiveModel.#distanceSquared(point, primitive)
+            const hit = PcbInteractionPrimitiveModel.#shapeHit(
+                primitive,
+                point,
+                tolerance
             )
-            return distance <= primitive.diameter / 2 + tolerance
-                ? distance
-                : null
+            if (hit === null) return null
+            return String(primitive.shape || 'circle') === 'circle'
+                ? Math.sqrt(
+                      PcbInteractionPrimitiveModel.#distanceSquared(
+                          point,
+                          primitive
+                      )
+                  )
+                : hit
+        }
+        if (primitive.kind === 'pad') {
+            return PcbInteractionPrimitiveModel.#shapeHit(
+                primitive,
+                point,
+                tolerance
+            )
         }
         if (
-            ['pad', 'zone', 'keepout', 'cutout', 'courtyard'].includes(
-                primitive.kind
-            )
+            ['zone', 'keepout', 'cutout', 'courtyard'].includes(primitive.kind)
         ) {
+            const points =
+                PcbInteractionPrimitiveModel.#primitivePoints(primitive)
+            if (points.length >= 3) {
+                return PcbInteractionPrimitiveModel.#polygonHit(
+                    points,
+                    point,
+                    tolerance
+                )
+            }
             return PcbInteractionPrimitiveModel.#inside(
                 point,
                 primitive.bounds,
@@ -298,15 +391,213 @@ export class PcbInteractionPrimitiveModel {
                 : null
         }
         if (primitive.kind === 'board') {
-            return PcbInteractionPrimitiveModel.#inside(
-                point,
-                primitive.bounds,
-                0
-            )
-                ? Number.MAX_SAFE_INTEGER
-                : null
+            const points =
+                PcbInteractionPrimitiveModel.#primitivePoints(primitive)
+            const inside =
+                points.length >= 3
+                    ? PcbInteractionPrimitiveModel.#polygonHit(
+                          points,
+                          point,
+                          0
+                      ) !== null
+                    : PcbInteractionPrimitiveModel.#inside(
+                          point,
+                          primitive.bounds,
+                          0
+                      )
+            return inside ? Number.MAX_SAFE_INTEGER : null
         }
         return null
+    }
+
+    /**
+     * Applies exact common pad and via shape predicates.
+     * @param {object} primitive Shape primitive.
+     * @param {{ x: number, y: number }} point Board point.
+     * @param {number} tolerance Hit tolerance.
+     * @returns {number | null} Hit distance or null.
+     */
+    static #shapeHit(primitive, point, tolerance) {
+        const points = PcbInteractionPrimitiveModel.#primitivePoints(primitive)
+        if (points.length >= 3) {
+            return PcbInteractionPrimitiveModel.#polygonHit(
+                points,
+                point,
+                tolerance
+            )
+        }
+        const center = PcbInteractionPrimitiveModel.#point(primitive)
+        if (!center) return null
+        const width = Math.max(
+            PcbInteractionPrimitiveModel.#number(
+                primitive.width ?? primitive.diameter,
+                0
+            ),
+            0
+        )
+        const height = Math.max(
+            PcbInteractionPrimitiveModel.#number(
+                primitive.height ?? primitive.diameter ?? primitive.width,
+                width
+            ),
+            0
+        )
+        if (!width || !height) return null
+        const local = PcbInteractionPrimitiveModel.#rotatePoint(
+            point,
+            center,
+            -PcbInteractionPrimitiveModel.#number(primitive.rotation, 0)
+        )
+        const shape = String(primitive.shape || 'circle').toLowerCase()
+        if (['circle', 'oval_circle'].includes(shape)) {
+            const x = (local.x - center.x) / (width / 2 + tolerance)
+            const y = (local.y - center.y) / (height / 2 + tolerance)
+            return x * x + y * y <= 1 ? 0 : null
+        }
+        if (['pill', 'oval', 'rotated_pill', 'capsule'].includes(shape)) {
+            return PcbInteractionPrimitiveModel.#capsuleHit(
+                local,
+                center,
+                width,
+                height,
+                tolerance
+            )
+        }
+        if (['rounded_rect', 'roundrect'].includes(shape)) {
+            return PcbInteractionPrimitiveModel.#roundedRectHit(
+                local,
+                center,
+                width,
+                height,
+                PcbInteractionPrimitiveModel.#number(primitive.radius, 0),
+                tolerance
+            )
+        }
+        return Math.abs(local.x - center.x) <= width / 2 + tolerance &&
+            Math.abs(local.y - center.y) <= height / 2 + tolerance
+            ? 0
+            : null
+    }
+
+    /**
+     * Tests a point against a horizontal or vertical capsule.
+     * @param {{ x: number, y: number }} point Local point.
+     * @param {{ x: number, y: number }} center Shape center.
+     * @param {number} width Shape width.
+     * @param {number} height Shape height.
+     * @param {number} tolerance Hit tolerance.
+     * @returns {number | null} Hit distance or null.
+     */
+    static #capsuleHit(point, center, width, height, tolerance) {
+        const radius = Math.min(width, height) / 2
+        const horizontal = width >= height
+        const halfSegment = Math.abs(width - height) / 2
+        const start = horizontal
+            ? { x: center.x - halfSegment, y: center.y }
+            : { x: center.x, y: center.y - halfSegment }
+        const end = horizontal
+            ? { x: center.x + halfSegment, y: center.y }
+            : { x: center.x, y: center.y + halfSegment }
+        return PcbInteractionPrimitiveModel.#distanceToSegment(
+            point,
+            start,
+            end
+        ) <=
+            radius + tolerance
+            ? 0
+            : null
+    }
+
+    /**
+     * Tests one rounded rectangle in local coordinates.
+     * @param {{ x: number, y: number }} point Local point.
+     * @param {{ x: number, y: number }} center Shape center.
+     * @param {number} width Shape width.
+     * @param {number} height Shape height.
+     * @param {number} radius Requested corner radius.
+     * @param {number} tolerance Hit tolerance.
+     * @returns {number | null} Hit distance or null.
+     */
+    static #roundedRectHit(point, center, width, height, radius, tolerance) {
+        const corner = Math.max(0, Math.min(radius, width / 2, height / 2))
+        const x = Math.max(
+            Math.abs(point.x - center.x) - (width / 2 - corner),
+            0
+        )
+        const y = Math.max(
+            Math.abs(point.y - center.y) - (height / 2 - corner),
+            0
+        )
+        return Math.hypot(x, y) <= corner + tolerance ? 0 : null
+    }
+
+    /**
+     * Tests a point against a polygon with edge tolerance.
+     * @param {{ x: number, y: number }[]} points Polygon points.
+     * @param {{ x: number, y: number }} point Board point.
+     * @param {number} tolerance Hit tolerance.
+     * @returns {number | null} Hit distance or null.
+     */
+    static #polygonHit(points, point, tolerance) {
+        let inside = false
+        let distance = Infinity
+        for (
+            let index = 0, previous = points.length - 1;
+            index < points.length;
+            previous = index, index += 1
+        ) {
+            const start = points[previous]
+            const end = points[index]
+            distance = Math.min(
+                distance,
+                PcbInteractionPrimitiveModel.#distanceToSegment(
+                    point,
+                    start,
+                    end
+                )
+            )
+            if (
+                start.y > point.y !== end.y > point.y &&
+                point.x <
+                    ((end.x - start.x) * (point.y - start.y)) /
+                        (end.y - start.y) +
+                        start.x
+            ) {
+                inside = !inside
+            }
+        }
+        return inside || distance <= tolerance ? 0 : null
+    }
+
+    /**
+     * Resolves valid polygon points from one primitive.
+     * @param {object} primitive PCB primitive.
+     * @returns {{ x: number, y: number }[]} Points.
+     */
+    static #primitivePoints(primitive) {
+        return (Array.isArray(primitive?.points) ? primitive.points : [])
+            .map(PcbInteractionPrimitiveModel.#point)
+            .filter(Boolean)
+    }
+
+    /**
+     * Rotates a point around one center.
+     * @param {{ x: number, y: number }} point Point.
+     * @param {{ x: number, y: number }} center Center.
+     * @param {number} degrees Counter-clockwise degrees.
+     * @returns {{ x: number, y: number }} Rotated point.
+     */
+    static #rotatePoint(point, center, degrees) {
+        if (!degrees) return point
+        const radians = (degrees * Math.PI) / 180
+        const cos = Math.cos(radians)
+        const sin = Math.sin(radians)
+        const x = point.x - center.x
+        const y = point.y - center.y
+        return {
+            x: center.x + x * cos - y * sin,
+            y: center.y + x * sin + y * cos
+        }
     }
 
     /**
@@ -494,6 +785,43 @@ export class PcbInteractionPrimitiveModel {
             width: maxX - minX,
             height: maxY - minY
         }
+    }
+
+    /**
+     * Resolves minimal bounds for a point list.
+     * @param {{ x: number, y: number }[]} points Points.
+     * @returns {{ minX: number, minY: number, maxX: number, maxY: number }} Bounds.
+     */
+    static #pointsBounds(points) {
+        return points.reduce(
+            (bounds, point) => ({
+                minX: Math.min(bounds.minX, point.x),
+                minY: Math.min(bounds.minY, point.y),
+                maxX: Math.max(bounds.maxX, point.x),
+                maxY: Math.max(bounds.maxY, point.y)
+            }),
+            { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
+        )
+    }
+
+    /**
+     * Copies valid primitive bounds into a compact spatial record.
+     * @param {unknown} value Bounds candidate.
+     * @returns {{ minX: number, minY: number, maxX: number, maxY: number } | null} Bounds.
+     */
+    static #normalizedBounds(value) {
+        const minX = PcbInteractionPrimitiveModel.#finite(value?.minX)
+        const minY = PcbInteractionPrimitiveModel.#finite(value?.minY)
+        const maxX = PcbInteractionPrimitiveModel.#finite(value?.maxX)
+        const maxY = PcbInteractionPrimitiveModel.#finite(value?.maxY)
+        return minX !== null &&
+            minY !== null &&
+            maxX !== null &&
+            maxY !== null &&
+            minX <= maxX &&
+            minY <= maxY
+            ? { minX, minY, maxX, maxY }
+            : null
     }
 
     /**
