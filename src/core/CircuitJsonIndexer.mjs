@@ -42,13 +42,26 @@ export class CircuitJsonIndexer {
     /**
      * Indexes a CircuitJSON model.
      * @param {object[]} circuitJson CircuitJSON model.
-     * @param {{ validated?: boolean }} [options] Internal validation options.
-     * @returns {{ elements: object[], elementsByType: Map<string, object[]>, elementsById: Map<string, object>, relationsByField: Map<string, Map<string, object[]>>, sourceComponentById: Map<string, object>, pcbComponentById: Map<string, object>, sourceTraceById: Map<string, object>, sourceTraceConnectivity: Map<string, object>, componentsBySourceId: Map<string, object>, groupsById: Map<string, object>, elementsByGroupId: Map<string, object[]>, elementsBySubcircuitId: Map<string, object[]>, diagnostics: object[] }}
+     * @param {{ validated?: boolean, families?: string[] | null }} [options] Internal validation options.
+     * @returns {Record<string, any>} Full legacy index or requested index families.
      */
     static index(circuitJson, options = {}) {
-        if (!CircuitJsonValidationProof.permitsIndex(circuitJson, options)) {
+        const trusted = CircuitJsonValidationProof.permitsIndex(
+            circuitJson,
+            options
+        )
+        if (!trusted) {
             CircuitJsonDocument.assertModel(circuitJson)
         }
+        const families = trusted
+            ? CircuitJsonValidationProof.indexFamilies(circuitJson, options)
+            : null
+        const requested = new Set(families || [])
+        const full = families === null
+        const wants = (name) => full || requested.has(name)
+        const buildElements = wants('elements')
+        const buildRelations = wants('relations')
+        const buildConnectivity = wants('connectivity')
         const elementsByType = new Map()
         const elementsById = new Map()
         const relationsByField = new Map()
@@ -56,58 +69,85 @@ export class CircuitJsonIndexer {
         const pcbComponentById = new Map()
         const sourceTraceById = new Map()
 
-        circuitJson.forEach((element) => {
-            const type = String(element?.type || '')
-            if (!elementsByType.has(type)) {
-                elementsByType.set(type, [])
-            }
-            elementsByType.get(type).push(element)
-
-            const id = CircuitJsonIndexer.getElementId(element)
-            if (id) {
-                elementsById.set(`${type}:${id}`, element)
-            }
-            if (type === 'source_component' && id) {
-                sourceComponentById.set(id, element)
-            }
-            if (type === 'pcb_component' && id) {
-                pcbComponentById.set(id, element)
-            }
-            if (type === 'source_trace' && id) {
-                sourceTraceById.set(id, element)
-            }
-            CircuitJsonIndexer.#indexRelations(element, relationsByField)
-        })
-        const sourceTraceConnectivity =
-            CircuitJsonIndexer.#sourceTraceConnectivity(sourceTraceById)
-
-        return {
-            elements: circuitJson,
-            elementsByType,
-            elementsById,
-            relationsByField,
-            sourceComponentById,
-            pcbComponentById,
-            sourceTraceById,
-            sourceTraceConnectivity,
-            componentsBySourceId: CircuitJsonIndexer.#componentsBySourceId(
-                sourceComponentById,
-                relationsByField
-            ),
-            groupsById: CircuitJsonIndexer.#groupsById(circuitJson),
-            elementsByGroupId:
-                CircuitJsonIndexer.#elementsByGroupId(circuitJson),
-            elementsBySubcircuitId:
-                CircuitJsonIndexer.#elementsBySubcircuitId(circuitJson),
-            diagnostics: [
-                ...CircuitJsonIndexer.#collectDiagnostics(circuitJson),
-                ...CircuitJsonIndexer.#referenceDiagnostics(
-                    elementsByType,
-                    sourceTraceById,
-                    sourceTraceConnectivity
-                )
-            ]
+        if (buildElements || buildRelations || buildConnectivity) {
+            circuitJson.forEach((element) => {
+                const type = String(element?.type || '')
+                const id = CircuitJsonIndexer.getElementId(element)
+                if (buildElements || buildConnectivity) {
+                    if (!elementsByType.has(type)) {
+                        elementsByType.set(type, [])
+                    }
+                    elementsByType.get(type).push(element)
+                }
+                if (buildElements && id) {
+                    elementsById.set(`${type}:${id}`, element)
+                }
+                if ((buildElements || buildRelations) && id) {
+                    if (type === 'source_component') {
+                        sourceComponentById.set(id, element)
+                    }
+                    if (buildElements && type === 'pcb_component') {
+                        pcbComponentById.set(id, element)
+                    }
+                }
+                if ((buildElements || buildConnectivity) && id) {
+                    if (type === 'source_trace') {
+                        sourceTraceById.set(id, element)
+                    }
+                }
+                if (buildRelations) {
+                    CircuitJsonIndexer.#indexRelations(
+                        element,
+                        relationsByField
+                    )
+                }
+            })
         }
+
+        const result = {}
+        if (buildElements || wants('spatial')) {
+            result.elements = circuitJson
+        }
+        if (buildElements) {
+            Object.assign(result, {
+                elementsByType,
+                elementsById,
+                sourceComponentById,
+                pcbComponentById,
+                sourceTraceById
+            })
+        }
+        if (buildRelations) {
+            Object.assign(result, {
+                relationsByField,
+                componentsBySourceId: CircuitJsonIndexer.#componentsBySourceId(
+                    sourceComponentById,
+                    relationsByField
+                ),
+                groupsById: CircuitJsonIndexer.#groupsById(circuitJson),
+                elementsByGroupId:
+                    CircuitJsonIndexer.#elementsByGroupId(circuitJson),
+                elementsBySubcircuitId:
+                    CircuitJsonIndexer.#elementsBySubcircuitId(circuitJson)
+            })
+        }
+        if (buildConnectivity) {
+            const sourceTraceConnectivity =
+                CircuitJsonIndexer.#sourceTraceConnectivity(sourceTraceById)
+            Object.assign(result, {
+                sourceTraceById,
+                sourceTraceConnectivity,
+                diagnostics: [
+                    ...CircuitJsonIndexer.#collectDiagnostics(circuitJson),
+                    ...CircuitJsonIndexer.#referenceDiagnostics(
+                        elementsByType,
+                        sourceTraceById,
+                        sourceTraceConnectivity
+                    )
+                ]
+            })
+        }
+        return result
     }
 
     /**

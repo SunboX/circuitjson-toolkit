@@ -1,4 +1,3 @@
-import { CircuitJsonDocument } from '../CircuitJsonDocument.mjs'
 import { DocumentResult } from '../contracts/DocumentResult.mjs'
 import { CircuitJsonContextIndexes } from './CircuitJsonContextIndexes.mjs'
 import { CircuitJsonDerivedCache } from './CircuitJsonDerivedCache.mjs'
@@ -145,12 +144,10 @@ export class CircuitJsonDocumentContext {
      */
     static #fromInput(input) {
         const document = CircuitJsonDocumentContext.#normalizeDocument(input)
-        let validationPasses = 0
-        if (!CircuitJsonValidationProof.has(document)) {
-            CircuitJsonDocument.assertModel(document.model, { freeze: true })
-            CircuitJsonValidationProof.attach(document)
-            validationPasses = 1
-        }
+        const validationPasses = CircuitJsonValidationProof.has(document)
+            ? 0
+            : 1
+        CircuitJsonValidationProof.validateAndAttach(document)
         return new CircuitJsonDocumentContext(document, validationPasses)
     }
 

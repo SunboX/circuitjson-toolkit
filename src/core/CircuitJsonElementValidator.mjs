@@ -1,6 +1,5 @@
 import { CircuitJsonUnits } from './CircuitJsonUnits.mjs'
-import { CircuitJsonValidationProof } from './context/CircuitJsonValidationProof.mjs'
-
+import { CircuitJsonModelFreezeTraversal } from './context/CircuitJsonModelFreezeTraversal.mjs'
 const KNOWN_ELEMENT_TYPES = new Set([
     'cad_component',
     'circuit_json_footprint_load_error',
@@ -283,7 +282,7 @@ export class CircuitJsonElementValidator {
             return ['Expected a CircuitJSON element array.']
         }
 
-        const freezeTraversal = CircuitJsonValidationProof.freezeTraversal(
+        const freezeTraversal = new CircuitJsonModelFreezeTraversal(
             value,
             options.freeze === true
         )
@@ -291,6 +290,7 @@ export class CircuitJsonElementValidator {
             freezeTraversal.visit(element)
             return CircuitJsonElementValidator.validateElement(element, index)
         })
+        errors.push(...freezeTraversal.errors())
         freezeTraversal.commit(errors.length === 0)
         return errors
     }

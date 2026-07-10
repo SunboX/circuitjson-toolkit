@@ -29,6 +29,15 @@ export class CircuitJsonDerivedCache {
         if (entries.has(key)) return entries.get(key)
 
         const value = factory()
+        if (
+            value &&
+            (typeof value === 'object' || typeof value === 'function') &&
+            typeof value.then === 'function'
+        ) {
+            throw new TypeError(
+                'Derived value factories must return synchronous values.'
+            )
+        }
         entries.set(key, value)
         const statisticKey = `${namespace}:${key}`
         this.#builds[statisticKey] = (this.#builds[statisticKey] || 0) + 1

@@ -1,64 +1,45 @@
+import { CircuitJsonDocument } from '../CircuitJsonDocument.mjs'
+import { CircuitJsonReadOnlyDocument } from './CircuitJsonReadOnlyDocument.mjs'
+
 const VALIDATION_PROOF = Symbol('CircuitJsonValidationProof')
 const VALIDATED_INDEX_ACCESS = Symbol('CircuitJsonValidatedIndexAccess')
+const VALIDATION_TOKEN_SECRET = Object.freeze({})
 
 /**
- * Collects model values during validation and freezes them only after success.
+ * Holds an unforgeable runtime binding to one validated model.
  */
-class CircuitJsonModelFreezeTraversal {
-    #enabled
+class CircuitJsonValidationToken {
     #model
-    #seen
-    #targets = []
 
     /**
-     * Creates a postorder model freeze traversal.
-     * @param {object[]} model Root CircuitJSON model.
-     * @param {boolean} enabled Whether values should be collected.
+     * Creates a token for one already validated immutable model.
+     * @param {object[]} model Proven CircuitJSON model.
+     * @param {object} secret Module-private construction authority.
      */
-    constructor(model, enabled) {
-        this.#enabled = enabled
-        this.#model = model
-        this.#seen = new Set([model])
-    }
-
-    /**
-     * Visits one value in child-first order.
-     * @param {unknown} value Candidate model value.
-     * @returns {void}
-     */
-    visit(value) {
-        if (!this.#enabled || !CircuitJsonModelFreezeTraversal.#plain(value)) {
-            return
+    constructor(model, secret) {
+        if (secret !== VALIDATION_TOKEN_SECRET) {
+            throw new TypeError('CircuitJSON validation proofs are internal.')
         }
-        if (this.#seen.has(value)) return
-        this.#seen.add(value)
-
-        const children = Array.isArray(value) ? value : Object.values(value)
-        for (const child of children) this.visit(child)
-        this.#targets.push(value)
+        this.#model = model
+        Object.freeze(this)
     }
 
     /**
-     * Freezes collected values when the complete model passed validation.
-     * @param {boolean} valid Whether validation succeeded.
-     * @returns {void}
+     * Tests whether a candidate token is bound to the supplied model.
+     * @param {unknown} candidate Token candidate.
+     * @param {unknown} model Model candidate.
+     * @returns {boolean} Whether the private model slot matches.
      */
-    commit(valid) {
-        if (!this.#enabled || !valid) return
-        for (const target of this.#targets) Object.freeze(target)
-        Object.freeze(this.#model)
-    }
-
-    /**
-     * Returns true for arrays and true plain object records.
-     * @param {unknown} value Candidate.
-     * @returns {boolean}
-     */
-    static #plain(value) {
-        if (Array.isArray(value)) return true
-        if (!value || typeof value !== 'object') return false
-        const prototype = Object.getPrototypeOf(value)
-        return prototype === Object.prototype || prototype === null
+    static matches(candidate, model) {
+        try {
+            return (
+                candidate.#model === model &&
+                Array.isArray(model) &&
+                Object.isFrozen(model)
+            )
+        } catch {
+            return false
+        }
     }
 }
 
@@ -67,38 +48,24 @@ class CircuitJsonModelFreezeTraversal {
  */
 export class CircuitJsonValidationProof {
     /**
-     * Creates a traversal that freezes model values after successful validation.
-     * @param {object[]} model Root CircuitJSON model.
-     * @param {boolean} enabled Whether freezing was requested.
-     * @returns {CircuitJsonModelFreezeTraversal} Freeze traversal.
-     */
-    static freezeTraversal(model, enabled) {
-        return new CircuitJsonModelFreezeTraversal(model, enabled)
-    }
-
-    /**
-     * Attaches a proof bound to the envelope's current immutable model.
+     * Validates, freezes, and proves one canonical document envelope.
      * @param {Record<string, any>} document Canonical document envelope.
-     * @returns {Record<string, any>} The same document envelope.
+     * @returns {Record<string, any>} The same read-only document envelope.
      */
-    static attach(document) {
-        if (
-            !Array.isArray(document?.model) ||
-            !Object.isFrozen(document.model)
-        ) {
-            throw new TypeError(
-                'A validation proof requires an immutable CircuitJSON model.'
-            )
+    static validateAndAttach(document) {
+        if (!CircuitJsonValidationProof.has(document)) {
+            CircuitJsonDocument.assertModel(document?.model, { freeze: true })
+            Object.defineProperty(document, VALIDATION_PROOF, {
+                configurable: false,
+                enumerable: false,
+                value: new CircuitJsonValidationToken(
+                    document.model,
+                    VALIDATION_TOKEN_SECRET
+                ),
+                writable: false
+            })
         }
-        if (CircuitJsonValidationProof.has(document)) return document
-
-        Object.defineProperty(document, VALIDATION_PROOF, {
-            configurable: true,
-            enumerable: false,
-            value: Object.freeze({ model: document.model }),
-            writable: false
-        })
-        return document
+        return CircuitJsonReadOnlyDocument.freeze(document)
     }
 
     /**
@@ -108,27 +75,26 @@ export class CircuitJsonValidationProof {
      */
     static has(document) {
         const proof = document?.[VALIDATION_PROOF]
-        return Boolean(
-            proof &&
-            Array.isArray(document?.model) &&
-            proof.model === document.model &&
-            Object.isFrozen(document.model)
-        )
+        return CircuitJsonValidationToken.matches(proof, document?.model)
     }
 
     /**
      * Creates context-owned indexer options branded by a matching proof.
      * @param {Record<string, any>} document Proven document envelope.
-     * @returns {{ validated: true }} Trusted indexer options.
+     * @param {string[] | null} [families] Requested index work families.
+     * @returns {{ validated: true, families: string[] | null }} Trusted indexer options.
      */
-    static indexOptions(document) {
+    static indexOptions(document, families = null) {
         if (!CircuitJsonValidationProof.has(document)) {
             throw new TypeError(
                 'Validated index access requires a matching document proof.'
             )
         }
 
-        const options = { validated: true }
+        const normalizedFamilies = Array.isArray(families)
+            ? Object.freeze([...new Set(families.map(String))])
+            : null
+        const options = { validated: true, families: normalizedFamilies }
         Object.defineProperty(options, VALIDATED_INDEX_ACCESS, {
             enumerable: false,
             value: document[VALIDATION_PROOF]
@@ -146,9 +112,20 @@ export class CircuitJsonValidationProof {
         const proof = options?.[VALIDATED_INDEX_ACCESS]
         return Boolean(
             options?.validated === true &&
-            proof &&
-            proof.model === model &&
-            Object.isFrozen(model)
+            CircuitJsonValidationToken.matches(proof, model)
         )
+    }
+
+    /**
+     * Returns trusted requested index families or null for the legacy full index.
+     * @param {unknown} model CircuitJSON model candidate.
+     * @param {unknown} options Indexer options candidate.
+     * @returns {string[] | null} Requested families, or null for full work.
+     */
+    static indexFamilies(model, options) {
+        if (!CircuitJsonValidationProof.permitsIndex(model, options)) {
+            return null
+        }
+        return Array.isArray(options.families) ? options.families : null
     }
 }

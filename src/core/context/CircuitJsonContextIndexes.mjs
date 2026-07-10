@@ -13,10 +13,9 @@ const INDEX_NAMES = new Set([
  */
 export class CircuitJsonContextIndexes {
     #builds
-    #indexOptions
+    #document
     #indexes = new Map()
     #model
-    #sharedIndex = null
 
     /**
      * Creates a context-owned index registry.
@@ -24,8 +23,8 @@ export class CircuitJsonContextIndexes {
      * @param {Record<string, number>} builds Named index build counters.
      */
     constructor(document, builds) {
+        this.#document = document
         this.#model = document.model
-        this.#indexOptions = CircuitJsonValidationProof.indexOptions(document)
         this.#builds = builds
     }
 
@@ -70,46 +69,15 @@ export class CircuitJsonContextIndexes {
     }
 
     /**
-     * Creates one named view over the current monolithic legacy index.
+     * Creates only the work family requested by one named index.
      * @param {string} name Requested index name.
      * @returns {Record<string, any>} Named index view.
      */
     #build(name) {
-        const shared = this.#shared()
-        if (name === 'relations') {
-            return {
-                relationsByField: shared.relationsByField,
-                componentsBySourceId: shared.componentsBySourceId,
-                groupsById: shared.groupsById,
-                elementsByGroupId: shared.elementsByGroupId,
-                elementsBySubcircuitId: shared.elementsBySubcircuitId
-            }
-        }
-        if (name === 'connectivity') {
-            return {
-                sourceTraceById: shared.sourceTraceById,
-                sourceTraceConnectivity: shared.sourceTraceConnectivity,
-                diagnostics: shared.diagnostics
-            }
-        }
-        if (name === 'spatial') {
-            return { elements: shared.elements }
-        }
-        return shared
-    }
-
-    /**
-     * Returns the one shared legacy index used by named context views.
-     * @returns {Record<string, any>} Shared element index.
-     */
-    #shared() {
-        if (!this.#sharedIndex) {
-            this.#sharedIndex = CircuitJsonIndexer.index(
-                this.#model,
-                this.#indexOptions
-            )
-        }
-        return this.#sharedIndex
+        return CircuitJsonIndexer.index(
+            this.#model,
+            CircuitJsonValidationProof.indexOptions(this.#document, [name])
+        )
     }
 
     /**

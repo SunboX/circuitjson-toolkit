@@ -109,12 +109,94 @@ test('context stays bound to the proven model for its request lifetime', () => {
     const context = CircuitJsonDocumentContext.prepare(document, {
         indexes: ['elements']
     })
-    const provenModel = document.model
+    assert.equal(Object.isFrozen(document), true)
+    assert.equal(Object.isFrozen(context.source), true)
+    assert.equal(Object.isFrozen(context.extensions), true)
+    assert.equal(Object.isFrozen(context.assets), true)
+    assert.throws(() => {
+        document.model = createBoard('replacement')
+    }, TypeError)
+    assert.throws(() => {
+        context.source.fileName = 'replacement.json'
+    }, TypeError)
+    assert.throws(() => {
+        context.assets.push({ id: 'late-asset' })
+    }, TypeError)
+    assert.equal(context.model, document.model)
+})
 
-    document.model = createBoard('replacement')
+test('reflected proof data cannot authorize an invalid frozen model', () => {
+    const valid = DocumentResult.createValidated({
+        fileName: 'valid.json',
+        model: createBoard('valid')
+    })
+    const [proofSymbol] = Object.getOwnPropertySymbols(valid)
+    const reflectedProof = valid[proofSymbol]
+    const invalidModel = Object.freeze([
+        {
+            type: 'pcb_board',
+            pcb_board_id: 'forged',
+            width: 1,
+            height: 1
+        }
+    ])
+    const forged = DocumentResult.create({
+        fileName: 'forged.json',
+        model: invalidModel
+    })
 
-    assert.equal(context.model, provenModel)
-    assert.equal(context.getIndex('elements').elements, provenModel)
+    assert.throws(
+        () => new reflectedProof.constructor(invalidModel),
+        /proofs are internal/
+    )
+    Object.defineProperty(forged, proofSymbol, {
+        value: { model: invalidModel }
+    })
+
+    assert.throws(
+        () =>
+            CircuitJsonDocumentContext.prepare(forged, {
+                indexes: ['elements']
+            }),
+        /pcb_board center is required/
+    )
+})
+
+test('proof-producing validation rejects custom-prototype model values', () => {
+    class BoardRecord {
+        constructor() {
+            Object.assign(this, createBoard('custom')[0])
+        }
+    }
+
+    class PointRecord {
+        constructor() {
+            this.x = 0
+            this.y = 0
+        }
+    }
+
+    assert.throws(
+        () =>
+            DocumentResult.createValidated({
+                fileName: 'custom-element.json',
+                model: [new BoardRecord()]
+            }),
+        /plain objects and arrays/
+    )
+    assert.throws(
+        () =>
+            DocumentResult.createValidated({
+                fileName: 'custom-nested.json',
+                model: [
+                    {
+                        ...createBoard('custom-nested')[0],
+                        center: new PointRecord()
+                    }
+                ]
+            }),
+        /plain objects and arrays/
+    )
 })
 
 test('derived values cache only successful factory results per namespace and key', () => {
@@ -149,6 +231,58 @@ test('derived values cache only successful factory results per namespace and key
         'test:render-plan': 1,
         'other:render-plan': 1
     })
+})
+
+test('derived values reject asynchronous thenables without caching them', () => {
+    const context = CircuitJsonDocumentContext.prepare(createBoard('thenable'))
+
+    assert.throws(
+        () =>
+            context.getOrCreateDerived('test', 'async', () =>
+                Promise.resolve({ id: 'async' })
+            ),
+        /synchronous/
+    )
+    assert.deepEqual(context.statistics.derivedBuilds, {})
+})
+
+test('named context indexes build only their requested work families', () => {
+    const context = CircuitJsonDocumentContext.prepare(createBoard('lazy'))
+    const original = CircuitJsonIndexer.index
+    const calls = []
+    CircuitJsonIndexer.index = function (...args) {
+        const result = original.apply(this, args)
+        calls.push(Object.keys(result))
+        return result
+    }
+
+    try {
+        context.getIndex('elements')
+        assert.equal(calls.length, 1)
+        assert.equal(calls[0].includes('elementsByType'), true)
+        assert.equal(calls[0].includes('relationsByField'), false)
+        assert.equal(calls[0].includes('sourceTraceConnectivity'), false)
+        assert.equal(calls[0].includes('diagnostics'), false)
+
+        context.getIndex('relations')
+        assert.equal(calls.length, 2)
+        assert.equal(calls[1].includes('relationsByField'), true)
+        assert.equal(calls[1].includes('sourceTraceConnectivity'), false)
+        assert.equal(calls[1].includes('diagnostics'), false)
+
+        context.getIndex('connectivity')
+        assert.equal(calls.length, 3)
+        assert.equal(calls[2].includes('sourceTraceConnectivity'), true)
+        assert.equal(calls[2].includes('diagnostics'), true)
+        assert.equal(calls[2].includes('groupsById'), false)
+
+        context.getIndex('elements')
+        context.getIndex('relations')
+        context.getIndex('connectivity')
+        assert.equal(calls.length, 3)
+    } finally {
+        CircuitJsonIndexer.index = original
+    }
 })
 
 test('caller data cannot claim the indexer validated shortcut', () => {
