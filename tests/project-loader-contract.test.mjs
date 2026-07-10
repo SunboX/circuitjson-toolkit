@@ -24,7 +24,16 @@ test('ProjectLoader returns deterministic partial successes without duplicating 
     )
     assert.equal(result.project, null)
     assert.deepEqual(result.extensions, {})
-    assert.deepEqual(result.assets, [])
+    assert.equal(result.assets.length, 1)
+    assert.deepEqual(result.assets[0], {
+        id: result.assets[0].id,
+        kind: 'companion',
+        name: 'notes.txt',
+        mediaType: 'application/octet-stream',
+        byteLength: 15,
+        data: null,
+        source: { entryName: 'notes.txt' }
+    })
     assert.equal(result.diagnostics.length, 1)
     assert.equal(result.diagnostics[0].severity, 'error')
     assert.equal(result.diagnostics[0].code, 'ERR_CIRCUITJSON_PARSE')
@@ -76,6 +85,43 @@ test('ProjectLoader exposes exact tryLoad discriminants and typed zero-success f
         code: 'ERR_PROJECT_INPUT',
         category: 'validation'
     })
+
+    assert.throws(
+        () =>
+            ProjectLoader.load([{ name: 'board.json', data: '[]' }], {
+                reports: ['unknown-report']
+            }),
+        {
+            name: 'ToolkitError',
+            code: 'ERR_CAPABILITY_UNAVAILABLE',
+            category: 'unsupported'
+        }
+    )
+})
+
+test('ProjectLoader exposes companion entries through common asset selection', () => {
+    const companion = new Uint8Array([1, 2, 3])
+    const entries = [
+        { name: 'board.json', data: '[]' },
+        { name: 'models/body.step', data: companion }
+    ]
+
+    const none = ProjectLoader.load(entries, { decodeAssets: 'none' })
+    const metadata = ProjectLoader.load(entries, { decodeAssets: 'metadata' })
+    const full = ProjectLoader.load(entries, { decodeAssets: 'full' })
+
+    assert.deepEqual(none.assets, [])
+    assert.equal(metadata.assets.length, 1)
+    assert.equal(metadata.assets[0].name, 'models/body.step')
+    assert.equal(metadata.assets[0].byteLength, 3)
+    assert.equal(metadata.assets[0].data, null)
+    assert.deepEqual(metadata.assets[0].source, {
+        entryName: 'models/body.step'
+    })
+    assert.equal(full.assets.length, 1)
+    assert.notEqual(full.assets[0].data, companion)
+    assert.deepEqual([...full.assets[0].data], [1, 2, 3])
+    assert.deepEqual(full.documents[0].assets, [])
 })
 
 test('ArchiveEntryPath normalizes safe relative POSIX paths and rejects unsafe names', () => {
@@ -319,6 +365,30 @@ test('ProjectLoader loadAsync yields, reports monotonic progress, and checks can
             category: 'cancelled'
         }
     )
+
+    const timerController = new AbortController()
+    let timerCompleted = 0
+    await assert.rejects(
+        ProjectLoader.loadAsync(
+            Array.from({ length: 70 }, (_, index) => ({
+                name: `timer-${String(index).padStart(2, '0')}.json`,
+                data: '[]'
+            })),
+            {
+                signal: timerController.signal,
+                worker: false,
+                onProgress: (row) => {
+                    if (row.stage !== 'project' || !row.completed) return
+                    timerCompleted = row.completed
+                    if (row.completed === 1) {
+                        setTimeout(() => timerController.abort(), 0)
+                    }
+                }
+            }
+        ),
+        { code: 'ERR_CANCELLED' }
+    )
+    assert.equal(timerCompleted, 1)
 
     const alreadyAborted = new AbortController()
     alreadyAborted.abort()

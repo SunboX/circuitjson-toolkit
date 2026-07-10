@@ -50,7 +50,12 @@ export class ProjectLoader {
                 diagnostics
             )
         }
-        return ProjectLoader.#result(classified, documents, diagnostics)
+        return ProjectLoader.#result(
+            classified,
+            documents,
+            diagnostics,
+            normalizedOptions
+        )
     }
 
     /**
@@ -91,7 +96,7 @@ export class ProjectLoader {
             { stage: 'detect', message: 'Classifying project entries.' },
             null
         )
-        await ProjectLoader.#yieldToHost(true)
+        await ProjectLoader.#yieldToHost(Boolean(normalizedOptions.signal))
         ProjectLoader.#assertNotCancelled(normalizedOptions.signal)
 
         const classified = ProjectLoader.#classify(
@@ -113,7 +118,7 @@ export class ProjectLoader {
         const documents = []
         const diagnostics = []
         for (let index = 0; index < classified.candidates.length; index += 1) {
-            await ProjectLoader.#yieldToHost(index % 64 === 0)
+            await ProjectLoader.#yieldToHost(Boolean(normalizedOptions.signal))
             ProjectLoader.#assertNotCancelled(normalizedOptions.signal)
             ProjectLoader.#parseEntry(
                 classified.candidates[index],
@@ -135,7 +140,12 @@ export class ProjectLoader {
             ProjectLoader.#assertNotCancelled(normalizedOptions.signal)
         }
 
-        const result = ProjectLoader.#result(classified, documents, diagnostics)
+        const result = ProjectLoader.#result(
+            classified,
+            documents,
+            diagnostics,
+            normalizedOptions
+        )
         ProjectLoader.#progress(
             normalizedOptions,
             {
@@ -490,6 +500,9 @@ export class ProjectLoader {
             )
         } catch (error) {
             const normalized = ProjectLoader.#errorFrom(error)
+            if (normalized.code === 'ERR_CAPABILITY_UNAVAILABLE') {
+                throw normalized
+            }
             diagnostics.push(
                 ToolkitDiagnostic.create({
                     code: normalized.code,
@@ -526,9 +539,10 @@ export class ProjectLoader {
      * @param {{ entries: object[], candidates: object[], entryNames: string[], totalBytes: number }} classified Classified entries.
      * @param {object[]} documents Successful documents.
      * @param {object[]} diagnostics Project diagnostics.
+     * @param {Record<string, any>} options Normalized options.
      * @returns {Record<string, any>} Canonical project result.
      */
-    static #result(classified, documents, diagnostics) {
+    static #result(classified, documents, diagnostics, options) {
         if (!documents.length) {
             throw new ToolkitError(
                 'No requested CircuitJSON project document could be loaded.',
@@ -548,7 +562,10 @@ export class ProjectLoader {
             documents,
             project: null,
             extensions: {},
-            assets: [],
+            assets: ProjectLoader.#companionAssets(
+                classified.entries,
+                options.decodeAssets
+            ),
             diagnostics,
             statistics: {
                 entryCount: classified.entries.length,
@@ -558,6 +575,26 @@ export class ProjectLoader {
                 totalBytes: classified.totalBytes
             }
         })
+    }
+
+    /**
+     * Selects non-document entries through the common asset decode modes.
+     * @param {Array<{ name: string, byteLength: number, input: { data: unknown } }>} entries Prepared entries.
+     * @param {'none' | 'metadata' | 'full'} mode Asset selection mode.
+     * @returns {object[]} Project companion assets.
+     */
+    static #companionAssets(entries, mode) {
+        if (mode === 'none') return []
+        return entries
+            .filter((entry) => !entry.name.toLowerCase().endsWith('.json'))
+            .map((entry) => ({
+                kind: 'companion',
+                name: entry.name,
+                mediaType: 'application/octet-stream',
+                byteLength: entry.byteLength,
+                data: mode === 'full' ? entry.input.data : null,
+                source: { entryName: entry.name }
+            }))
     }
 
     /**
@@ -575,13 +612,33 @@ export class ProjectLoader {
     }
 
     /**
-     * Yields cheaply between every entry and periodically to the host task queue.
-     * @param {boolean} taskQueue Whether to yield a macrotask.
+     * Yields to a real host task so timer, I/O, and UI cancellation can run.
+     * @param {boolean} cancellationResponsive Whether timer-backed aborts must run before the next entry.
      * @returns {Promise<void>} Yield completion.
      */
-    static async #yieldToHost(taskQueue) {
-        if (!taskQueue) {
-            await Promise.resolve()
+    static async #yieldToHost(cancellationResponsive) {
+        if (cancellationResponsive) {
+            await new Promise((resolve) => setTimeout(resolve, 0))
+            return
+        }
+        if (typeof globalThis.scheduler?.yield === 'function') {
+            await globalThis.scheduler.yield()
+            return
+        }
+        if (typeof setImmediate === 'function') {
+            await new Promise((resolve) => setImmediate(resolve))
+            return
+        }
+        if (typeof globalThis.MessageChannel === 'function') {
+            await new Promise((resolve) => {
+                const channel = new globalThis.MessageChannel()
+                channel.port1.onmessage = () => {
+                    channel.port1.close()
+                    channel.port2.close()
+                    resolve()
+                }
+                channel.port2.postMessage(null)
+            })
             return
         }
         await new Promise((resolve) => setTimeout(resolve, 0))
