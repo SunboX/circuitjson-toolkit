@@ -1,0 +1,187 @@
+/**
+ * Builds deterministic component and net records from prepared CircuitJSON indexes.
+ */
+export class ComponentGrouping {
+    /**
+     * Builds source-component rows with their canonical source-port ids.
+     * @param {Record<string, any>} elementsIndex Prepared elements index.
+     * @param {Record<string, any>} relationsIndex Prepared relations index.
+     * @returns {object[]} Stable component records.
+     */
+    static components(elementsIndex, relationsIndex) {
+        const components =
+            elementsIndex.elementsByType.get('source_component') || []
+        const byComponent =
+            relationsIndex.relationsByField.get('source_component_id') ||
+            new Map()
+        return components
+            .map((component) => {
+                const id = String(component.source_component_id || '').trim()
+                const pins = (byComponent.get(id) || [])
+                    .filter((element) => element?.type === 'source_port')
+                    .map((port) => ComponentGrouping.#pin(port))
+                    .sort((left, right) =>
+                        ComponentGrouping.compareIds(left.id, right.id)
+                    )
+                return ComponentGrouping.#withoutEmpty({
+                    id,
+                    name: String(component.name || id),
+                    designator: String(component.name || id),
+                    type: String(component.ftype || ''),
+                    value: ComponentGrouping.#text(component.value),
+                    footprint: ComponentGrouping.#text(
+                        component.footprint || component.footprint_name
+                    ),
+                    mpn: ComponentGrouping.#mpn(component),
+                    description: ComponentGrouping.#text(component.description),
+                    doNotPopulate:
+                        component.do_not_populate === true ||
+                        component.exclude_from_bom === true,
+                    pinIds: pins.map((pin) => pin.id),
+                    pins
+                })
+            })
+            .filter((component) => component.id)
+            .sort((left, right) =>
+                ComponentGrouping.compareIds(left.id, right.id)
+            )
+    }
+
+    /**
+     * Builds source-net rows with trace and port membership.
+     * @param {Record<string, any>} elementsIndex Prepared elements index.
+     * @param {object[]} traces Canonical trace records.
+     * @returns {object[]} Stable net records.
+     */
+    static nets(elementsIndex, traces) {
+        const nets = elementsIndex.elementsByType.get('source_net') || []
+        const tracesByNetId = new Map()
+        for (const trace of traces) {
+            for (const netId of trace.sourceNetIds) {
+                if (!tracesByNetId.has(netId)) {
+                    tracesByNetId.set(netId, [])
+                }
+                tracesByNetId.get(netId).push(trace)
+            }
+        }
+        return nets
+            .map((net) => {
+                const id = String(net.source_net_id || '').trim()
+                const connected = tracesByNetId.get(id) || []
+                return {
+                    id,
+                    name: String(net.name || id),
+                    traceIds: connected.map((trace) => trace.id),
+                    portIds: [
+                        ...new Set(
+                            connected.flatMap((trace) => trace.sourcePortIds)
+                        )
+                    ].sort(ComponentGrouping.compareIds)
+                }
+            })
+            .filter((net) => net.id)
+            .sort((left, right) =>
+                ComponentGrouping.compareIds(left.id, right.id)
+            )
+    }
+
+    /**
+     * Compares stable ids without locale-dependent collation.
+     * @param {unknown} left Left id.
+     * @param {unknown} right Right id.
+     * @returns {number} Sort order.
+     */
+    static compareIds(left, right) {
+        const leftText = String(left || '')
+        const rightText = String(right || '')
+        return leftText < rightText ? -1 : leftText > rightText ? 1 : 0
+    }
+
+    /**
+     * Builds one canonical source-port record.
+     * @param {Record<string, any>} port Source port.
+     * @returns {object} Port record.
+     */
+    static #pin(port) {
+        return ComponentGrouping.#withoutEmpty({
+            id: String(port.source_port_id || '').trim(),
+            name: ComponentGrouping.#text(port.name),
+            pinNumber:
+                port.pin_number === undefined ? undefined : port.pin_number,
+            netIds: ComponentGrouping.#ids([
+                port.source_net_id,
+                port.connected_source_net_id,
+                port.source_net_ids,
+                port.connected_source_net_ids
+            ])
+        })
+    }
+
+    /**
+     * Resolves the first source-native manufacturer/supplier part number.
+     * @param {Record<string, any>} component Source component.
+     * @returns {string | undefined} Part number.
+     */
+    static #mpn(component) {
+        const direct = ComponentGrouping.#text(
+            component.manufacturer_part_number ||
+                component.mpn ||
+                component.part_number
+        )
+        if (direct) return direct
+        const suppliers = component.supplier_part_numbers
+        if (!suppliers || typeof suppliers !== 'object') return undefined
+        for (const value of Object.values(suppliers)) {
+            const candidates = Array.isArray(value) ? value : [value]
+            for (const candidate of candidates) {
+                const text = ComponentGrouping.#text(candidate)
+                if (text) return text
+            }
+        }
+        return undefined
+    }
+
+    /**
+     * Flattens scalar/array relation ids into a stable unique list.
+     * @param {unknown[]} values Relation values.
+     * @returns {string[]} Stable ids.
+     */
+    static #ids(values) {
+        return [
+            ...new Set(
+                values
+                    .flatMap((value) =>
+                        Array.isArray(value) ? value : [value]
+                    )
+                    .map((value) => String(value || '').trim())
+                    .filter(Boolean)
+            )
+        ].sort(ComponentGrouping.compareIds)
+    }
+
+    /**
+     * Normalizes optional text without executing caller coercion hooks.
+     * @param {unknown} value Text candidate.
+     * @returns {string | undefined} Normalized text.
+     */
+    static #text(value) {
+        return typeof value === 'string' && value.trim()
+            ? value.trim()
+            : undefined
+    }
+
+    /**
+     * Omits undefined, empty-string, and false optional fields.
+     * @param {Record<string, any>} record Record candidate.
+     * @returns {Record<string, any>} Compact record.
+     */
+    static #withoutEmpty(record) {
+        return Object.fromEntries(
+            Object.entries(record).filter(([, value]) => {
+                if (value === undefined || value === '') return false
+                if (value === false) return false
+                return true
+            })
+        )
+    }
+}
