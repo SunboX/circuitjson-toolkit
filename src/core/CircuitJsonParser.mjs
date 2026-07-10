@@ -1,8 +1,9 @@
-import { CircuitJsonDocument } from './CircuitJsonDocument.mjs'
 import { CircuitJsonBomBuilder } from './CircuitJsonBomBuilder.mjs'
+import { CircuitJsonDocument } from './CircuitJsonDocument.mjs'
 import { CircuitJsonIndexer } from './CircuitJsonIndexer.mjs'
 import { CircuitJsonManufacturingBuilder } from './CircuitJsonManufacturingBuilder.mjs'
 import { CircuitJsonSupportMatrixBuilder } from './CircuitJsonSupportMatrixBuilder.mjs'
+import { Parser } from './Parser.mjs'
 
 /**
  * Parses standalone CircuitJSON files.
@@ -15,17 +16,17 @@ export class CircuitJsonParser {
      * @returns {object[]}
      */
     static parseText(text, options = {}) {
-        let parsed
+        let document
         try {
-            parsed = JSON.parse(String(text || ''))
+            document = Parser.parse({
+                fileName: options.fileName || '',
+                data: String(text || '')
+            })
         } catch (error) {
-            throw new SyntaxError(
-                'CircuitJSON file is not valid JSON: ' +
-                    String(error?.message || error || 'Unknown error.')
-            )
+            throw CircuitJsonParser.#legacyError(error)
         }
 
-        CircuitJsonDocument.assertModel(parsed)
+        const parsed = structuredClone(document.model)
         const index = CircuitJsonIndexer.index(parsed)
         return CircuitJsonDocument.attachMetadata(parsed, {
             fileName: options.fileName || '',
@@ -49,6 +50,23 @@ export class CircuitJsonParser {
             bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || [])
         const text = new TextDecoder().decode(view)
         return CircuitJsonParser.parseText(text, options)
+    }
+
+    /**
+     * Restores the source-derived exception type and invalid-JSON message.
+     * @param {unknown} error Canonical parser failure.
+     * @returns {Error} Legacy parser error.
+     */
+    static #legacyError(error) {
+        const cause = error?.cause
+        if (error?.code !== 'ERR_CIRCUITJSON_PARSE' || !cause) return error
+        if (cause.name === 'SyntaxError') {
+            return new SyntaxError(
+                'CircuitJSON file is not valid JSON: ' + cause.message
+            )
+        }
+        if (cause.name === 'TypeError') return new TypeError(cause.message)
+        return new Error(cause.message)
     }
 
     /**

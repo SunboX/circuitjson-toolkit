@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { CircuitJsonParser } from '../src/index.mjs'
+import { CircuitJsonParser } from '../src/parser.mjs'
 
 test('CircuitJsonParser parses standalone CircuitJSON text', () => {
     const model = CircuitJsonParser.parseText(
@@ -19,6 +19,19 @@ test('CircuitJsonParser parses standalone CircuitJSON text', () => {
     assert.equal(model[0].type, 'pcb_board')
     assert.equal(model.fileType, 'circuitjson')
     assert.equal(model.kind, 'pcb')
+    assert.equal(Object.isFrozen(model), false)
+    assert.equal(Array.isArray(model.bom), true)
+    assert.equal(typeof model.manufacturing, 'object')
+})
+
+test('CircuitJsonParser keeps its legacy byte-array migration contract', () => {
+    const model = CircuitJsonParser.parseBytes(new TextEncoder().encode('[]'), {
+        fileName: 'legacy.json'
+    })
+
+    assert.equal(Array.isArray(model), true)
+    assert.equal(model.fileName, 'legacy.json')
+    assert.equal(model.sourceFormat, 'circuitjson')
 })
 
 test('CircuitJsonParser reports invalid standalone JSON clearly', () => {

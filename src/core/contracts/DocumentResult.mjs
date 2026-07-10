@@ -46,12 +46,20 @@ export class DocumentResult {
     /**
      * Creates a canonical envelope whose model is validated and immutable.
      * @param {Record<string, any>} [fields] Document fields.
+     * @param {{ sourceReference?: object }} [runtime] Runtime-only fields.
      * @returns {Record<string, any>} Proven canonical document result.
      */
-    static createValidated(fields = {}) {
-        return CircuitJsonValidationProof.validateAndAttach(
-            DocumentResult.create(fields)
-        )
+    static createValidated(fields = {}, runtime = {}) {
+        const document = DocumentResult.create(fields)
+        if (Object.hasOwn(runtime || {}, 'sourceReference')) {
+            Object.defineProperty(document, 'sourceReference', {
+                configurable: false,
+                enumerable: false,
+                value: runtime.sourceReference,
+                writable: false
+            })
+        }
+        return CircuitJsonValidationProof.validateAndAttach(document)
     }
 
     /**
