@@ -1,9 +1,14 @@
 import { CircuitJsonIndexer } from '../core/CircuitJsonIndexer.mjs'
 import { CircuitJsonUnits } from '../core/CircuitJsonUnits.mjs'
 import { CircuitJsonSchematicSvgArcPath } from './CircuitJsonSchematicSvgArcPath.mjs'
+import { CircuitJsonSchematicDebugRenderer } from './CircuitJsonSchematicDebugRenderer.mjs'
+import { CircuitJsonSchematicLineRenderer } from './CircuitJsonSchematicLineRenderer.mjs'
 import { CircuitJsonSchematicSvgPortMetadata } from './CircuitJsonSchematicSvgPortMetadata.mjs'
 import { CircuitJsonSchematicSvgPrimitiveAttributes } from './CircuitJsonSchematicSvgPrimitiveAttributes.mjs'
 import { CircuitJsonSchematicTableSvgRenderer } from './CircuitJsonSchematicTableSvgRenderer.mjs'
+import { SchematicGeometryBounds } from './SchematicGeometryBounds.mjs'
+import { SafeXmlText } from './SafeXmlText.mjs'
+import { SchematicTextAnchor } from './SchematicTextAnchor.mjs'
 
 /**
  * Renders standards-shaped schematic element arrays into app-compatible SVG.
@@ -15,14 +20,25 @@ export class CircuitJsonSchematicSvgRenderer {
      * @returns {string}
      */
     static render(documentModel) {
-        const elements =
-            CircuitJsonSchematicSvgRenderer.#elements(documentModel)
-        const index = CircuitJsonIndexer.index(elements)
-        const bounds = CircuitJsonSchematicSvgRenderer.#bounds(index)
+        const prepared = documentModel?.elementsByType instanceof Map
+        const index = prepared
+            ? documentModel
+            : CircuitJsonIndexer.index(
+                  CircuitJsonSchematicSvgRenderer.#elements(documentModel)
+              )
+        const sourcePorts = CircuitJsonSchematicSvgPortMetadata.sourcePorts(
+            CircuitJsonSchematicSvgRenderer.#all(index, 'source_port')
+        )
+        const portHintCache = new WeakMap()
+        const bounds = prepared
+            ? SchematicGeometryBounds.resolve(index, sourcePorts, portHintCache)
+            : SchematicGeometryBounds.legacy(index)
         const viewBox = CircuitJsonSchematicSvgRenderer.#viewBox(bounds)
 
         return (
-            '<svg class="schematic-svg schematic-svg--circuitjson" xmlns="http://www.w3.org/2000/svg" role="img" viewBox="' +
+            '<svg class="schematic-svg schematic-svg--circuitjson" xmlns="http://www.w3.org/2000/svg" role="img"' +
+            (prepared ? ' font-size="1"' : '') +
+            ' viewBox="' +
             CircuitJsonSchematicSvgRenderer.#formatViewBox(viewBox) +
             '">' +
             CircuitJsonSchematicSvgRenderer.#renderSheet(bounds) +
@@ -31,7 +47,11 @@ export class CircuitJsonSchematicSvgRenderer {
             CircuitJsonSchematicSvgRenderer.#renderGroups(index) +
             CircuitJsonSchematicSvgRenderer.#renderLines(index) +
             CircuitJsonSchematicSvgRenderer.#renderShapes(index) +
-            CircuitJsonSchematicSvgRenderer.#renderPorts(index) +
+            CircuitJsonSchematicSvgRenderer.#renderPorts(
+                index,
+                sourcePorts,
+                portHintCache
+            ) +
             CircuitJsonSchematicSvgRenderer.#renderTables(index) +
             CircuitJsonSchematicSvgRenderer.#renderTexts(index) +
             CircuitJsonSchematicSvgRenderer.#renderProbes(index) +
@@ -256,45 +276,13 @@ export class CircuitJsonSchematicSvgRenderer {
             .flatMap((type) =>
                 CircuitJsonSchematicSvgRenderer.#all(index, type)
             )
-            .map((element) =>
-                CircuitJsonSchematicSvgRenderer.#lineElement(element)
+            .flatMap((element) =>
+                CircuitJsonSchematicLineRenderer.render(element)
             )
             .filter(Boolean)
         return lines.length
             ? '<g class="schematic-wires">' + lines.join('') + '</g>'
             : ''
-    }
-
-    /**
-     * Renders one schematic line.
-     * @param {object} element Source element.
-     * @returns {string}
-     */
-    static #lineElement(element) {
-        const start = CircuitJsonSchematicSvgRenderer.#point({
-            x: element.x1 ?? element.start?.x,
-            y: element.y1 ?? element.start?.y
-        })
-        const end = CircuitJsonSchematicSvgRenderer.#point({
-            x: element.x2 ?? element.end?.x,
-            y: element.y2 ?? element.end?.y
-        })
-        if (!start || !end) return ''
-        return (
-            '<line class="schematic-wire" x1="' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(start.x) +
-            '" y1="' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(start.y) +
-            '" x2="' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(end.x) +
-            '" y2="' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(end.y) +
-            '"' +
-            CircuitJsonSchematicSvgPrimitiveAttributes.attributes(element, {
-                fill: false
-            }) +
-            '></line>'
-        )
     }
 
     /**
@@ -418,11 +406,13 @@ export class CircuitJsonSchematicSvgRenderer {
         const radius = CircuitJsonUnits.optionalLength(element.radius)
         if (!center || radius === null) return ''
         const startAngle = CircuitJsonUnits.angle(
-            element.start_angle ?? element.startAngle,
+            element.start_angle_degrees ??
+                element.start_angle ??
+                element.startAngle,
             0
         )
         const endAngle = CircuitJsonUnits.angle(
-            element.end_angle ?? element.endAngle,
+            element.end_angle_degrees ?? element.end_angle ?? element.endAngle,
             360
         )
         const start = CircuitJsonSchematicSvgRenderer.#polarPoint(
@@ -435,23 +425,56 @@ export class CircuitJsonSchematicSvgRenderer {
             radius,
             endAngle
         )
-        const largeArc = Math.abs(endAngle - startAngle) > 180 ? 1 : 0
+        const standardAngles =
+            element.start_angle_degrees !== undefined ||
+            element.end_angle_degrees !== undefined
+        const sweep =
+            element.direction === 'clockwise'
+                ? 1
+                : element.direction === 'counterclockwise' || standardAngles
+                  ? 0
+                  : 1
+        const span = CircuitJsonSchematicSvgRenderer.#directedAngleSpan(
+            startAngle,
+            endAngle,
+            sweep
+        )
+        const largeArc = span > 180 ? 1 : 0
+        const midpoint = CircuitJsonSchematicSvgRenderer.#polarPoint(
+            center,
+            radius,
+            startAngle + (sweep ? 180 : -180)
+        )
+        /**
+         * Builds one SVG arc command for the resolved circle.
+         * @param {{ x: number, y: number }} point Command endpoint.
+         * @param {boolean} [fullTurn] Whether this is half of a full turn.
+         * @returns {string} SVG path command.
+         */
+        const arcEnd = (point, fullTurn = false) =>
+            ' A ' +
+            CircuitJsonSchematicSvgRenderer.#formatNumber(radius) +
+            ' ' +
+            CircuitJsonSchematicSvgRenderer.#formatNumber(radius) +
+            ' 0 ' +
+            (fullTurn ? 0 : largeArc) +
+            ' ' +
+            sweep +
+            ' ' +
+            CircuitJsonSchematicSvgRenderer.#formatNumber(point.x) +
+            ' ' +
+            CircuitJsonSchematicSvgRenderer.#formatNumber(point.y)
+        const path =
+            span === 360
+                ? arcEnd(midpoint, true) + arcEnd(start, true)
+                : arcEnd(end)
 
         return (
             '<path class="schematic-shape schematic-shape--arc" d="M ' +
             CircuitJsonSchematicSvgRenderer.#formatNumber(start.x) +
             ' ' +
             CircuitJsonSchematicSvgRenderer.#formatNumber(start.y) +
-            ' A ' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(radius) +
-            ' ' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(radius) +
-            ' 0 ' +
-            largeArc +
-            ' 1 ' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(end.x) +
-            ' ' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(end.y) +
+            path +
             '"' +
             CircuitJsonSchematicSvgPrimitiveAttributes.attributes(element, {
                 fill: false
@@ -487,12 +510,11 @@ export class CircuitJsonSchematicSvgRenderer {
     /**
      * Renders schematic ports.
      * @param {{ elementsByType: Map<string, object[]> }} index Element index.
+     * @param {Map<string, object>} sourcePorts Source-port lookup.
+     * @param {WeakMap<object, string>} portHintCache Render-scoped hint cache.
      * @returns {string}
      */
-    static #renderPorts(index) {
-        const sourcePorts = CircuitJsonSchematicSvgPortMetadata.sourcePorts(
-            CircuitJsonSchematicSvgRenderer.#all(index, 'source_port')
-        )
+    static #renderPorts(index, sourcePorts, portHintCache) {
         const ports = CircuitJsonSchematicSvgRenderer.#all(
             index,
             'schematic_port'
@@ -500,7 +522,8 @@ export class CircuitJsonSchematicSvgRenderer {
             .map((element) =>
                 CircuitJsonSchematicSvgRenderer.#portElement(
                     element,
-                    sourcePorts
+                    sourcePorts,
+                    portHintCache
                 )
             )
             .filter(Boolean)
@@ -513,16 +536,18 @@ export class CircuitJsonSchematicSvgRenderer {
      * Renders one schematic port marker.
      * @param {object} element Port element.
      * @param {Map<string, object>} sourcePorts Source port lookup.
+     * @param {WeakMap<object, string>} portHintCache Render-scoped hint cache.
      * @returns {string}
      */
-    static #portElement(element, sourcePorts) {
+    static #portElement(element, sourcePorts, portHintCache) {
         const center = CircuitJsonSchematicSvgRenderer.#center(element)
         if (!center) return ''
         const sourcePortId = String(element.source_port_id || '').trim()
         const sourcePort = sourcePorts.get(sourcePortId) || null
         const label = CircuitJsonSchematicSvgPortMetadata.label(
             element,
-            sourcePort
+            sourcePort,
+            portHintCache
         )
 
         return (
@@ -592,6 +617,7 @@ export class CircuitJsonSchematicSvgRenderer {
             element.ccw_rotation ?? element.rotation,
             0
         )
+        const anchor = element.anchor || element.anchor_side
         const attributes = [
             'class="schematic-text"',
             'x="' +
@@ -606,6 +632,15 @@ export class CircuitJsonSchematicSvgRenderer {
                     CircuitJsonSchematicSvgRenderer.#formatNumber(fontSize) +
                     '"'
             )
+        }
+        if (anchor) {
+            const alignment = SchematicTextAnchor.resolve(anchor)
+            attributes.push('text-anchor="' + alignment.textAnchor + '"')
+            if (alignment.baseline) {
+                attributes.push(
+                    'dominant-baseline="' + alignment.baseline + '"'
+                )
+            }
         }
         if (rotation) {
             attributes.push(
@@ -655,7 +690,9 @@ export class CircuitJsonSchematicSvgRenderer {
      * @returns {string}
      */
     static #probeElement(element) {
-        const center = CircuitJsonSchematicSvgRenderer.#center(element)
+        const center =
+            CircuitJsonSchematicSvgRenderer.#point(element.position) ||
+            CircuitJsonSchematicSvgRenderer.#center(element)
         if (!center) return ''
         const label = String(element.name || element.label || '').trim()
         return (
@@ -687,43 +724,11 @@ export class CircuitJsonSchematicSvgRenderer {
             index,
             'schematic_debug_object'
         )
-            .map((element) =>
-                CircuitJsonSchematicSvgRenderer.#debugObjectElement(element)
-            )
+            .map((element) => CircuitJsonSchematicDebugRenderer.render(element))
             .filter(Boolean)
         return objects.length
             ? '<g class="schematic-debug-objects">' + objects.join('') + '</g>'
             : ''
-    }
-
-    /**
-     * Renders one schematic debug object.
-     * @param {object} element Debug element.
-     * @returns {string}
-     */
-    static #debugObjectElement(element) {
-        const rect = CircuitJsonSchematicSvgRenderer.#rectAttributes(element)
-        const center = CircuitJsonSchematicSvgRenderer.#center(element)
-        if (!rect || !center) return ''
-        const message = String(element.message || '').trim()
-
-        return (
-            '<g class="schematic-debug-object" data-schematic-debug-object-id="' +
-            CircuitJsonSchematicSvgRenderer.#escapeHtml(
-                element.schematic_debug_object_id || ''
-            ) +
-            '"><title>' +
-            CircuitJsonSchematicSvgRenderer.#escapeHtml(message) +
-            '</title><rect ' +
-            rect +
-            '></rect><text x="' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(center.x) +
-            '" y="' +
-            CircuitJsonSchematicSvgRenderer.#formatNumber(center.y) +
-            '" text-anchor="middle" dominant-baseline="central">' +
-            CircuitJsonSchematicSvgRenderer.#escapeHtml(message) +
-            '</text></g>'
-        )
     }
 
     /**
@@ -733,9 +738,13 @@ export class CircuitJsonSchematicSvgRenderer {
      */
     static #renderDiagnostics(index) {
         const diagnostics = (index.elements || [])
-            .filter((element) =>
-                /(?:error|warning)/iu.test(String(element?.type || ''))
-            )
+            .filter((element) => {
+                const type = String(element?.type || '')
+                return (
+                    type.startsWith('schematic_') &&
+                    /(?:error|warning)/iu.test(type)
+                )
+            })
             .map((element) =>
                 CircuitJsonSchematicSvgRenderer.#diagnosticElement(element)
             )
@@ -794,38 +803,6 @@ export class CircuitJsonSchematicSvgRenderer {
                 ]
             )
         )
-    }
-
-    /**
-     * Resolves schematic bounds.
-     * @param {{ elements: object[], elementsByType: Map<string, object[]> }} index Element index.
-     * @returns {{ minX: number, minY: number, maxX: number, maxY: number, width: number, height: number }}
-     */
-    static #bounds(index) {
-        const sheet = CircuitJsonSchematicSvgRenderer.#all(
-            index,
-            'schematic_sheet'
-        )[0]
-        const width = CircuitJsonUnits.optionalLength(sheet?.width)
-        const height = CircuitJsonUnits.optionalLength(sheet?.height)
-        if (width !== null && height !== null) {
-            return {
-                minX: 0,
-                minY: 0,
-                maxX: width,
-                maxY: height,
-                width,
-                height
-            }
-        }
-        return {
-            minX: -10,
-            minY: -10,
-            maxX: 10,
-            maxY: 10,
-            width: 20,
-            height: 20
-        }
     }
 
     /**
@@ -940,6 +917,19 @@ export class CircuitJsonSchematicSvgRenderer {
     }
 
     /**
+     * Resolves the positive span for an SVG sweep direction.
+     * @param {number} start Start angle in degrees.
+     * @param {number} end End angle in degrees.
+     * @param {0 | 1} sweep SVG sweep flag.
+     * @returns {number} Directed span in degrees.
+     */
+    static #directedAngleSpan(start, end, sweep) {
+        const difference = sweep ? end - start : start - end
+        const span = ((difference % 360) + 360) % 360
+        return span === 0 && start !== end ? 360 : span
+    }
+
+    /**
      * Builds a polyline point string.
      * @param {{ x: number, y: number }[]} points Points.
      * @returns {string}
@@ -985,10 +975,6 @@ export class CircuitJsonSchematicSvgRenderer {
      * @returns {string}
      */
     static #escapeHtml(value) {
-        return String(value ?? '')
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
+        return SafeXmlText.escape(value)
     }
 }

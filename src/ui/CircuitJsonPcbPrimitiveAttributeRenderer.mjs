@@ -1,3 +1,5 @@
+import { SafeXmlText } from './SafeXmlText.mjs'
+
 /**
  * Renders shared SVG attributes for CircuitJSON PCB primitives.
  */
@@ -119,10 +121,6 @@ export class CircuitJsonPcbPrimitiveAttributeRenderer {
      * @returns {string}
      */
     static #escapeHtml(value) {
-        return String(value ?? '')
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
+        return SafeXmlText.escape(value)
     }
 }

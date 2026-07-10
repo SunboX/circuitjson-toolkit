@@ -2,6 +2,15 @@ import { CircuitJsonIndexer } from './CircuitJsonIndexer.mjs'
 import { CircuitJsonUnits } from './CircuitJsonUnits.mjs'
 import { CircuitJsonPcbPrimitiveGeometry } from './CircuitJsonPcbPrimitiveGeometry.mjs'
 
+const PHYSICAL_COPPER_KINDS = new Set([
+    'copper-text',
+    'pad',
+    'thermal-spoke',
+    'track',
+    'via',
+    'zone'
+])
+
 /**
  * Resolves shared CircuitJSON PCB primitive fields from common element shapes.
  */
@@ -47,13 +56,42 @@ export class CircuitJsonPcbPrimitiveFields {
 
     /**
      * Builds copper layer rows from board metadata.
-     * @param {object | null} board Board element.
+     * @param {object | object[] | null} boardOrBoards Board element or rows.
+     * @param {object[]} [primitives] Prepared primitives for observed layer union.
      * @returns {object[]}
      */
-    static layers(board) {
+    static layers(boardOrBoards, primitives = []) {
+        const boards = Array.isArray(boardOrBoards)
+            ? boardOrBoards
+            : boardOrBoards
+              ? [boardOrBoards]
+              : []
+        let declaredCount = boards.length ? 1 : 2
+        for (const board of boards) {
+            declaredCount = Math.max(
+                declaredCount,
+                Math.max(
+                    1,
+                    Math.min(
+                        8,
+                        Math.round(
+                            CircuitJsonUnits.length(board?.num_layers, 4)
+                        )
+                    )
+                )
+            )
+            if (declaredCount === 8) break
+        }
+        const observed =
+            CircuitJsonPcbPrimitiveFields.#observedCopperLayers(primitives)
+        const maximumInner = [...observed].reduce((maximum, layer) => {
+            const match = /^inner([1-6])$/u.exec(layer)
+            return match ? Math.max(maximum, Number(match[1])) : maximum
+        }, 0)
         const count = Math.max(
-            1,
-            Math.round(CircuitJsonUnits.length(board?.num_layers, 2))
+            declaredCount,
+            maximumInner ? maximumInner + 2 : 1,
+            observed.has('bottom') ? 2 : 1
         )
         const keys =
             count === 1
@@ -77,6 +115,34 @@ export class CircuitJsonPcbPrimitiveFields {
             type: 'copper',
             sourceFormat: 'circuitjson'
         }))
+    }
+
+    /**
+     * Resolves every structurally physical layer referenced by copper geometry.
+     * @param {object[]} primitives Prepared PCB primitives.
+     * @returns {Set<string>} Observed physical layer ids.
+     */
+    static #observedCopperLayers(primitives) {
+        const result = new Set()
+        for (const primitive of primitives || []) {
+            if (!PHYSICAL_COPPER_KINDS.has(primitive.kind)) continue
+            const source = primitive.sourceRoute || primitive.source || {}
+            const candidates = [
+                primitive.layer,
+                source.from_layer,
+                source.fromLayer,
+                source.to_layer,
+                source.toLayer,
+                ...(Array.isArray(source.layers) ? source.layers : [])
+            ]
+            for (const candidate of candidates) {
+                const layer = CircuitJsonPcbPrimitiveFields.layer(candidate)
+                if (/^(?:top|bottom|inner[1-6])$/u.test(layer)) {
+                    result.add(layer)
+                }
+            }
+        }
+        return result
     }
 
     /**

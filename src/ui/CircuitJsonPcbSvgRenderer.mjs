@@ -1,6 +1,10 @@
 import { PcbInteractionPrimitiveModel } from '../core/PcbInteractionPrimitiveModel.mjs'
+import { PcbRenderPlan } from '../core/rendering/PcbRenderPlan.mjs'
+import { CanonicalSvgDocument } from '../core/rendering/CanonicalSvgDocument.mjs'
+import { CircuitJsonPcbBoardSvgRenderer } from './CircuitJsonPcbBoardSvgRenderer.mjs'
 import { CircuitJsonPcbPrimitiveAttributeRenderer } from './CircuitJsonPcbPrimitiveAttributeRenderer.mjs'
 import { CircuitJsonPcbViaSvgRenderer } from './CircuitJsonPcbViaSvgRenderer.mjs'
+import { SafeXmlText } from './SafeXmlText.mjs'
 /**
  * Renders standards-shaped PCB element arrays into app-compatible SVG.
  */
@@ -14,6 +18,37 @@ export class CircuitJsonPcbSvgRenderer {
     static render(documentModel, options = {}) {
         const side = options.side === 'bottom' ? 'bottom' : 'top'
         const model = PcbInteractionPrimitiveModel.build(documentModel)
+        return CircuitJsonPcbSvgRenderer.#renderModel(model, side)
+    }
+
+    /**
+     * Renders one prepared PCB plan without rebuilding primitives.
+     * @param {Record<string, any>} plan Prepared PCB render plan.
+     * @param {{ layerIds?: string[] | null }} [options] Prepared-plan options.
+     * @returns {string} SVG markup.
+     */
+    static renderPlan(plan, options = {}) {
+        PcbRenderPlan.requirePrepared(plan)
+        const layerIds =
+            options.layerIds === undefined
+                ? plan.selectedLayerIds
+                : options.layerIds
+        return CanonicalSvgDocument.decorate(
+            CircuitJsonPcbSvgRenderer.#renderModel(
+                PcbRenderPlan.modelForLayers(plan, layerIds),
+                plan.side
+            ),
+            plan.svg
+        )
+    }
+
+    /**
+     * Wraps one prepared primitive model in the stable SVG document.
+     * @param {Record<string, any>} model Prepared primitive model.
+     * @param {'top' | 'bottom'} side Active side.
+     * @returns {string} SVG markup.
+     */
+    static #renderModel(model, side) {
         const viewBox = CircuitJsonPcbSvgRenderer.#viewBox(model.bounds)
         return (
             '<svg class="pcb-svg pcb-svg--app-palette pcb-svg--circuitjson pcb-svg--' +
@@ -21,46 +56,11 @@ export class CircuitJsonPcbSvgRenderer {
             '" xmlns="http://www.w3.org/2000/svg" role="img" viewBox="' +
             CircuitJsonPcbSvgRenderer.#formatViewBox(viewBox) +
             '">' +
-            CircuitJsonPcbSvgRenderer.#renderBoard(model) +
+            CircuitJsonPcbBoardSvgRenderer.render(model) +
             CircuitJsonPcbSvgRenderer.#renderCopper(model, side) +
             CircuitJsonPcbSvgRenderer.#renderComponentLabels(model) +
             CircuitJsonPcbSvgRenderer.#renderOverlays(model, side) +
             '</svg>'
-        )
-    }
-    /**
-     * Renders the board substrate.
-     * @param {{ primitives: object[] }} model Primitive model.
-     * @returns {string}
-     */
-    static #renderBoard(model) {
-        const board = model.primitives.find(
-            (primitive) => primitive.kind === 'board'
-        )
-        if (!board?.bounds) return ''
-        if (Array.isArray(board.points) && board.points.length >= 3) {
-            return (
-                '<polygon class="pcb-board" data-layer="board" points="' +
-                CircuitJsonPcbSvgRenderer.#escapeHtml(
-                    CircuitJsonPcbSvgRenderer.#pointsAttribute(board.points)
-                ) +
-                '"></polygon>'
-            )
-        }
-        return (
-            '<rect class="pcb-board" x="' +
-            CircuitJsonPcbSvgRenderer.#formatNumber(board.bounds.minX) +
-            '" y="' +
-            CircuitJsonPcbSvgRenderer.#formatNumber(board.bounds.minY) +
-            '" width="' +
-            CircuitJsonPcbSvgRenderer.#formatNumber(board.bounds.width) +
-            '" height="' +
-            CircuitJsonPcbSvgRenderer.#formatNumber(board.bounds.height) +
-            '" rx="' +
-            CircuitJsonPcbSvgRenderer.#formatNumber(
-                Math.min(board.bounds.width, board.bounds.height) * 0.018
-            ) +
-            '" data-layer="board"></rect>'
         )
     }
     /**
@@ -955,10 +955,6 @@ export class CircuitJsonPcbSvgRenderer {
      * @returns {string}
      */
     static #escapeHtml(value) {
-        return String(value ?? '')
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
+        return SafeXmlText.escape(value)
     }
 }

@@ -19,6 +19,7 @@ export { PcbCandidateSelectionModel } from './core/PcbCandidateSelectionModel.mj
 export { PcbDiagnosticFocusModel } from './core/PcbDiagnosticFocusModel.mjs'
 export { PcbInteractionPrimitiveModel } from './core/PcbInteractionPrimitiveModel.mjs'
 export { SelectedPartCircuitJsonExportAdapter } from './core/SelectedPartCircuitJsonExportAdapter.mjs'
+export { BomTableRenderer } from './ui/BomTableRenderer.mjs'
 export { CircuitJsonPcbPrimitiveAttributeRenderer } from './ui/CircuitJsonPcbPrimitiveAttributeRenderer.mjs'
 export { CircuitJsonPcbSvgRenderer } from './ui/CircuitJsonPcbSvgRenderer.mjs'
 export { CircuitJsonPcbViaSvgRenderer } from './ui/CircuitJsonPcbViaSvgRenderer.mjs'
@@ -27,3 +28,5 @@ export { CircuitJsonSchematicSvgPortMetadata } from './ui/CircuitJsonSchematicSv
 export { CircuitJsonSchematicSvgPrimitiveAttributes } from './ui/CircuitJsonSchematicSvgPrimitiveAttributes.mjs'
 export { CircuitJsonSchematicSvgRenderer } from './ui/CircuitJsonSchematicSvgRenderer.mjs'
 export { CircuitJsonSchematicTableSvgRenderer } from './ui/CircuitJsonSchematicTableSvgRenderer.mjs'
+export { PcbSvgRenderer } from './ui/PcbSvgRenderer.mjs'
+export { SchematicSvgRenderer } from './ui/SchematicSvgRenderer.mjs'

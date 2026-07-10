@@ -525,14 +525,18 @@ export class CircuitJsonPcbPrimitiveArtwork {
      * @returns {object | null}
      */
     static #linePrimitive(element, kind, index = 0) {
-        const start = CircuitJsonPcbPrimitiveFields.point({
-            x: element.x1 ?? element.start?.x,
-            y: element.y1 ?? element.start?.y
-        })
-        const end = CircuitJsonPcbPrimitiveFields.point({
-            x: element.x2 ?? element.end?.x,
-            y: element.y2 ?? element.end?.y
-        })
+        const start = CircuitJsonPcbPrimitiveFields.point(
+            element.from || {
+                x: element.x1 ?? element.start?.x,
+                y: element.y1 ?? element.start?.y
+            }
+        )
+        const end = CircuitJsonPcbPrimitiveFields.point(
+            element.to || {
+                x: element.x2 ?? element.end?.x,
+                y: element.y2 ?? element.end?.y
+            }
+        )
         if (!start || !end) return null
         const width = CircuitJsonUnits.length(
             element.width ??

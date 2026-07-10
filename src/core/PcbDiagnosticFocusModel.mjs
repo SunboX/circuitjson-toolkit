@@ -355,15 +355,19 @@ export class PcbDiagnosticFocusModel {
      * @returns {object | null}
      */
     static #mergeBounds(boundsRows) {
-        const rows = boundsRows
-            .map((bounds) => PcbDiagnosticFocusModel.#normalizeBounds(bounds))
-            .filter(Boolean)
-        if (!rows.length) return null
-
-        const minX = Math.min(...rows.map((bounds) => bounds.minX))
-        const minY = Math.min(...rows.map((bounds) => bounds.minY))
-        const maxX = Math.max(...rows.map((bounds) => bounds.maxX))
-        const maxY = Math.max(...rows.map((bounds) => bounds.maxY))
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const candidate of boundsRows) {
+            const bounds = PcbDiagnosticFocusModel.#normalizeBounds(candidate)
+            if (!bounds) continue
+            minX = Math.min(minX, bounds.minX)
+            minY = Math.min(minY, bounds.minY)
+            maxX = Math.max(maxX, bounds.maxX)
+            maxY = Math.max(maxY, bounds.maxY)
+        }
+        if (!Number.isFinite(minX)) return null
         return {
             minX,
             minY,

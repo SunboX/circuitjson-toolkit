@@ -259,8 +259,8 @@ export function createRichCircuitJsonDocument() {
         {
             type: 'pcb_note_dimension',
             pcb_note_dimension_id: 'note_dimension_1',
-            start: { x: -5, y: -3 },
-            end: { x: -3, y: -3 },
+            from: { x: -5, y: -3 },
+            to: { x: -3, y: -3 },
             text: '2mm',
             layer: 'top_fabrication'
         },
@@ -302,11 +302,12 @@ export function createRichCircuitJsonDocument() {
         {
             type: 'pcb_trace_hint',
             pcb_trace_hint_id: 'hint_1',
+            pcb_port_id: 'pcb_port_1',
+            pcb_component_id: 'pcb_u1',
             route: [
-                { x: 2.8, y: -2.2, layer: 'top' },
-                { x: 4, y: -2.2, layer: 'top' }
+                { x: 2.8, y: -2.2 },
+                { x: 4, y: -2.2 }
             ],
-            layer: 'top',
             net: 'SIG'
         },
         {

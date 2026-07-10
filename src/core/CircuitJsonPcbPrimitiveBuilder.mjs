@@ -25,7 +25,6 @@ export class CircuitJsonPcbPrimitiveBuilder {
         const elements = CircuitJsonPcbPrimitiveBuilder.elements(documentModel)
         const index = CircuitJsonPcbPrimitiveIndex.build(elements)
         const boards = CircuitJsonPcbPrimitiveBuilder.#all(index, 'pcb_board')
-        const board = boards[0] || null
         const components =
             CircuitJsonPcbPrimitiveBuilder.#componentLookups(index)
         const areaModel = CircuitJsonPcbZonePrimitiveBuilder.build(
@@ -81,7 +80,7 @@ export class CircuitJsonPcbPrimitiveBuilder {
 
         return {
             bounds,
-            layers: CircuitJsonPcbPrimitiveFields.layers(board),
+            layers: CircuitJsonPcbPrimitiveFields.layers(boards, primitives),
             virtualLayers: overlays.virtualLayers,
             components: components.rows,
             nets: CircuitJsonPcbNetMetadata.nets(primitives, index),

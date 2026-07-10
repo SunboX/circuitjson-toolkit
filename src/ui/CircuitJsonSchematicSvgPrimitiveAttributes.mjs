@@ -1,3 +1,5 @@
+import { SafeXmlText } from './SafeXmlText.mjs'
+
 /**
  * Builds SVG drawing attributes for schematic primitive rows.
  */
@@ -31,20 +33,22 @@ export class CircuitJsonSchematicSvgPrimitiveAttributes {
                     '"'
             )
         }
-        if (strokeColor) {
+        const safeStroke = SafeSvgPaint.color(strokeColor)
+        const safeFill = SafeSvgPaint.color(fillColor)
+        if (safeStroke) {
             attributes.push(
                 'stroke="' +
                     CircuitJsonSchematicSvgPrimitiveAttributes.#escapeHtml(
-                        strokeColor
+                        safeStroke
                     ) +
                     '"'
             )
         }
-        if (options.fill !== false && fillColor) {
+        if (options.fill !== false && safeFill) {
             attributes.push(
                 'fill="' +
                     CircuitJsonSchematicSvgPrimitiveAttributes.#escapeHtml(
-                        fillColor
+                        safeFill
                     ) +
                     '"'
             )
@@ -121,10 +125,7 @@ export class CircuitJsonSchematicSvgPrimitiveAttributes {
      * @returns {string}
      */
     static #escapeHtml(value) {
-        return String(value ?? '')
-            .replaceAll('&', '&amp;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
+        return SafeXmlText.escape(value)
     }
 }
+import { SafeSvgPaint } from './SafeSvgPaint.mjs'

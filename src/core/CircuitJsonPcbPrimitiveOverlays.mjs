@@ -762,12 +762,18 @@ export class CircuitJsonPcbPrimitiveOverlays {
      * @returns {object | null}
      */
     static #mergeBounds(rows) {
-        const validRows = rows.filter(Boolean)
-        if (!validRows.length) return null
-        const minX = Math.min(...validRows.map((bounds) => bounds.minX))
-        const minY = Math.min(...validRows.map((bounds) => bounds.minY))
-        const maxX = Math.max(...validRows.map((bounds) => bounds.maxX))
-        const maxY = Math.max(...validRows.map((bounds) => bounds.maxY))
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const bounds of rows) {
+            if (!bounds) continue
+            minX = Math.min(minX, bounds.minX)
+            minY = Math.min(minY, bounds.minY)
+            maxX = Math.max(maxX, bounds.maxX)
+            maxY = Math.max(maxY, bounds.maxY)
+        }
+        if (!Number.isFinite(minX)) return null
         return {
             minX: CircuitJsonPcbPrimitiveOverlays.#round(minX),
             minY: CircuitJsonPcbPrimitiveOverlays.#round(minY),

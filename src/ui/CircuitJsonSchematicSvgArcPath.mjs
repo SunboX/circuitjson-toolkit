@@ -11,8 +11,12 @@ export class CircuitJsonSchematicSvgArcPath {
      */
     static fromThreePoints(start, mid, end) {
         if (!start || !mid || !end) return ''
-        const circle = CircuitJsonSchematicSvgArcPath.#circle(start, mid, end)
-        if (!circle) {
+        const geometry = CircuitJsonSchematicSvgArcPath.#geometry(
+            start,
+            mid,
+            end
+        )
+        if (!geometry) {
             return (
                 'M ' +
                 CircuitJsonSchematicSvgArcPath.#formatPoint(start) +
@@ -20,6 +24,69 @@ export class CircuitJsonSchematicSvgArcPath {
                 CircuitJsonSchematicSvgArcPath.#formatPoint(end)
             )
         }
+
+        return (
+            'M ' +
+            CircuitJsonSchematicSvgArcPath.#formatPoint(start) +
+            ' A ' +
+            CircuitJsonSchematicSvgArcPath.#formatNumber(
+                geometry.circle.radius
+            ) +
+            ' ' +
+            CircuitJsonSchematicSvgArcPath.#formatNumber(
+                geometry.circle.radius
+            ) +
+            ' 0 ' +
+            geometry.largeArc +
+            ' ' +
+            geometry.sweep +
+            ' ' +
+            CircuitJsonSchematicSvgArcPath.#formatPoint(end)
+        )
+    }
+
+    /**
+     * Resolves the exact axis-aligned bounds of the rendered three-point arc.
+     * @param {{ x: number, y: number } | null} start Start point.
+     * @param {{ x: number, y: number } | null} mid Midpoint on the arc.
+     * @param {{ x: number, y: number } | null} end End point.
+     * @returns {{ minX: number, minY: number, maxX: number, maxY: number } | null} Arc bounds.
+     */
+    static boundsFromThreePoints(start, mid, end) {
+        if (!start || !mid || !end) return null
+        const geometry = CircuitJsonSchematicSvgArcPath.#geometry(
+            start,
+            mid,
+            end
+        )
+        if (!geometry) {
+            return CircuitJsonSchematicSvgArcPath.#bounds([start, end])
+        }
+        const points = [start, end]
+        for (const angle of [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2]) {
+            if (
+                !CircuitJsonSchematicSvgArcPath.#containsAngle(geometry, angle)
+            ) {
+                continue
+            }
+            points.push({
+                x: geometry.circle.x + Math.cos(angle) * geometry.circle.radius,
+                y: geometry.circle.y + Math.sin(angle) * geometry.circle.radius
+            })
+        }
+        return CircuitJsonSchematicSvgArcPath.#bounds(points)
+    }
+
+    /**
+     * Resolves the shared circle and directed sweep through three points.
+     * @param {{ x: number, y: number }} start Start point.
+     * @param {{ x: number, y: number }} mid Midpoint on the arc.
+     * @param {{ x: number, y: number }} end End point.
+     * @returns {{ circle: { x: number, y: number, radius: number }, startAngle: number, endAngle: number, sweep: 0 | 1, span: number, largeArc: 0 | 1 } | null} Arc geometry.
+     */
+    static #geometry(start, mid, end) {
+        const circle = CircuitJsonSchematicSvgArcPath.#circle(start, mid, end)
+        if (!circle) return null
         const startAngle = CircuitJsonSchematicSvgArcPath.#angle(circle, start)
         const midAngle = CircuitJsonSchematicSvgArcPath.#angle(circle, mid)
         const endAngle = CircuitJsonSchematicSvgArcPath.#angle(circle, end)
@@ -39,22 +106,55 @@ export class CircuitJsonSchematicSvgArcPath {
                       endAngle,
                       startAngle
                   )
-        const largeArc = span > Math.PI ? 1 : 0
+        return {
+            circle,
+            startAngle,
+            endAngle,
+            sweep,
+            span,
+            largeArc: span > Math.PI ? 1 : 0
+        }
+    }
 
-        return (
-            'M ' +
-            CircuitJsonSchematicSvgArcPath.#formatPoint(start) +
-            ' A ' +
-            CircuitJsonSchematicSvgArcPath.#formatNumber(circle.radius) +
-            ' ' +
-            CircuitJsonSchematicSvgArcPath.#formatNumber(circle.radius) +
-            ' 0 ' +
-            largeArc +
-            ' ' +
-            sweep +
-            ' ' +
-            CircuitJsonSchematicSvgArcPath.#formatPoint(end)
-        )
+    /**
+     * Returns whether one cardinal angle lies on the directed arc sweep.
+     * @param {{ startAngle: number, sweep: 0 | 1, span: number }} geometry Arc geometry.
+     * @param {number} angle Candidate angle.
+     * @returns {boolean} Whether the angle is visible.
+     */
+    static #containsAngle(geometry, angle) {
+        const delta =
+            geometry.sweep === 1
+                ? CircuitJsonSchematicSvgArcPath.#positiveDelta(
+                      geometry.startAngle,
+                      angle
+                  )
+                : CircuitJsonSchematicSvgArcPath.#positiveDelta(
+                      angle,
+                      geometry.startAngle
+                  )
+        return delta <= geometry.span + 0.000001
+    }
+
+    /**
+     * Builds finite bounds around a non-empty point list.
+     * @param {{ x: number, y: number }[]} points Points to include.
+     * @returns {{ minX: number, minY: number, maxX: number, maxY: number }} Bounds.
+     */
+    static #bounds(points) {
+        const bounds = {
+            minX: Infinity,
+            minY: Infinity,
+            maxX: -Infinity,
+            maxY: -Infinity
+        }
+        for (const point of points) {
+            bounds.minX = Math.min(bounds.minX, point.x)
+            bounds.minY = Math.min(bounds.minY, point.y)
+            bounds.maxX = Math.max(bounds.maxX, point.x)
+            bounds.maxY = Math.max(bounds.maxY, point.y)
+        }
+        return bounds
     }
 
     /**

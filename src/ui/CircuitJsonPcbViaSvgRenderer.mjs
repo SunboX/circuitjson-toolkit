@@ -1,3 +1,5 @@
+import { SafeXmlText } from './SafeXmlText.mjs'
+
 /**
  * Renders via-like drilled primitives as SVG shapes.
  */
@@ -159,10 +161,6 @@ export class CircuitJsonPcbViaSvgRenderer {
      * @returns {string}
      */
     static #escapeHtml(value) {
-        return String(value ?? '')
-            .replaceAll('&', '&amp;')
-            .replaceAll('"', '&quot;')
-            .replaceAll('<', '&lt;')
-            .replaceAll('>', '&gt;')
+        return SafeXmlText.escape(value)
     }
 }

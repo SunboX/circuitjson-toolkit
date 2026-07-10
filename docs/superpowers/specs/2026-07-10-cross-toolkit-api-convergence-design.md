@@ -365,9 +365,16 @@ SchematicSvgRenderer.render(document, options = {})
 BomTableRenderer.render(document, options = {})
 ```
 
+The reusable `PcbRenderPlan` is an internal implementation detail behind
+`PcbSvgRenderer`; consumers and source toolkits compose through the canonical
+renderer facade and must not deep-import or forge prepared plans.
+
 `PcbSvgRenderer` options use `side: 'top' | 'bottom'`, `layers`,
 `fidelity: 'auto' | 'canonical' | 'native'`, and common SVG metadata/style
-controls. `auto` uses native extension hooks when the envelope contains the
+controls: `id`, `className`, `title`, `description`, `attributes`, and `style`.
+`attributes` is a deterministic `data-*`/`aria-*` scalar map, while `style` is
+a deterministic CSS custom-property map. The same controls apply to schematic
+SVG output. `auto` uses native extension hooks when the envelope contains the
 required data and otherwise renders canonical CircuitJSON. Explicit `native`
 without the required extension fails with `ERR_EXTENSION_DATA_REQUIRED` rather
 than approximating fidelity. `render()` returns one SVG string.
@@ -498,9 +505,10 @@ introduced unilaterally.
 
 The core owns source-neutral preparation, schemas, indexes, and rendering
 primitives. Each source toolkit owns its canonical renderer facade and composes
-the shared plan with native extension hooks. Gerber ordering/polarity, native
-typography, Altium/KiCad fidelity rules, and source placement policies are never
-approximated or moved into the core.
+the shared canonical renderer foundation with native extension hooks; the
+internal render plan is not a source-toolkit integration boundary. Gerber
+ordering/polarity, native typography, Altium/KiCad fidelity rules, and source
+placement policies are never approximated or moved into the core.
 
 The initial schema synchronization target is upstream `circuit-json` version
 `0.0.446`. Runtime code remains optimized for browser use; synchronization may
