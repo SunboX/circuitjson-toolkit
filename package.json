@@ -49,9 +49,14 @@
     "scripts": {
         "test": "node --test",
         "format": "prettier --write .",
-        "check:format": "prettier --check ."
+        "check:format": "prettier --check .",
+        "sync:schema": "node scripts/sync-circuit-json-schema.mjs",
+        "capture:api": "node scripts/capture-api-baseline.mjs",
+        "check:features": "node scripts/check-feature-preservation.mjs",
+        "benchmark": "node scripts/run-benchmarks.mjs"
     },
     "devDependencies": {
+        "circuit-json": "0.0.446",
         "prettier": "^3.4.2"
     },
     "engines": {

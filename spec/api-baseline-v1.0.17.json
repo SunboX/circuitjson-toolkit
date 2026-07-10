@@ -1,0 +1,2830 @@
+{
+    "schema": "circuitjson-toolkit.api-baseline.v1",
+    "package": "circuitjson-toolkit",
+    "packageVersion": "1.0.17",
+    "entrypoints": [
+        {
+            "entrypoint": ".",
+            "target": "./src/index.mjs",
+            "exports": [
+                {
+                    "name": "CircuitJsonBomBuilder",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonDocument",
+                    "type": "function",
+                    "staticMethods": [
+                        "assertModel",
+                        "attachMetadata",
+                        "isElement",
+                        "isModel",
+                        "validateModel"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonElementValidator",
+                    "type": "function",
+                    "staticMethods": [
+                        "compareSchemaSnapshot",
+                        "idFieldExceptions",
+                        "knownElementTypes",
+                        "schemaSnapshot",
+                        "validateElement",
+                        "validateModel",
+                        "variantSets"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonIndexer",
+                    "type": "function",
+                    "staticMethods": [
+                        "collectDiagnostics",
+                        "getElementId",
+                        "index"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonManufacturingBuilder",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonManufacturingDownloadBuilder",
+                    "type": "function",
+                    "staticMethods": ["build", "supportsFormat"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonParser",
+                    "type": "function",
+                    "staticMethods": ["parseBytes", "parseText"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbClearanceDiagnostics",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbCopperGeometry",
+                    "type": "function",
+                    "staticMethods": ["clearance"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbDrawingStyle",
+                    "type": "function",
+                    "staticMethods": ["fromElement"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbHolePrimitiveModel",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbNetMetadata",
+                    "type": "function",
+                    "staticMethods": ["decoratePrimitives", "nets"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPadPrimitiveModel",
+                    "type": "function",
+                    "staticMethods": ["explicitRadius", "radius", "shape"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveArtwork",
+                    "type": "function",
+                    "staticMethods": [
+                        "build",
+                        "clearanceDiagnostics",
+                        "cutoutPrimitives",
+                        "traceLengths"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveAttributeRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveBuilder",
+                    "type": "function",
+                    "staticMethods": ["build", "elements"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveFields",
+                    "type": "function",
+                    "staticMethods": [
+                        "boardBounds",
+                        "center",
+                        "derivedId",
+                        "layer",
+                        "layers",
+                        "linePoints",
+                        "mergedBoardBounds",
+                        "netName",
+                        "optionalLength",
+                        "point",
+                        "points",
+                        "pointsCenter",
+                        "side",
+                        "uniqueStrings"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveGeometry",
+                    "type": "function",
+                    "staticMethods": [
+                        "bounds",
+                        "boundsAnchors",
+                        "centerBounds",
+                        "cornerAnchors",
+                        "mergedPrimitiveBounds",
+                        "pointsBounds",
+                        "segmentBounds"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveGroups",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveIndex",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveOverlays",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbSvgRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbTraceLengthModel",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbViaSvgRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbZonePrimitiveBuilder",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicSvgArcPath",
+                    "type": "function",
+                    "staticMethods": ["fromThreePoints"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicSvgPortMetadata",
+                    "type": "function",
+                    "staticMethods": ["attributes", "label", "sourcePorts"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicSvgPrimitiveAttributes",
+                    "type": "function",
+                    "staticMethods": ["attributes"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicSvgRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicTableSvgRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSourceMetadata",
+                    "type": "function",
+                    "staticMethods": [
+                        "normalizeSourceComponent",
+                        "normalizeSourceNetName",
+                        "normalizeSourcePortName"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSupportMatrixBuilder",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonUnits",
+                    "type": "function",
+                    "staticMethods": [
+                        "angle",
+                        "mmToMil",
+                        "optionalAngle",
+                        "optionalLength",
+                        "optionalPoint",
+                        "optionalSize",
+                        "point",
+                        "pointMmToMil"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "PcbBoundsSelectionModel",
+                    "type": "function",
+                    "staticMethods": ["normalizeBounds", "resolve"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "PcbCandidateSelectionModel",
+                    "type": "function",
+                    "staticMethods": [
+                        "componentCandidate",
+                        "fromPrimitive",
+                        "netCandidate",
+                        "netName",
+                        "selectedCandidate"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "PcbDiagnosticFocusModel",
+                    "type": "function",
+                    "staticMethods": ["build", "viewportBounds"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "PcbInteractionPrimitiveModel",
+                    "type": "function",
+                    "staticMethods": [
+                        "build",
+                        "hitTest",
+                        "resolveLayerGroups",
+                        "resolveSnapPoint"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "SelectedPartCircuitJsonExportAdapter",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "SpiceCompatibilityPreprocessor",
+                    "type": "function",
+                    "staticMethods": ["rewrite"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "SpiceSimulationService",
+                    "type": "function",
+                    "staticMethods": ["simulate"],
+                    "instanceMethods": ["simulate"]
+                }
+            ]
+        },
+        {
+            "entrypoint": "./parser",
+            "target": "./src/parser.mjs",
+            "exports": [
+                {
+                    "name": "CircuitJsonDocument",
+                    "type": "function",
+                    "staticMethods": [
+                        "assertModel",
+                        "attachMetadata",
+                        "isElement",
+                        "isModel",
+                        "validateModel"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonParser",
+                    "type": "function",
+                    "staticMethods": ["parseBytes", "parseText"],
+                    "instanceMethods": []
+                }
+            ]
+        },
+        {
+            "entrypoint": "./renderers",
+            "target": "./src/renderers.mjs",
+            "exports": [
+                {
+                    "name": "CircuitJsonManufacturingDownloadBuilder",
+                    "type": "function",
+                    "staticMethods": ["build", "supportsFormat"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbClearanceDiagnostics",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbCopperGeometry",
+                    "type": "function",
+                    "staticMethods": ["clearance"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbDrawingStyle",
+                    "type": "function",
+                    "staticMethods": ["fromElement"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbHolePrimitiveModel",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbNetMetadata",
+                    "type": "function",
+                    "staticMethods": ["decoratePrimitives", "nets"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPadPrimitiveModel",
+                    "type": "function",
+                    "staticMethods": ["explicitRadius", "radius", "shape"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveArtwork",
+                    "type": "function",
+                    "staticMethods": [
+                        "build",
+                        "clearanceDiagnostics",
+                        "cutoutPrimitives",
+                        "traceLengths"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveAttributeRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveBuilder",
+                    "type": "function",
+                    "staticMethods": ["build", "elements"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveFields",
+                    "type": "function",
+                    "staticMethods": [
+                        "boardBounds",
+                        "center",
+                        "derivedId",
+                        "layer",
+                        "layers",
+                        "linePoints",
+                        "mergedBoardBounds",
+                        "netName",
+                        "optionalLength",
+                        "point",
+                        "points",
+                        "pointsCenter",
+                        "side",
+                        "uniqueStrings"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveGeometry",
+                    "type": "function",
+                    "staticMethods": [
+                        "bounds",
+                        "boundsAnchors",
+                        "centerBounds",
+                        "cornerAnchors",
+                        "mergedPrimitiveBounds",
+                        "pointsBounds",
+                        "segmentBounds"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveGroups",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveIndex",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbPrimitiveOverlays",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbSvgRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbTraceLengthModel",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbViaSvgRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonPcbZonePrimitiveBuilder",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicSvgArcPath",
+                    "type": "function",
+                    "staticMethods": ["fromThreePoints"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicSvgPortMetadata",
+                    "type": "function",
+                    "staticMethods": ["attributes", "label", "sourcePorts"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicSvgPrimitiveAttributes",
+                    "type": "function",
+                    "staticMethods": ["attributes"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicSvgRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "CircuitJsonSchematicTableSvgRenderer",
+                    "type": "function",
+                    "staticMethods": ["render"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "PcbBoundsSelectionModel",
+                    "type": "function",
+                    "staticMethods": ["normalizeBounds", "resolve"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "PcbCandidateSelectionModel",
+                    "type": "function",
+                    "staticMethods": [
+                        "componentCandidate",
+                        "fromPrimitive",
+                        "netCandidate",
+                        "netName",
+                        "selectedCandidate"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "PcbDiagnosticFocusModel",
+                    "type": "function",
+                    "staticMethods": ["build", "viewportBounds"],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "PcbInteractionPrimitiveModel",
+                    "type": "function",
+                    "staticMethods": [
+                        "build",
+                        "hitTest",
+                        "resolveLayerGroups",
+                        "resolveSnapPoint"
+                    ],
+                    "instanceMethods": []
+                },
+                {
+                    "name": "SelectedPartCircuitJsonExportAdapter",
+                    "type": "function",
+                    "staticMethods": ["build"],
+                    "instanceMethods": []
+                }
+            ]
+        }
+    ],
+    "features": [
+        {
+            "feature": "./parser#CircuitJsonDocument",
+            "kind": "export",
+            "capabilityId": "validation.document",
+            "entrypoint": "./parser",
+            "exportName": "CircuitJsonDocument"
+        },
+        {
+            "feature": "./parser#CircuitJsonDocument.assertModel()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": "./parser",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "assertModel",
+            "methodType": "static"
+        },
+        {
+            "feature": "./parser#CircuitJsonDocument.attachMetadata()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": "./parser",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "attachMetadata",
+            "methodType": "static"
+        },
+        {
+            "feature": "./parser#CircuitJsonDocument.isElement()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": "./parser",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "isElement",
+            "methodType": "static"
+        },
+        {
+            "feature": "./parser#CircuitJsonDocument.isModel()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": "./parser",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "isModel",
+            "methodType": "static"
+        },
+        {
+            "feature": "./parser#CircuitJsonDocument.validateModel()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": "./parser",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "validateModel",
+            "methodType": "static"
+        },
+        {
+            "feature": "./parser#CircuitJsonParser",
+            "kind": "export",
+            "capabilityId": "parse.document",
+            "entrypoint": "./parser",
+            "exportName": "CircuitJsonParser"
+        },
+        {
+            "feature": "./parser#CircuitJsonParser.parseBytes()",
+            "kind": "method",
+            "capabilityId": "parse.document",
+            "entrypoint": "./parser",
+            "exportName": "CircuitJsonParser",
+            "methodName": "parseBytes",
+            "methodType": "static"
+        },
+        {
+            "feature": "./parser#CircuitJsonParser.parseText()",
+            "kind": "method",
+            "capabilityId": "parse.document",
+            "entrypoint": "./parser",
+            "exportName": "CircuitJsonParser",
+            "methodName": "parseText",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonManufacturingDownloadBuilder",
+            "kind": "export",
+            "capabilityId": "manufacturing.export",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonManufacturingDownloadBuilder"
+        },
+        {
+            "feature": "./renderers#CircuitJsonManufacturingDownloadBuilder.build()",
+            "kind": "method",
+            "capabilityId": "manufacturing.export",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonManufacturingDownloadBuilder",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonManufacturingDownloadBuilder.supportsFormat()",
+            "kind": "method",
+            "capabilityId": "manufacturing.export",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonManufacturingDownloadBuilder",
+            "methodName": "supportsFormat",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbClearanceDiagnostics",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbClearanceDiagnostics"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbClearanceDiagnostics.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbClearanceDiagnostics",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbCopperGeometry",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbCopperGeometry"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbCopperGeometry.clearance()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbCopperGeometry",
+            "methodName": "clearance",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbDrawingStyle",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbDrawingStyle"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbDrawingStyle.fromElement()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbDrawingStyle",
+            "methodName": "fromElement",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbHolePrimitiveModel",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbHolePrimitiveModel"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbHolePrimitiveModel.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbHolePrimitiveModel",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbNetMetadata",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbNetMetadata"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbNetMetadata.decoratePrimitives()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbNetMetadata",
+            "methodName": "decoratePrimitives",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbNetMetadata.nets()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbNetMetadata",
+            "methodName": "nets",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPadPrimitiveModel",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPadPrimitiveModel"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPadPrimitiveModel.explicitRadius()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPadPrimitiveModel",
+            "methodName": "explicitRadius",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPadPrimitiveModel.radius()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPadPrimitiveModel",
+            "methodName": "radius",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPadPrimitiveModel.shape()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPadPrimitiveModel",
+            "methodName": "shape",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveArtwork",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveArtwork.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveArtwork.clearanceDiagnostics()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork",
+            "methodName": "clearanceDiagnostics",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveArtwork.cutoutPrimitives()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork",
+            "methodName": "cutoutPrimitives",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveArtwork.traceLengths()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork",
+            "methodName": "traceLengths",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveAttributeRenderer",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveAttributeRenderer"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveAttributeRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveAttributeRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveBuilder",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveBuilder"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveBuilder.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveBuilder",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveBuilder.elements()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveBuilder",
+            "methodName": "elements",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.boardBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "boardBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.center()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "center",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.derivedId()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "derivedId",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.layer()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "layer",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.layers()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "layers",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.linePoints()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "linePoints",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.mergedBoardBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "mergedBoardBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.netName()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "netName",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.optionalLength()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "optionalLength",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.point()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "point",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.points()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "points",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.pointsCenter()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "pointsCenter",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.side()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "side",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveFields.uniqueStrings()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "uniqueStrings",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGeometry",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGeometry.bounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "bounds",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGeometry.boundsAnchors()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "boundsAnchors",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGeometry.centerBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "centerBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGeometry.cornerAnchors()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "cornerAnchors",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGeometry.mergedPrimitiveBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "mergedPrimitiveBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGeometry.pointsBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "pointsBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGeometry.segmentBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "segmentBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGroups",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGroups"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveGroups.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveGroups",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveIndex",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveIndex"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveIndex.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveIndex",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveOverlays",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveOverlays"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbPrimitiveOverlays.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbPrimitiveOverlays",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbSvgRenderer",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbSvgRenderer"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbSvgRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbSvgRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbTraceLengthModel",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbTraceLengthModel"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbTraceLengthModel.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbTraceLengthModel",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbViaSvgRenderer",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbViaSvgRenderer"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbViaSvgRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbViaSvgRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbZonePrimitiveBuilder",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbZonePrimitiveBuilder"
+        },
+        {
+            "feature": "./renderers#CircuitJsonPcbZonePrimitiveBuilder.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonPcbZonePrimitiveBuilder",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgArcPath",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgArcPath"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgArcPath.fromThreePoints()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgArcPath",
+            "methodName": "fromThreePoints",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgPortMetadata",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgPortMetadata"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgPortMetadata.attributes()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgPortMetadata",
+            "methodName": "attributes",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgPortMetadata.label()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgPortMetadata",
+            "methodName": "label",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgPortMetadata.sourcePorts()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgPortMetadata",
+            "methodName": "sourcePorts",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgPrimitiveAttributes",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgPrimitiveAttributes"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgPrimitiveAttributes.attributes()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgPrimitiveAttributes",
+            "methodName": "attributes",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgRenderer",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgRenderer"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicSvgRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicSvgRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicTableSvgRenderer",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicTableSvgRenderer"
+        },
+        {
+            "feature": "./renderers#CircuitJsonSchematicTableSvgRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": "./renderers",
+            "exportName": "CircuitJsonSchematicTableSvgRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbBoundsSelectionModel",
+            "kind": "export",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbBoundsSelectionModel"
+        },
+        {
+            "feature": "./renderers#PcbBoundsSelectionModel.normalizeBounds()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbBoundsSelectionModel",
+            "methodName": "normalizeBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbBoundsSelectionModel.resolve()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbBoundsSelectionModel",
+            "methodName": "resolve",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbCandidateSelectionModel",
+            "kind": "export",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbCandidateSelectionModel"
+        },
+        {
+            "feature": "./renderers#PcbCandidateSelectionModel.componentCandidate()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "componentCandidate",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbCandidateSelectionModel.fromPrimitive()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "fromPrimitive",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbCandidateSelectionModel.netCandidate()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "netCandidate",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbCandidateSelectionModel.netName()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "netName",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbCandidateSelectionModel.selectedCandidate()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "selectedCandidate",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbDiagnosticFocusModel",
+            "kind": "export",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbDiagnosticFocusModel"
+        },
+        {
+            "feature": "./renderers#PcbDiagnosticFocusModel.build()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbDiagnosticFocusModel",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbDiagnosticFocusModel.viewportBounds()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbDiagnosticFocusModel",
+            "methodName": "viewportBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbInteractionPrimitiveModel",
+            "kind": "export",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbInteractionPrimitiveModel"
+        },
+        {
+            "feature": "./renderers#PcbInteractionPrimitiveModel.build()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbInteractionPrimitiveModel",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbInteractionPrimitiveModel.hitTest()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbInteractionPrimitiveModel",
+            "methodName": "hitTest",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbInteractionPrimitiveModel.resolveLayerGroups()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbInteractionPrimitiveModel",
+            "methodName": "resolveLayerGroups",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#PcbInteractionPrimitiveModel.resolveSnapPoint()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": "./renderers",
+            "exportName": "PcbInteractionPrimitiveModel",
+            "methodName": "resolveSnapPoint",
+            "methodType": "static"
+        },
+        {
+            "feature": "./renderers#SelectedPartCircuitJsonExportAdapter",
+            "kind": "export",
+            "capabilityId": "export.selected-part",
+            "entrypoint": "./renderers",
+            "exportName": "SelectedPartCircuitJsonExportAdapter"
+        },
+        {
+            "feature": "./renderers#SelectedPartCircuitJsonExportAdapter.build()",
+            "kind": "method",
+            "capabilityId": "export.selected-part",
+            "entrypoint": "./renderers",
+            "exportName": "SelectedPartCircuitJsonExportAdapter",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonBomBuilder",
+            "kind": "export",
+            "capabilityId": "bom.build",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonBomBuilder"
+        },
+        {
+            "feature": ".#CircuitJsonBomBuilder.build()",
+            "kind": "method",
+            "capabilityId": "bom.build",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonBomBuilder",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonDocument",
+            "kind": "export",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonDocument"
+        },
+        {
+            "feature": ".#CircuitJsonDocument.assertModel()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "assertModel",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonDocument.attachMetadata()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "attachMetadata",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonDocument.isElement()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "isElement",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonDocument.isModel()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "isModel",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonDocument.validateModel()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonDocument",
+            "methodName": "validateModel",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonElementValidator",
+            "kind": "export",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonElementValidator"
+        },
+        {
+            "feature": ".#CircuitJsonElementValidator.compareSchemaSnapshot()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonElementValidator",
+            "methodName": "compareSchemaSnapshot",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonElementValidator.idFieldExceptions()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonElementValidator",
+            "methodName": "idFieldExceptions",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonElementValidator.knownElementTypes()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonElementValidator",
+            "methodName": "knownElementTypes",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonElementValidator.schemaSnapshot()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonElementValidator",
+            "methodName": "schemaSnapshot",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonElementValidator.validateElement()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonElementValidator",
+            "methodName": "validateElement",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonElementValidator.validateModel()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonElementValidator",
+            "methodName": "validateModel",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonElementValidator.variantSets()",
+            "kind": "method",
+            "capabilityId": "validation.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonElementValidator",
+            "methodName": "variantSets",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonIndexer",
+            "kind": "export",
+            "capabilityId": "query.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonIndexer"
+        },
+        {
+            "feature": ".#CircuitJsonIndexer.collectDiagnostics()",
+            "kind": "method",
+            "capabilityId": "query.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonIndexer",
+            "methodName": "collectDiagnostics",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonIndexer.getElementId()",
+            "kind": "method",
+            "capabilityId": "query.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonIndexer",
+            "methodName": "getElementId",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonIndexer.index()",
+            "kind": "method",
+            "capabilityId": "query.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonIndexer",
+            "methodName": "index",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonManufacturingBuilder",
+            "kind": "export",
+            "capabilityId": "manufacturing.export",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonManufacturingBuilder"
+        },
+        {
+            "feature": ".#CircuitJsonManufacturingBuilder.build()",
+            "kind": "method",
+            "capabilityId": "manufacturing.export",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonManufacturingBuilder",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonManufacturingDownloadBuilder",
+            "kind": "export",
+            "capabilityId": "manufacturing.export",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonManufacturingDownloadBuilder"
+        },
+        {
+            "feature": ".#CircuitJsonManufacturingDownloadBuilder.build()",
+            "kind": "method",
+            "capabilityId": "manufacturing.export",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonManufacturingDownloadBuilder",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonManufacturingDownloadBuilder.supportsFormat()",
+            "kind": "method",
+            "capabilityId": "manufacturing.export",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonManufacturingDownloadBuilder",
+            "methodName": "supportsFormat",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonParser",
+            "kind": "export",
+            "capabilityId": "parse.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonParser"
+        },
+        {
+            "feature": ".#CircuitJsonParser.parseBytes()",
+            "kind": "method",
+            "capabilityId": "parse.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonParser",
+            "methodName": "parseBytes",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonParser.parseText()",
+            "kind": "method",
+            "capabilityId": "parse.document",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonParser",
+            "methodName": "parseText",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbClearanceDiagnostics",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbClearanceDiagnostics"
+        },
+        {
+            "feature": ".#CircuitJsonPcbClearanceDiagnostics.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbClearanceDiagnostics",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbCopperGeometry",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbCopperGeometry"
+        },
+        {
+            "feature": ".#CircuitJsonPcbCopperGeometry.clearance()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbCopperGeometry",
+            "methodName": "clearance",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbDrawingStyle",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbDrawingStyle"
+        },
+        {
+            "feature": ".#CircuitJsonPcbDrawingStyle.fromElement()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbDrawingStyle",
+            "methodName": "fromElement",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbHolePrimitiveModel",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbHolePrimitiveModel"
+        },
+        {
+            "feature": ".#CircuitJsonPcbHolePrimitiveModel.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbHolePrimitiveModel",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbNetMetadata",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbNetMetadata"
+        },
+        {
+            "feature": ".#CircuitJsonPcbNetMetadata.decoratePrimitives()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbNetMetadata",
+            "methodName": "decoratePrimitives",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbNetMetadata.nets()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbNetMetadata",
+            "methodName": "nets",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPadPrimitiveModel",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPadPrimitiveModel"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPadPrimitiveModel.explicitRadius()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPadPrimitiveModel",
+            "methodName": "explicitRadius",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPadPrimitiveModel.radius()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPadPrimitiveModel",
+            "methodName": "radius",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPadPrimitiveModel.shape()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPadPrimitiveModel",
+            "methodName": "shape",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveArtwork",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveArtwork.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveArtwork.clearanceDiagnostics()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork",
+            "methodName": "clearanceDiagnostics",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveArtwork.cutoutPrimitives()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork",
+            "methodName": "cutoutPrimitives",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveArtwork.traceLengths()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveArtwork",
+            "methodName": "traceLengths",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveAttributeRenderer",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveAttributeRenderer"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveAttributeRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveAttributeRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveBuilder",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveBuilder"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveBuilder.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveBuilder",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveBuilder.elements()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveBuilder",
+            "methodName": "elements",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.boardBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "boardBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.center()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "center",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.derivedId()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "derivedId",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.layer()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "layer",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.layers()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "layers",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.linePoints()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "linePoints",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.mergedBoardBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "mergedBoardBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.netName()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "netName",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.optionalLength()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "optionalLength",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.point()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "point",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.points()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "points",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.pointsCenter()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "pointsCenter",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.side()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "side",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveFields.uniqueStrings()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveFields",
+            "methodName": "uniqueStrings",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGeometry",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGeometry.bounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "bounds",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGeometry.boundsAnchors()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "boundsAnchors",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGeometry.centerBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "centerBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGeometry.cornerAnchors()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "cornerAnchors",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGeometry.mergedPrimitiveBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "mergedPrimitiveBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGeometry.pointsBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "pointsBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGeometry.segmentBounds()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGeometry",
+            "methodName": "segmentBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGroups",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGroups"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveGroups.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveGroups",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveIndex",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveIndex"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveIndex.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveIndex",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveOverlays",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveOverlays"
+        },
+        {
+            "feature": ".#CircuitJsonPcbPrimitiveOverlays.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbPrimitiveOverlays",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbSvgRenderer",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbSvgRenderer"
+        },
+        {
+            "feature": ".#CircuitJsonPcbSvgRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbSvgRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbTraceLengthModel",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbTraceLengthModel"
+        },
+        {
+            "feature": ".#CircuitJsonPcbTraceLengthModel.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbTraceLengthModel",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbViaSvgRenderer",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbViaSvgRenderer"
+        },
+        {
+            "feature": ".#CircuitJsonPcbViaSvgRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbViaSvgRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonPcbZonePrimitiveBuilder",
+            "kind": "export",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbZonePrimitiveBuilder"
+        },
+        {
+            "feature": ".#CircuitJsonPcbZonePrimitiveBuilder.build()",
+            "kind": "method",
+            "capabilityId": "render.pcb",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonPcbZonePrimitiveBuilder",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgArcPath",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgArcPath"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgArcPath.fromThreePoints()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgArcPath",
+            "methodName": "fromThreePoints",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgPortMetadata",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgPortMetadata"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgPortMetadata.attributes()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgPortMetadata",
+            "methodName": "attributes",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgPortMetadata.label()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgPortMetadata",
+            "methodName": "label",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgPortMetadata.sourcePorts()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgPortMetadata",
+            "methodName": "sourcePorts",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgPrimitiveAttributes",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgPrimitiveAttributes"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgPrimitiveAttributes.attributes()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgPrimitiveAttributes",
+            "methodName": "attributes",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgRenderer",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgRenderer"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicSvgRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicSvgRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicTableSvgRenderer",
+            "kind": "export",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicTableSvgRenderer"
+        },
+        {
+            "feature": ".#CircuitJsonSchematicTableSvgRenderer.render()",
+            "kind": "method",
+            "capabilityId": "render.schematic",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSchematicTableSvgRenderer",
+            "methodName": "render",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSourceMetadata",
+            "kind": "export",
+            "capabilityId": "metadata.normalize",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSourceMetadata"
+        },
+        {
+            "feature": ".#CircuitJsonSourceMetadata.normalizeSourceComponent()",
+            "kind": "method",
+            "capabilityId": "metadata.normalize",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSourceMetadata",
+            "methodName": "normalizeSourceComponent",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSourceMetadata.normalizeSourceNetName()",
+            "kind": "method",
+            "capabilityId": "metadata.normalize",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSourceMetadata",
+            "methodName": "normalizeSourceNetName",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSourceMetadata.normalizeSourcePortName()",
+            "kind": "method",
+            "capabilityId": "metadata.normalize",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSourceMetadata",
+            "methodName": "normalizeSourcePortName",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonSupportMatrixBuilder",
+            "kind": "export",
+            "capabilityId": "metadata.normalize",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSupportMatrixBuilder"
+        },
+        {
+            "feature": ".#CircuitJsonSupportMatrixBuilder.build()",
+            "kind": "method",
+            "capabilityId": "metadata.normalize",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonSupportMatrixBuilder",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonUnits",
+            "kind": "export",
+            "capabilityId": "units.convert",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonUnits"
+        },
+        {
+            "feature": ".#CircuitJsonUnits.angle()",
+            "kind": "method",
+            "capabilityId": "units.convert",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonUnits",
+            "methodName": "angle",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonUnits.mmToMil()",
+            "kind": "method",
+            "capabilityId": "units.convert",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonUnits",
+            "methodName": "mmToMil",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonUnits.optionalAngle()",
+            "kind": "method",
+            "capabilityId": "units.convert",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonUnits",
+            "methodName": "optionalAngle",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonUnits.optionalLength()",
+            "kind": "method",
+            "capabilityId": "units.convert",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonUnits",
+            "methodName": "optionalLength",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonUnits.optionalPoint()",
+            "kind": "method",
+            "capabilityId": "units.convert",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonUnits",
+            "methodName": "optionalPoint",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonUnits.optionalSize()",
+            "kind": "method",
+            "capabilityId": "units.convert",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonUnits",
+            "methodName": "optionalSize",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonUnits.point()",
+            "kind": "method",
+            "capabilityId": "units.convert",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonUnits",
+            "methodName": "point",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#CircuitJsonUnits.pointMmToMil()",
+            "kind": "method",
+            "capabilityId": "units.convert",
+            "entrypoint": ".",
+            "exportName": "CircuitJsonUnits",
+            "methodName": "pointMmToMil",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbBoundsSelectionModel",
+            "kind": "export",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbBoundsSelectionModel"
+        },
+        {
+            "feature": ".#PcbBoundsSelectionModel.normalizeBounds()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbBoundsSelectionModel",
+            "methodName": "normalizeBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbBoundsSelectionModel.resolve()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbBoundsSelectionModel",
+            "methodName": "resolve",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbCandidateSelectionModel",
+            "kind": "export",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbCandidateSelectionModel"
+        },
+        {
+            "feature": ".#PcbCandidateSelectionModel.componentCandidate()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "componentCandidate",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbCandidateSelectionModel.fromPrimitive()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "fromPrimitive",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbCandidateSelectionModel.netCandidate()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "netCandidate",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbCandidateSelectionModel.netName()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "netName",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbCandidateSelectionModel.selectedCandidate()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbCandidateSelectionModel",
+            "methodName": "selectedCandidate",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbDiagnosticFocusModel",
+            "kind": "export",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbDiagnosticFocusModel"
+        },
+        {
+            "feature": ".#PcbDiagnosticFocusModel.build()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbDiagnosticFocusModel",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbDiagnosticFocusModel.viewportBounds()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbDiagnosticFocusModel",
+            "methodName": "viewportBounds",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbInteractionPrimitiveModel",
+            "kind": "export",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbInteractionPrimitiveModel"
+        },
+        {
+            "feature": ".#PcbInteractionPrimitiveModel.build()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbInteractionPrimitiveModel",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbInteractionPrimitiveModel.hitTest()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbInteractionPrimitiveModel",
+            "methodName": "hitTest",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbInteractionPrimitiveModel.resolveLayerGroups()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbInteractionPrimitiveModel",
+            "methodName": "resolveLayerGroups",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#PcbInteractionPrimitiveModel.resolveSnapPoint()",
+            "kind": "method",
+            "capabilityId": "interaction.pcb",
+            "entrypoint": ".",
+            "exportName": "PcbInteractionPrimitiveModel",
+            "methodName": "resolveSnapPoint",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#SelectedPartCircuitJsonExportAdapter",
+            "kind": "export",
+            "capabilityId": "export.selected-part",
+            "entrypoint": ".",
+            "exportName": "SelectedPartCircuitJsonExportAdapter"
+        },
+        {
+            "feature": ".#SelectedPartCircuitJsonExportAdapter.build()",
+            "kind": "method",
+            "capabilityId": "export.selected-part",
+            "entrypoint": ".",
+            "exportName": "SelectedPartCircuitJsonExportAdapter",
+            "methodName": "build",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#SpiceCompatibilityPreprocessor",
+            "kind": "export",
+            "capabilityId": "simulation.spice",
+            "entrypoint": ".",
+            "exportName": "SpiceCompatibilityPreprocessor"
+        },
+        {
+            "feature": ".#SpiceCompatibilityPreprocessor.rewrite()",
+            "kind": "method",
+            "capabilityId": "simulation.spice",
+            "entrypoint": ".",
+            "exportName": "SpiceCompatibilityPreprocessor",
+            "methodName": "rewrite",
+            "methodType": "static"
+        },
+        {
+            "feature": ".#SpiceSimulationService",
+            "kind": "export",
+            "capabilityId": "simulation.spice",
+            "entrypoint": ".",
+            "exportName": "SpiceSimulationService"
+        },
+        {
+            "feature": ".#SpiceSimulationService.prototype.simulate()",
+            "kind": "method",
+            "capabilityId": "simulation.spice",
+            "entrypoint": ".",
+            "exportName": "SpiceSimulationService",
+            "methodName": "simulate",
+            "methodType": "instance"
+        },
+        {
+            "feature": ".#SpiceSimulationService.simulate()",
+            "kind": "method",
+            "capabilityId": "simulation.spice",
+            "entrypoint": ".",
+            "exportName": "SpiceSimulationService",
+            "methodName": "simulate",
+            "methodType": "static"
+        },
+        {
+            "feature": "CircuitJsonParser.parseBytes.options.fileName",
+            "kind": "option",
+            "capabilityId": "parse.document"
+        },
+        {
+            "feature": "CircuitJsonParser.parseText.options.fileName",
+            "kind": "option",
+            "capabilityId": "parse.document"
+        },
+        {
+            "feature": "CircuitJsonPcbSvgRenderer.render.options.side",
+            "kind": "option",
+            "capabilityId": "render.pcb"
+        },
+        {
+            "feature": "CircuitJsonSchematicSvgPrimitiveAttributes.attributes.options.fill",
+            "kind": "option",
+            "capabilityId": "render.schematic"
+        },
+        {
+            "feature": "CircuitJsonSourceMetadata.normalizeSourceNetName.options.fallback",
+            "kind": "option",
+            "capabilityId": "metadata.normalize"
+        },
+        {
+            "feature": "CircuitJsonSourceMetadata.normalizeSourceNetName.options.usedNames",
+            "kind": "option",
+            "capabilityId": "metadata.normalize"
+        },
+        {
+            "feature": "CircuitJsonSourceMetadata.normalizeSourcePortName.options.fallback",
+            "kind": "option",
+            "capabilityId": "metadata.normalize"
+        },
+        {
+            "feature": "CircuitJsonSourceMetadata.normalizeSourcePortName.options.usedNames",
+            "kind": "option",
+            "capabilityId": "metadata.normalize"
+        },
+        {
+            "feature": "indexer builds deterministic type and id lookups",
+            "kind": "behavior",
+            "capabilityId": "query.document"
+        },
+        {
+            "feature": "indexResult.elements",
+            "kind": "field",
+            "capabilityId": "query.document"
+        },
+        {
+            "feature": "indexResult.elementsById",
+            "kind": "field",
+            "capabilityId": "query.document"
+        },
+        {
+            "feature": "indexResult.elementsByType",
+            "kind": "field",
+            "capabilityId": "query.document"
+        },
+        {
+            "feature": "indexResult.pcbComponentById",
+            "kind": "field",
+            "capabilityId": "query.document"
+        },
+        {
+            "feature": "indexResult.sourceComponentById",
+            "kind": "field",
+            "capabilityId": "query.document"
+        },
+        {
+            "feature": "manufacturing downloads reject unsupported formats",
+            "kind": "behavior",
+            "capabilityId": "manufacturing.export"
+        },
+        {
+            "feature": "parser metadata survives structured cloning",
+            "kind": "behavior",
+            "capabilityId": "parse.document"
+        },
+        {
+            "feature": "parser rejects malformed JSON with SyntaxError",
+            "kind": "behavior",
+            "capabilityId": "parse.document"
+        },
+        {
+            "feature": "parser rejects non-CircuitJSON JSON with TypeError",
+            "kind": "behavior",
+            "capabilityId": "parse.document"
+        },
+        {
+            "feature": "parserResult.fileName",
+            "kind": "field",
+            "capabilityId": "parse.document"
+        },
+        {
+            "feature": "parserResult.fileType",
+            "kind": "field",
+            "capabilityId": "parse.document"
+        },
+        {
+            "feature": "parserResult.kind",
+            "kind": "field",
+            "capabilityId": "parse.document"
+        },
+        {
+            "feature": "parserResult.sourceFormat",
+            "kind": "field",
+            "capabilityId": "parse.document"
+        },
+        {
+            "feature": "PCB renderer selects top or bottom side deterministically",
+            "kind": "behavior",
+            "capabilityId": "render.pcb"
+        },
+        {
+            "feature": "PcbBoundsSelectionModel.resolve.options.hiddenLayers",
+            "kind": "option",
+            "capabilityId": "interaction.pcb"
+        },
+        {
+            "feature": "PcbBoundsSelectionModel.resolve.options.hiddenObjects",
+            "kind": "option",
+            "capabilityId": "interaction.pcb"
+        },
+        {
+            "feature": "PcbBoundsSelectionModel.resolve.options.side",
+            "kind": "option",
+            "capabilityId": "interaction.pcb"
+        },
+        {
+            "feature": "PcbInteractionPrimitiveModel.hitTest.options.hiddenLayers",
+            "kind": "option",
+            "capabilityId": "interaction.pcb"
+        },
+        {
+            "feature": "PcbInteractionPrimitiveModel.hitTest.options.hiddenObjects",
+            "kind": "option",
+            "capabilityId": "interaction.pcb"
+        },
+        {
+            "feature": "PcbInteractionPrimitiveModel.hitTest.options.side",
+            "kind": "option",
+            "capabilityId": "interaction.pcb"
+        },
+        {
+            "feature": "PcbInteractionPrimitiveModel.hitTest.options.tolerance",
+            "kind": "option",
+            "capabilityId": "interaction.pcb"
+        },
+        {
+            "feature": "PcbInteractionPrimitiveModel.resolveSnapPoint.options.tolerance",
+            "kind": "option",
+            "capabilityId": "interaction.pcb"
+        },
+        {
+            "feature": "simulationResult.diagnostics",
+            "kind": "field",
+            "capabilityId": "simulation.spice"
+        },
+        {
+            "feature": "simulationResult.graphSummary",
+            "kind": "field",
+            "capabilityId": "simulation.spice"
+        },
+        {
+            "feature": "simulationResult.simulationCircuitJson",
+            "kind": "field",
+            "capabilityId": "simulation.spice"
+        },
+        {
+            "feature": "simulationResult.simulationResultCircuitJson",
+            "kind": "field",
+            "capabilityId": "simulation.spice"
+        },
+        {
+            "feature": "SPICE simulation returns deterministic transient graph summaries",
+            "kind": "behavior",
+            "capabilityId": "simulation.spice"
+        },
+        {
+            "feature": "SpiceSimulationService.constructor.dependencies.engine",
+            "kind": "option",
+            "capabilityId": "simulation.spice"
+        },
+        {
+            "feature": "validator rejects unknown element types",
+            "kind": "behavior",
+            "capabilityId": "validation.document"
+        }
+    ]
+}

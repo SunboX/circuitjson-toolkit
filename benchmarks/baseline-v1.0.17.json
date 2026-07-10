@@ -1,0 +1,98 @@
+{
+    "schema": "circuitjson-toolkit.benchmark.v1",
+    "packageVersion": "1.0.17",
+    "environment": {
+        "node": "v20.17.0",
+        "platform": "darwin",
+        "architecture": "arm64",
+        "cpu": "Apple M3 Max",
+        "logicalCpuCount": 16
+    },
+    "fixtureChecksum": "76b9f8d819bdff0c0a08080e9891c5a7f2717b8151c77eff836a1112027990a5",
+    "cases": [
+        {
+            "id": "parse-context-50000",
+            "primary": true,
+            "warmups": 1,
+            "samples": [
+                162.438291, 176.077917, 155.384167, 159.119208, 157.780417
+            ],
+            "medianMilliseconds": 159.119208,
+            "cloneBytes": 3527835,
+            "retainedHeap": {
+                "gcAvailable": false,
+                "beforeBytes": 72656944,
+                "afterBytes": 153504984,
+                "deltaBytes": 80848040
+            }
+        },
+        {
+            "id": "repeated-query-hit-test",
+            "primary": true,
+            "warmups": 2,
+            "samples": [
+                79.872334, 89.715166, 83.473375, 85.290458, 86.290667,
+                84.603542, 79.698541
+            ],
+            "medianMilliseconds": 84.603542,
+            "cloneBytes": 27384,
+            "retainedHeap": {
+                "gcAvailable": false,
+                "beforeBytes": 20530512,
+                "afterBytes": 85483648,
+                "deltaBytes": 64953136
+            }
+        },
+        {
+            "id": "repeated-netlist-query",
+            "primary": false,
+            "warmups": 3,
+            "samples": [
+                0.854584, 0.860125, 0.859667, 0.872167, 0.890375, 0.878917,
+                0.861917, 0.896292, 0.874
+            ],
+            "medianMilliseconds": 0.872167,
+            "cloneBytes": 158036,
+            "retainedHeap": {
+                "gcAvailable": false,
+                "beforeBytes": 85616360,
+                "afterBytes": 85969344,
+                "deltaBytes": 352984
+            }
+        },
+        {
+            "id": "multi-layer-render",
+            "primary": false,
+            "warmups": 2,
+            "samples": [
+                5.664875, 5.710666, 5.124083, 5.296667, 4.928875, 5.156791,
+                9.261959
+            ],
+            "medianMilliseconds": 5.296667,
+            "cloneBytes": 27384,
+            "retainedHeap": {
+                "gcAvailable": false,
+                "beforeBytes": 94178104,
+                "afterBytes": 20493664,
+                "deltaBytes": -73684440
+            }
+        },
+        {
+            "id": "context-reuse",
+            "primary": false,
+            "warmups": 3,
+            "samples": [
+                0.42625, 0.423375, 0.434917, 0.422417, 0.434959, 0.431417,
+                0.43075, 0.431, 0.43125
+            ],
+            "medianMilliseconds": 0.431,
+            "cloneBytes": 193406,
+            "retainedHeap": {
+                "gcAvailable": false,
+                "beforeBytes": 21538216,
+                "afterBytes": 24490248,
+                "deltaBytes": 2952032
+            }
+        }
+    ]
+}
