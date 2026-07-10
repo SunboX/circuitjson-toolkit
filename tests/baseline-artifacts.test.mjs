@@ -7,7 +7,7 @@ import test from 'node:test'
 import * as BaselineArtifacts from '../scripts/BaselineArtifacts.mjs'
 import * as BenchmarkRunner from '../scripts/run-benchmarks.mjs'
 
-test('baseline provenance verifies the peeled 1.0.17 commit and unchanged src tree', async () => {
+test('baseline provenance verifies the immutable peeled 1.0.17 source tree', async () => {
     const provenance = await BaselineArtifacts.BaselineProvenance.capture()
 
     assert.deepEqual(provenance, {

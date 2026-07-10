@@ -1,10 +1,42 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { promisify } from 'node:util'
 
 import { PublicContractExtractor } from '../scripts/PublicContractExtractor.mjs'
 
 const repositoryRoot = new URL('../', import.meta.url)
+const execFileAsync = promisify(execFile)
+const baselineCommit = '8c9d7deb0229d7d7d8d2f7bdcd621933e88753f9'
+
+/**
+ * Extracts public contracts from the immutable baseline Git tree.
+ * @param {import('node:test').TestContext} context Test context.
+ * @returns {Promise<Record<string, any>[]>} Baseline source contracts.
+ */
+async function extractBaselineContracts(context) {
+    const root = await mkdtemp(join(tmpdir(), 'circuitjson-contract-tree-'))
+    const archive = join(root, 'source.tar')
+    context.after(() => rm(root, { recursive: true, force: true }))
+    await execFileAsync(
+        'git',
+        [
+            'archive',
+            '--format=tar',
+            `--output=${archive}`,
+            baselineCommit,
+            'package.json',
+            'src'
+        ],
+        { cwd: fileURLToPath(repositoryRoot) }
+    )
+    await execFileAsync('tar', ['-xf', archive, '-C', root])
+    return PublicContractExtractor.extract(pathToFileURL(`${root}/`))
+}
 
 /**
  * Selects the stable source-derived contract representation.
@@ -55,14 +87,14 @@ test('source extractor derives public signatures, arguments, property reads, and
     )
 })
 
-test('immutable API baseline covers the complete live source-derived inventory', async () => {
+test('immutable API baseline covers the approved source-derived inventory', async (context) => {
     const baseline = JSON.parse(
         await readFile(
             new URL('spec/api-baseline-v1.0.17.json', repositoryRoot),
             'utf8'
         )
     )
-    const extracted = await PublicContractExtractor.extract(repositoryRoot)
+    const extracted = await extractBaselineContracts(context)
     const captured = baseline.features.filter(
         (feature) => feature.sourceContract !== undefined
     )

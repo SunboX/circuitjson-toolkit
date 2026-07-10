@@ -539,7 +539,9 @@ export async function captureApiBaseline() {
     ]
         .map((feature) => mapFeature(feature, testSources))
         .sort((left, right) => left.feature.localeCompare(right.feature))
-    const provenance = await BaselineProvenance.capture(repositoryRoot)
+    const provenance = await BaselineProvenance.capture(repositoryRoot, {
+        requireCurrentTree: true
+    })
     const baseline = {
         schema: 'circuitjson-toolkit.api-baseline.v1',
         package: pkg.name,

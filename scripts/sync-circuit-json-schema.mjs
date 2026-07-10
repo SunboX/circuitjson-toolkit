@@ -55,7 +55,9 @@ export async function syncCircuitJsonSchema() {
     const snapshot = structuredClone(
         CircuitJsonElementValidator.schemaSnapshot()
     )
-    const provenance = await BaselineProvenance.capture(repositoryRoot)
+    const provenance = await BaselineProvenance.capture(repositoryRoot, {
+        requireCurrentTree: true
+    })
     const provenanceArtifact = {
         schema: 'circuitjson-toolkit.baseline-provenance.v1',
         package: 'circuitjson-toolkit',

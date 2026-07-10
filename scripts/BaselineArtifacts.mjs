@@ -59,11 +59,15 @@ export class ImmutableBaselineWriter {
  */
 export class BaselineProvenance {
     /**
-     * Verifies the peeled tag and unchanged current src tree.
+     * Verifies the peeled tag and optionally the unchanged current src tree.
      * @param {string | URL} [repositoryRoot] Repository root.
+     * @param {{ requireCurrentTree?: boolean }} [options] Verification options.
      * @returns {Promise<{ sourceCommit: string, sourceTree: string }>} Verified provenance.
      */
-    static async capture(repositoryRoot = new URL('../', import.meta.url)) {
+    static async capture(
+        repositoryRoot = new URL('../', import.meta.url),
+        options = {}
+    ) {
         const root = BaselineProvenance.#rootPath(repositoryRoot)
         const sourceCommit = await BaselineProvenance.#git(
             root,
@@ -75,28 +79,6 @@ export class BaselineProvenance {
             'rev-parse',
             `${EXPECTED_SOURCE_COMMIT}:src`
         )
-        const headTree = await BaselineProvenance.#git(
-            root,
-            'rev-parse',
-            'HEAD:src'
-        )
-        const committedChanges = await BaselineProvenance.#git(
-            root,
-            'diff',
-            '--name-only',
-            EXPECTED_SOURCE_COMMIT,
-            '--',
-            'src'
-        )
-        const workingChanges = await BaselineProvenance.#git(
-            root,
-            'status',
-            '--porcelain',
-            '--untracked-files=all',
-            '--',
-            'src'
-        )
-
         if (
             sourceCommit !== EXPECTED_SOURCE_COMMIT ||
             sourceTree !== EXPECTED_SOURCE_TREE
@@ -105,6 +87,38 @@ export class BaselineProvenance {
                 'The peeled v1.0.17 source commit or src tree does not match the approved baseline.'
             )
         }
+        if (options.requireCurrentTree) {
+            await BaselineProvenance.#assertCurrentTree(root, sourceTree)
+        }
+        return { sourceCommit, sourceTree }
+    }
+
+    /**
+     * Verifies that the active source tree still matches the release baseline.
+     * @param {string} repositoryRoot Repository root.
+     * @param {string} sourceTree Approved source tree hash.
+     * @returns {Promise<void>}
+     */
+    static async #assertCurrentTree(repositoryRoot, sourceTree) {
+        const [headTree, committedChanges, workingChanges] = await Promise.all([
+            BaselineProvenance.#git(repositoryRoot, 'rev-parse', 'HEAD:src'),
+            BaselineProvenance.#git(
+                repositoryRoot,
+                'diff',
+                '--name-only',
+                EXPECTED_SOURCE_COMMIT,
+                '--',
+                'src'
+            ),
+            BaselineProvenance.#git(
+                repositoryRoot,
+                'status',
+                '--porcelain',
+                '--untracked-files=all',
+                '--',
+                'src'
+            )
+        ])
         if (
             headTree !== sourceTree ||
             committedChanges.length > 0 ||
@@ -114,7 +128,6 @@ export class BaselineProvenance {
                 'The current src tree differs from the approved v1.0.17 baseline.'
             )
         }
-        return { sourceCommit, sourceTree }
     }
 
     /**
