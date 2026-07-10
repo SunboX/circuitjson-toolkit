@@ -6,7 +6,8 @@ export class CircuitJsonModelFreezeTraversal {
     #model
     #seen
     #targets = []
-    #unsupported = false
+    #unsupportedAccessor = false
+    #unsupportedContainer = false
 
     /**
      * Creates a postorder model freeze traversal.
@@ -16,7 +17,8 @@ export class CircuitJsonModelFreezeTraversal {
     constructor(model, enabled) {
         this.#enabled = enabled
         this.#model = model
-        this.#seen = new Set([model])
+        this.#seen = new Set()
+        this.visit(model)
     }
 
     /**
@@ -29,14 +31,21 @@ export class CircuitJsonModelFreezeTraversal {
             return
         }
         if (!CircuitJsonModelFreezeTraversal.#plain(value)) {
-            this.#unsupported = true
+            this.#unsupportedContainer = true
             return
         }
         if (this.#seen.has(value)) return
         this.#seen.add(value)
 
-        const children = Array.isArray(value) ? value : Object.values(value)
-        for (const child of children) this.visit(child)
+        const descriptors = Object.getOwnPropertyDescriptors(value)
+        for (const key of Reflect.ownKeys(descriptors)) {
+            const descriptor = descriptors[key]
+            if (!Object.hasOwn(descriptor, 'value')) {
+                this.#unsupportedAccessor = true
+                continue
+            }
+            this.visit(descriptor.value)
+        }
         this.#targets.push(value)
     }
 
@@ -45,11 +54,18 @@ export class CircuitJsonModelFreezeTraversal {
      * @returns {string[]} Validation errors.
      */
     errors() {
-        return this.#unsupported
-            ? [
-                  'Immutable CircuitJSON models may contain only primitives, plain objects and arrays.'
-              ]
-            : []
+        const errors = []
+        if (this.#unsupportedContainer) {
+            errors.push(
+                'Immutable CircuitJSON models may contain only primitives, plain objects and arrays.'
+            )
+        }
+        if (this.#unsupportedAccessor) {
+            errors.push(
+                'Immutable CircuitJSON models may contain only data properties.'
+            )
+        }
+        return errors
     }
 
     /**
@@ -74,3 +90,6 @@ export class CircuitJsonModelFreezeTraversal {
         return prototype === Object.prototype || prototype === null
     }
 }
+
+Object.freeze(CircuitJsonModelFreezeTraversal.prototype)
+Object.freeze(CircuitJsonModelFreezeTraversal)

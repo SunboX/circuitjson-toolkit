@@ -58,10 +58,10 @@ export class CircuitJsonIndexer {
             : null
         const requested = new Set(families || [])
         const full = families === null
-        const wants = (name) => full || requested.has(name)
-        const buildElements = wants('elements')
-        const buildRelations = wants('relations')
-        const buildConnectivity = wants('connectivity')
+        const buildElements = full || requested.has('elements')
+        const buildRelations = full || requested.has('relations')
+        const buildConnectivity = full || requested.has('connectivity')
+        const buildSpatial = full || requested.has('spatial')
         const elementsByType = new Map()
         const elementsById = new Map()
         const relationsByField = new Map()
@@ -105,7 +105,7 @@ export class CircuitJsonIndexer {
         }
 
         const result = {}
-        if (buildElements || wants('spatial')) {
+        if (buildElements || buildSpatial) {
             result.elements = circuitJson
         }
         if (buildElements) {

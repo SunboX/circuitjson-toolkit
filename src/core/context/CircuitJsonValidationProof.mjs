@@ -1,9 +1,15 @@
-import { CircuitJsonDocument } from '../CircuitJsonDocument.mjs'
+import { CircuitJsonElementValidator } from '../CircuitJsonElementValidator.mjs'
+import { CircuitJsonModelFreezeTraversal } from './CircuitJsonModelFreezeTraversal.mjs'
 import { CircuitJsonReadOnlyDocument } from './CircuitJsonReadOnlyDocument.mjs'
 
 const VALIDATION_PROOF = Symbol('CircuitJsonValidationProof')
 const VALIDATED_INDEX_ACCESS = Symbol('CircuitJsonValidatedIndexAccess')
 const VALIDATION_TOKEN_SECRET = Object.freeze({})
+/** Immutable reference to the schema element validator loaded with this module. */
+const validateCircuitJsonElement =
+    CircuitJsonElementValidator.validateElement.bind(
+        CircuitJsonElementValidator
+    )
 
 /**
  * Holds an unforgeable runtime binding to one validated model.
@@ -43,6 +49,9 @@ class CircuitJsonValidationToken {
     }
 }
 
+Object.freeze(CircuitJsonValidationToken.prototype)
+Object.freeze(CircuitJsonValidationToken)
+
 /**
  * Owns runtime-only proof metadata for immutable CircuitJSON documents.
  */
@@ -53,13 +62,20 @@ export class CircuitJsonValidationProof {
      * @returns {Record<string, any>} The same read-only document envelope.
      */
     static validateAndAttach(document) {
-        if (!CircuitJsonValidationProof.has(document)) {
-            CircuitJsonDocument.assertModel(document?.model, { freeze: true })
+        const model = document?.model
+        if (!CircuitJsonValidationProof.#matches(document, model)) {
+            const errors = CircuitJsonValidationProof.#validateAndFreeze(model)
+            if (errors.length) throw new TypeError(errors[0])
+            if (document?.model !== model) {
+                throw new TypeError(
+                    'CircuitJSON document model changed during validation.'
+                )
+            }
             Object.defineProperty(document, VALIDATION_PROOF, {
                 configurable: false,
                 enumerable: false,
                 value: new CircuitJsonValidationToken(
-                    document.model,
+                    model,
                     VALIDATION_TOKEN_SECRET
                 ),
                 writable: false
@@ -74,8 +90,8 @@ export class CircuitJsonValidationProof {
      * @returns {boolean} Whether the envelope carries a reusable proof.
      */
     static has(document) {
-        const proof = document?.[VALIDATION_PROOF]
-        return CircuitJsonValidationToken.matches(proof, document?.model)
+        const model = document?.model
+        return CircuitJsonValidationProof.#matches(document, model)
     }
 
     /**
@@ -128,4 +144,39 @@ export class CircuitJsonValidationProof {
         }
         return Array.isArray(options.families) ? options.families : null
     }
+
+    /**
+     * Tests one envelope proof against an already captured model reference.
+     * @param {unknown} document Document candidate.
+     * @param {unknown} model Captured model candidate.
+     * @returns {boolean} Whether the proof is valid for that exact model.
+     */
+    static #matches(document, model) {
+        return CircuitJsonValidationToken.matches(
+            document?.[VALIDATION_PROOF],
+            model
+        )
+    }
+
+    /**
+     * Validates and freezes one model through immutable internal references.
+     * @param {unknown} model CircuitJSON model candidate.
+     * @returns {string[]} Validation errors.
+     */
+    static #validateAndFreeze(model) {
+        if (!Array.isArray(model)) {
+            return ['Expected a CircuitJSON element array.']
+        }
+        const traversal = new CircuitJsonModelFreezeTraversal(model, true)
+        const errors = model.flatMap((element, index) => {
+            traversal.visit(element)
+            return validateCircuitJsonElement(element, index)
+        })
+        errors.push(...traversal.errors())
+        traversal.commit(errors.length === 0)
+        return errors
+    }
 }
+
+Object.freeze(CircuitJsonValidationProof.prototype)
+Object.freeze(CircuitJsonValidationProof)

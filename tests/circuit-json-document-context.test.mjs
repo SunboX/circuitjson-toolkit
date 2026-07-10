@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { CircuitJsonDocument } from '../src/core/CircuitJsonDocument.mjs'
 import { CircuitJsonIndexer } from '../src/core/CircuitJsonIndexer.mjs'
 import { CircuitJsonDocumentContext } from '../src/core/context/CircuitJsonDocumentContext.mjs'
+import { CircuitJsonValidationProof } from '../src/core/context/CircuitJsonValidationProof.mjs'
 import { DocumentResult } from '../src/core/contracts/DocumentResult.mjs'
 
 /**
@@ -104,7 +106,14 @@ test('structured clones lose runtime proofs and validate once when prepared', ()
 test('context stays bound to the proven model for its request lifetime', () => {
     const document = DocumentResult.createValidated({
         fileName: 'stable-board.json',
-        model: createBoard('stable')
+        model: createBoard('stable'),
+        assets: [
+            {
+                id: 'asset-1',
+                kind: 'binary',
+                data: new Uint8Array([1, 2])
+            }
+        ]
     })
     const context = CircuitJsonDocumentContext.prepare(document, {
         indexes: ['elements']
@@ -122,6 +131,10 @@ test('context stays bound to the proven model for its request lifetime', () => {
     assert.throws(() => {
         context.assets.push({ id: 'late-asset' })
     }, TypeError)
+    const exposedBytes = context.assets[0].data
+    exposedBytes[0] = 9
+    assert.deepEqual([...context.assets[0].data], [1, 2])
+    assert.deepEqual([...structuredClone(document).assets[0].data], [1, 2])
     assert.equal(context.model, document.model)
 })
 
@@ -160,6 +173,113 @@ test('reflected proof data cannot authorize an invalid frozen model', () => {
             }),
         /pcb_board center is required/
     )
+})
+
+test('reflected proof authorization cannot be monkey-patched', () => {
+    const document = DocumentResult.createValidated({
+        fileName: 'proof.json',
+        model: createBoard('proof')
+    })
+    const [proofSymbol] = Object.getOwnPropertySymbols(document)
+    const proof = document[proofSymbol]
+    const tokenClass = proof.constructor
+    const originalMatches = tokenClass.matches
+    let mutationError = null
+
+    try {
+        tokenClass.matches = () => true
+    } catch (error) {
+        mutationError = error
+    } finally {
+        if (tokenClass.matches !== originalMatches) {
+            Object.defineProperty(tokenClass, 'matches', {
+                configurable: true,
+                value: originalMatches,
+                writable: true
+            })
+        }
+    }
+
+    assert.equal(mutationError instanceof TypeError, true)
+    assert.equal(Object.isFrozen(tokenClass), true)
+    assert.equal(Object.isFrozen(Object.getPrototypeOf(proof)), true)
+})
+
+test('public validator monkey-patching cannot mint validation proofs', () => {
+    const document = DocumentResult.create({
+        fileName: 'invalid-proof.json',
+        model: [
+            {
+                type: 'pcb_board',
+                pcb_board_id: 'invalid-proof',
+                width: 1,
+                height: 1
+            }
+        ]
+    })
+    const originalAssertModel = CircuitJsonDocument.assertModel
+
+    try {
+        CircuitJsonDocument.assertModel = () => {}
+        assert.throws(
+            () => CircuitJsonValidationProof.validateAndAttach(document),
+            /pcb_board center is required/
+        )
+    } finally {
+        CircuitJsonDocument.assertModel = originalAssertModel
+    }
+})
+
+test('proof attachment stays bound to the model reference it validated', () => {
+    const original = createBoard('captured')
+    const replacement = Object.freeze([
+        {
+            type: 'pcb_board',
+            pcb_board_id: 'replacement',
+            width: 1,
+            height: 1
+        }
+    ])
+    const document = DocumentResult.create({
+        fileName: 'captured.json',
+        model: original
+    })
+    let reads = 0
+    Object.defineProperty(document, 'model', {
+        configurable: true,
+        enumerable: true,
+        get() {
+            reads += 1
+            return reads === 1 ? original : replacement
+        }
+    })
+
+    assert.throws(
+        () => CircuitJsonValidationProof.validateAndAttach(document),
+        /changed during validation/
+    )
+})
+
+test('proof-producing validation rejects accessor-backed records', () => {
+    const model = createBoard('accessor')
+    let type = 'pcb_board'
+    Object.defineProperty(model[0], 'type', {
+        configurable: true,
+        enumerable: true,
+        get() {
+            return type
+        }
+    })
+
+    assert.throws(
+        () =>
+            DocumentResult.createValidated({
+                fileName: 'accessor.json',
+                model
+            }),
+        /data properties/
+    )
+    type = 'invalid_after_validation'
 })
 
 test('proof-producing validation rejects custom-prototype model values', () => {

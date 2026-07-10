@@ -8,8 +8,36 @@ export class CircuitJsonReadOnlyDocument {
      * @returns {Record<string, any>} The same read-only envelope.
      */
     static freeze(document) {
+        CircuitJsonReadOnlyDocument.#protectAssetData(document?.assets)
         CircuitJsonReadOnlyDocument.#freezeValue(document, new Set())
         return document
+    }
+
+    /**
+     * Replaces binary asset values with defensive-copy accessors.
+     * @param {unknown} assets Canonical asset array candidate.
+     * @returns {void}
+     */
+    static #protectAssetData(assets) {
+        if (!Array.isArray(assets)) return
+        for (const asset of assets) {
+            if (!asset || typeof asset !== 'object') continue
+            if (Object.isFrozen(asset) || !ArrayBuffer.isView(asset.data)) {
+                continue
+            }
+            const bytes = new Uint8Array(
+                asset.data.buffer,
+                asset.data.byteOffset,
+                asset.data.byteLength
+            ).slice()
+            /** @returns {Uint8Array} A defensive payload copy. */
+            const readAssetData = () => new Uint8Array(bytes)
+            Object.defineProperty(asset, 'data', {
+                configurable: false,
+                enumerable: true,
+                get: readAssetData
+            })
+        }
     }
 
     /**
@@ -44,3 +72,6 @@ export class CircuitJsonReadOnlyDocument {
         return prototype === Object.prototype || prototype === null
     }
 }
+
+Object.freeze(CircuitJsonReadOnlyDocument.prototype)
+Object.freeze(CircuitJsonReadOnlyDocument)
