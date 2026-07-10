@@ -1,8 +1,11 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { format } from 'prettier'
 
 import { CircuitJsonElementValidator } from '../src/index.mjs'
+import {
+    BaselineProvenance,
+    ImmutableBaselineWriter
+} from './BaselineArtifacts.mjs'
 
 const REFERENCE_PACKAGE = 'circuit-json'
 const REFERENCE_VERSION = '0.0.446'
@@ -17,23 +20,6 @@ async function readJson(relativePath) {
     return JSON.parse(
         await readFile(new URL(relativePath, repositoryRoot), 'utf8')
     )
-}
-
-/**
- * Writes stable, newline-terminated JSON relative to the repository root.
- * @param {string} relativePath Repository-relative file path.
- * @param {unknown} value Clone-safe JSON value.
- * @returns {Promise<void>}
- */
-async function writeJson(relativePath, value) {
-    const serialized = await format(JSON.stringify(value), {
-        parser: 'json',
-        tabWidth: 4,
-        singleQuote: true,
-        semi: false,
-        trailingComma: 'none'
-    })
-    await writeFile(new URL(relativePath, repositoryRoot), serialized)
 }
 
 /**
@@ -69,9 +55,26 @@ export async function syncCircuitJsonSchema() {
     const snapshot = structuredClone(
         CircuitJsonElementValidator.schemaSnapshot()
     )
+    const provenance = await BaselineProvenance.capture(repositoryRoot)
+    const provenanceArtifact = {
+        schema: 'circuitjson-toolkit.baseline-provenance.v1',
+        package: 'circuitjson-toolkit',
+        packageVersion: '1.0.17',
+        ...provenance
+    }
 
-    await writeJson('spec/circuitjson-schema-source.json', source)
-    await writeJson('spec/circuitjson-schema-snapshot.json', snapshot)
+    await ImmutableBaselineWriter.writeJson(
+        new URL('spec/baseline-provenance-v1.0.17.json', repositoryRoot),
+        provenanceArtifact
+    )
+    await ImmutableBaselineWriter.writeJson(
+        new URL('spec/circuitjson-schema-source.json', repositoryRoot),
+        source
+    )
+    await ImmutableBaselineWriter.writeJson(
+        new URL('spec/circuitjson-schema-snapshot.json', repositoryRoot),
+        snapshot
+    )
 
     return { source, snapshot }
 }

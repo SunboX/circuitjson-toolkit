@@ -53,7 +53,7 @@
         "sync:schema": "node scripts/sync-circuit-json-schema.mjs",
         "capture:api": "node scripts/capture-api-baseline.mjs",
         "check:features": "node scripts/check-feature-preservation.mjs",
-        "benchmark": "node scripts/run-benchmarks.mjs"
+        "benchmark": "node --expose-gc scripts/run-benchmarks.mjs"
     },
     "devDependencies": {
         "circuit-json": "0.0.446",

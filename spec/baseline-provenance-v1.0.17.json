@@ -1,0 +1,7 @@
+{
+    "schema": "circuitjson-toolkit.baseline-provenance.v1",
+    "package": "circuitjson-toolkit",
+    "packageVersion": "1.0.17",
+    "sourceCommit": "8c9d7deb0229d7d7d8d2f7bdcd621933e88753f9",
+    "sourceTree": "6740d0a6d8a1c0db3da7423c6595b8231d392f0d"
+}

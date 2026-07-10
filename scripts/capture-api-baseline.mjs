@@ -1,10 +1,144 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { format } from 'prettier'
+
+import {
+    BaselineProvenance,
+    ImmutableBaselineWriter
+} from './BaselineArtifacts.mjs'
 
 const repositoryRoot = new URL('../', import.meta.url)
 const BASELINE_VERSION = '1.0.17'
 const IGNORED_CLASS_MEMBERS = new Set(['length', 'name', 'prototype'])
+const EXTENSION_EXPORTS = new Set([
+    'CircuitJsonPcbClearanceDiagnostics',
+    'CircuitJsonPcbCopperGeometry',
+    'CircuitJsonPcbDrawingStyle',
+    'CircuitJsonPcbHolePrimitiveModel',
+    'CircuitJsonPcbNetMetadata',
+    'CircuitJsonPcbPadPrimitiveModel',
+    'CircuitJsonPcbPrimitiveArtwork',
+    'CircuitJsonPcbPrimitiveAttributeRenderer',
+    'CircuitJsonPcbPrimitiveBuilder',
+    'CircuitJsonPcbPrimitiveFields',
+    'CircuitJsonPcbPrimitiveGeometry',
+    'CircuitJsonPcbPrimitiveGroups',
+    'CircuitJsonPcbPrimitiveIndex',
+    'CircuitJsonPcbPrimitiveOverlays',
+    'CircuitJsonPcbTraceLengthModel',
+    'CircuitJsonPcbViaSvgRenderer',
+    'CircuitJsonPcbZonePrimitiveBuilder',
+    'CircuitJsonSchematicSvgArcPath',
+    'CircuitJsonSchematicSvgPortMetadata',
+    'CircuitJsonSchematicSvgPrimitiveAttributes',
+    'CircuitJsonSchematicTableSvgRenderer',
+    'SelectedPartCircuitJsonExportAdapter'
+])
+const SHARED_AVAILABILITY = Object.freeze({
+    'circuitjson-toolkit': 'shared',
+    'gerber-toolkit': 'shared',
+    'altium-toolkit': 'shared',
+    'kicad-toolkit': 'shared'
+})
+const DERIVED_AVAILABILITY = Object.freeze({
+    'circuitjson-toolkit': 'shared',
+    'gerber-toolkit': 'derived',
+    'altium-toolkit': 'derived',
+    'kicad-toolkit': 'derived'
+})
+const EXTENSION_AVAILABILITY = Object.freeze({
+    'circuitjson-toolkit': 'native',
+    'gerber-toolkit': 'unavailable',
+    'altium-toolkit': 'unavailable',
+    'kicad-toolkit': 'unavailable'
+})
+const CAPABILITY_POLICIES = Object.freeze({
+    'parse.document': {
+        replacement: 'Parser.parse()/Parser.parseSync()',
+        availability: DERIVED_AVAILABILITY,
+        reason: 'CircuitJSON parsing is source-neutral; source toolkits derive it after projection.',
+        tests: ['tests/circuit-json-parser.test.mjs'],
+        documentation: ['docs/api.md']
+    },
+    'validation.document': {
+        replacement:
+            'DocumentResult.createValidated()/CircuitJsonDocumentContext.prepare()',
+        availability: SHARED_AVAILABILITY,
+        reason: 'CircuitJSON validation and prepared contexts are shared model operations.',
+        tests: ['tests/circuit-json-document.test.mjs'],
+        documentation: ['docs/api.md']
+    },
+    'query.document': {
+        replacement: 'QueryService/CircuitJsonDocumentContext indexes',
+        availability: SHARED_AVAILABILITY,
+        reason: 'Indexes and relationship queries operate only on neutral CircuitJSON.',
+        tests: ['tests/circuit-json-indexer.test.mjs'],
+        documentation: ['docs/api.md']
+    },
+    'units.convert': {
+        replacement: 'CircuitJsonUnits deprecated compatibility export',
+        availability: SHARED_AVAILABILITY,
+        reason: 'Unit conversion is source-neutral and remains shared compatibility behavior.',
+        tests: ['tests/circuit-json-document.test.mjs'],
+        documentation: ['docs/api.md']
+    },
+    'metadata.normalize': {
+        replacement: 'DocumentResult.source/DocumentResult.extensions',
+        availability: DERIVED_AVAILABILITY,
+        reason: 'Normalized source metadata is shared while source packages derive its values.',
+        tests: ['tests/circuit-json-document.test.mjs'],
+        documentation: ['docs/model-format.md']
+    },
+    'bom.build': {
+        replacement: 'BomTableRenderer rows from DocumentResult.model',
+        availability: DERIVED_AVAILABILITY,
+        reason: 'BOM rows derive from standard source-component elements.',
+        tests: ['tests/circuit-json-document.test.mjs'],
+        documentation: ['spec/library-scope.md']
+    },
+    'manufacturing.export': {
+        replacement: 'ManufacturingService.listExports()/export()',
+        availability: DERIVED_AVAILABILITY,
+        reason: 'Manufacturing outputs share a request contract and derive from standard elements.',
+        tests: ['tests/circuit-json-manufacturing.test.mjs'],
+        documentation: ['spec/library-scope.md']
+    },
+    'render.pcb': {
+        replacement: 'PcbSvgRenderer.render()',
+        availability: DERIVED_AVAILABILITY,
+        reason: 'PCB SVG rendering consumes standard CircuitJSON with source-derived fidelity.',
+        tests: ['tests/circuitjson-variant-geometry.test.mjs'],
+        documentation: ['docs/model-format.md']
+    },
+    'render.schematic': {
+        replacement: 'SchematicSvgRenderer.render()',
+        availability: DERIVED_AVAILABILITY,
+        reason: 'Schematic SVG rendering consumes standard CircuitJSON.',
+        tests: ['tests/api-entrypoints.test.mjs'],
+        documentation: ['docs/model-format.md']
+    },
+    'interaction.pcb': {
+        replacement: 'PcbInteractionIndex',
+        availability: DERIVED_AVAILABILITY,
+        reason: 'PCB hit testing and selection derive from shared render primitives.',
+        tests: ['tests/pcb-interaction-primitive-model.test.mjs'],
+        documentation: ['docs/model-format.md']
+    },
+    'simulation.spice': {
+        replacement: 'SimulationService.simulate()',
+        availability: DERIVED_AVAILABILITY,
+        reason: 'Simulation uses a shared request/result contract with toolkit-specific engines.',
+        tests: ['tests/spice-simulation-service.test.mjs'],
+        documentation: ['docs/api.md']
+    },
+    'export.selected-part': {
+        replacement:
+            'circuitjson-toolkit/extensions#SelectedPartCircuitJsonExportAdapter',
+        availability: EXTENSION_AVAILABILITY,
+        reason: 'Selected-part export adaptation remains a CircuitJSON compatibility extension.',
+        tests: ['tests/circuit-json-document.test.mjs'],
+        documentation: ['spec/library-scope.md']
+    }
+})
 
 const CONTRACT_FEATURES = [
     contractFeature(
@@ -92,38 +226,139 @@ const CONTRACT_FEATURES = [
         'option',
         'simulation.spice'
     ),
-    contractFeature('parserResult.fileName', 'field', 'parse.document'),
-    contractFeature('parserResult.fileType', 'field', 'parse.document'),
-    contractFeature('parserResult.kind', 'field', 'parse.document'),
-    contractFeature('parserResult.sourceFormat', 'field', 'parse.document'),
-    contractFeature('indexResult.elements', 'field', 'query.document'),
-    contractFeature('indexResult.elementsByType', 'field', 'query.document'),
-    contractFeature('indexResult.elementsById', 'field', 'query.document'),
-    contractFeature(
-        'indexResult.sourceComponentById',
+    ...contractFeatures(
+        'CircuitJsonDocument.attachMetadata.metadata',
+        [
+            'fileName',
+            'fileType',
+            'kind',
+            'diagnostics',
+            'bom',
+            'supportMatrix',
+            'manufacturing'
+        ],
+        'option',
+        'validation.document'
+    ),
+    ...contractFeatures(
+        'CircuitJsonPcbPrimitiveOverlays.build.groupModel',
+        ['groups', 'anchorOffsets'],
+        'option',
+        'render.pcb'
+    ),
+    ...contractFeatures(
+        'SelectedPartCircuitJsonExportAdapter.build.selectedPart',
+        ['designator', 'symbol', 'footprint'],
+        'option',
+        'export.selected-part'
+    ),
+    ...contractFeatures(
+        'parserResult',
+        [
+            'fileName',
+            'fileType',
+            'kind',
+            'sourceFormat',
+            'diagnostics',
+            'bom',
+            'supportMatrix',
+            'manufacturing'
+        ],
+        'field',
+        'parse.document'
+    ),
+    ...contractFeatures(
+        'indexResult',
+        [
+            'elements',
+            'elementsByType',
+            'elementsById',
+            'relationsByField',
+            'sourceComponentById',
+            'pcbComponentById',
+            'sourceTraceById',
+            'sourceTraceConnectivity',
+            'componentsBySourceId',
+            'groupsById',
+            'elementsByGroupId',
+            'elementsBySubcircuitId',
+            'diagnostics'
+        ],
         'field',
         'query.document'
     ),
-    contractFeature('indexResult.pcbComponentById', 'field', 'query.document'),
-    contractFeature(
-        'simulationResult.simulationResultCircuitJson',
+    ...contractFeatures(
+        'simulationResult',
+        [
+            'simulationResultCircuitJson',
+            'simulationCircuitJson',
+            'graphSummary',
+            'diagnostics'
+        ],
         'field',
         'simulation.spice'
     ),
-    contractFeature(
-        'simulationResult.simulationCircuitJson',
+    ...contractFeatures(
+        'pcbPrimitiveModelResult',
+        [
+            'bounds',
+            'layers',
+            'virtualLayers',
+            'components',
+            'nets',
+            'primitives',
+            'anchors',
+            'diagnostics',
+            'airwires',
+            'traceLengths',
+            'groups',
+            'anchorOffsets'
+        ],
         'field',
-        'simulation.spice'
+        'interaction.pcb'
     ),
-    contractFeature(
-        'simulationResult.graphSummary',
+    ...contractFeatures(
+        'manufacturingResult',
+        ['pickAndPlaceRows', 'routingDsn', 'routingGuides', 'fabricationNotes'],
         'field',
-        'simulation.spice'
+        'manufacturing.export'
     ),
-    contractFeature(
-        'simulationResult.diagnostics',
+    ...contractFeatures(
+        'manufacturingDownloadResult',
+        ['fileName', 'bytes', 'contentType'],
         'field',
-        'simulation.spice'
+        'manufacturing.export'
+    ),
+    ...contractFeatures(
+        'sourceMetadataResult',
+        [
+            'sourceFtype',
+            'componentType',
+            'componentIcon',
+            'supplierPartNumber',
+            'supplierPartNumbers'
+        ],
+        'field',
+        'metadata.normalize'
+    ),
+    ...contractFeatures(
+        'supportMatrixResult',
+        ['sourceFormat', 'totals', 'rows', 'variantRows', 'gaps'],
+        'field',
+        'metadata.normalize'
+    ),
+    ...contractFeatures(
+        'boundsSelectionResult',
+        [
+            'bounds',
+            'point',
+            'candidates',
+            'selectedCandidate',
+            'componentKeys',
+            'netNames'
+        ],
+        'field',
+        'interaction.pcb'
     ),
     contractFeature(
         'parser rejects malformed JSON with SyntaxError',
@@ -168,6 +403,20 @@ const CONTRACT_FEATURES = [
 ]
 
 /**
+ * Creates related contract features with one common prefix.
+ * @param {string} prefix Feature prefix.
+ * @param {string[]} names Field or option names.
+ * @param {'option' | 'field'} kind Feature kind.
+ * @param {string} capabilityId Owning capability id.
+ * @returns {Record<string, string>[]} Baseline features.
+ */
+function contractFeatures(prefix, names, kind, capabilityId) {
+    return names.map((name) =>
+        contractFeature(`${prefix}.${name}`, kind, capabilityId)
+    )
+}
+
+/**
  * Creates one manually documented API contract feature.
  * @param {string} feature Stable feature description.
  * @param {'option' | 'field' | 'behavior'} kind Feature kind.
@@ -191,23 +440,6 @@ async function readJson(relativePath) {
     return JSON.parse(
         await readFile(new URL(relativePath, repositoryRoot), 'utf8')
     )
-}
-
-/**
- * Writes deterministic JSON relative to the repository root.
- * @param {string} relativePath Repository-relative path.
- * @param {unknown} value JSON value.
- * @returns {Promise<void>}
- */
-async function writeJson(relativePath, value) {
-    const serialized = await format(JSON.stringify(value), {
-        parser: 'json',
-        tabWidth: 4,
-        singleQuote: true,
-        semi: false,
-        trailingComma: 'none'
-    })
-    await writeFile(new URL(relativePath, repositoryRoot), serialized)
 }
 
 /**
@@ -363,39 +595,63 @@ function flattenEntrypoints(entrypoints) {
 }
 
 /**
- * Returns existing evidence paths for a feature category.
- * @param {string} capabilityId Capability id.
- * @returns {{ tests: string[], documentation: string[] }} Evidence paths.
+ * Returns the extension owner for a baseline feature, when applicable.
+ * @param {Record<string, any>} feature Baseline feature.
+ * @returns {string} Extension export name or an empty string.
  */
-function evidenceForCapability(capabilityId) {
-    if (capabilityId === 'simulation.spice') {
+function extensionOwner(feature) {
+    return (
+        [...EXTENSION_EXPORTS].find(
+            (name) =>
+                feature.exportName === name ||
+                feature.feature.startsWith(`${name}.`)
+        ) || ''
+    )
+}
+
+/**
+ * Creates an explicit evidence-backed preservation mapping.
+ * @param {Record<string, any>} feature Baseline feature.
+ * @returns {Record<string, any>} Preservation mapping.
+ */
+function preservationMapping(feature) {
+    const owner = extensionOwner(feature)
+    if (owner) {
         return {
-            tests: ['tests/spice-simulation-service.test.mjs'],
-            documentation: ['docs/api.md']
-        }
-    }
-    if (capabilityId.startsWith('render.')) {
-        return {
+            disposition: 'native-extension',
+            replacement:
+                owner === 'SelectedPartCircuitJsonExportAdapter'
+                    ? CAPABILITY_POLICIES['export.selected-part'].replacement
+                    : `circuitjson-toolkit/renderers#${owner}`,
+            availability: { ...EXTENSION_AVAILABILITY },
+            reason: `${owner} is a low-level CircuitJSON compatibility extension; canonical hosts use the shared service or renderer facade.`,
             tests: ['tests/api-entrypoints.test.mjs'],
             documentation: ['docs/model-format.md']
         }
     }
-    if (capabilityId === 'interaction.pcb') {
-        return {
-            tests: ['tests/pcb-interaction-primitive-model.test.mjs'],
-            documentation: ['docs/model-format.md']
-        }
-    }
-    if (capabilityId === 'manufacturing.export') {
-        return {
-            tests: ['tests/circuit-json-manufacturing.test.mjs'],
-            documentation: ['spec/library-scope.md']
-        }
+    const policy = CAPABILITY_POLICIES[feature.capabilityId]
+    if (!policy) {
+        throw new Error(
+            `Missing preservation policy for ${feature.capabilityId}.`
+        )
     }
     return {
-        tests: ['tests/api-entrypoints.test.mjs'],
-        documentation: ['docs/api.md']
+        disposition: 'shared',
+        replacement: policy.replacement,
+        availability: { ...policy.availability },
+        reason: policy.reason,
+        tests: [...policy.tests],
+        documentation: [...policy.documentation]
     }
+}
+
+/**
+ * Adds the complete preservation mapping to one baseline feature.
+ * @param {Record<string, any>} feature Baseline feature.
+ * @returns {Record<string, any>} Mapped baseline feature.
+ */
+function mapFeature(feature) {
+    return { ...feature, ...preservationMapping(feature) }
 }
 
 /**
@@ -404,26 +660,18 @@ function evidenceForCapability(capabilityId) {
  * @returns {Record<string, any>[]} Ledger rows.
  */
 function createLedger(features) {
-    return features.map((feature) => {
-        const evidence = evidenceForCapability(feature.capabilityId)
-        return {
-            package: `circuitjson-toolkit@${BASELINE_VERSION}`,
-            feature: feature.feature,
-            kind: feature.kind,
-            capabilityId: feature.capabilityId,
-            disposition: 'shared',
-            replacement: `circuitjson-toolkit baseline ${feature.feature}`,
-            availability: {
-                'circuitjson-toolkit': 'shared',
-                'gerber-toolkit': 'shared',
-                'altium-toolkit': 'shared',
-                'kicad-toolkit': 'shared'
-            },
-            reason: 'Frozen for explicit preservation during API convergence.',
-            tests: evidence.tests,
-            documentation: evidence.documentation
-        }
-    })
+    return features.map((feature) => ({
+        package: `circuitjson-toolkit@${BASELINE_VERSION}`,
+        feature: feature.feature,
+        kind: feature.kind,
+        capabilityId: feature.capabilityId,
+        disposition: feature.disposition,
+        replacement: feature.replacement,
+        availability: feature.availability,
+        reason: feature.reason,
+        tests: feature.tests,
+        documentation: feature.documentation
+    }))
 }
 
 /**
@@ -445,21 +693,38 @@ export async function captureApiBaseline() {
                 captureEntrypoint(entrypoint, definition)
             )
     )
-    const features = [
-        ...flattenEntrypoints(entrypoints),
-        ...CONTRACT_FEATURES
-    ].sort((left, right) => left.feature.localeCompare(right.feature))
+    const features = [...flattenEntrypoints(entrypoints), ...CONTRACT_FEATURES]
+        .map((feature) => mapFeature(feature))
+        .sort((left, right) => left.feature.localeCompare(right.feature))
+    const provenance = await BaselineProvenance.capture(repositoryRoot)
     const baseline = {
         schema: 'circuitjson-toolkit.api-baseline.v1',
         package: pkg.name,
         packageVersion: pkg.version,
+        provenance,
         entrypoints,
         features
     }
     const ledger = createLedger(features)
+    const provenanceArtifact = {
+        schema: 'circuitjson-toolkit.baseline-provenance.v1',
+        package: pkg.name,
+        packageVersion: pkg.version,
+        ...provenance
+    }
 
-    await writeJson('spec/api-baseline-v1.0.17.json', baseline)
-    await writeJson('spec/feature-preservation.json', ledger)
+    await ImmutableBaselineWriter.writeJson(
+        new URL('spec/baseline-provenance-v1.0.17.json', repositoryRoot),
+        provenanceArtifact
+    )
+    await ImmutableBaselineWriter.writeJson(
+        new URL('spec/api-baseline-v1.0.17.json', repositoryRoot),
+        baseline
+    )
+    await ImmutableBaselineWriter.writeJson(
+        new URL('spec/feature-preservation.json', repositoryRoot),
+        ledger
+    )
     return { baseline, ledger }
 }
 

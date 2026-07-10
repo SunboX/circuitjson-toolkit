@@ -21,7 +21,18 @@ function baselineFeature(feature) {
     return {
         feature,
         kind: 'behavior',
-        capabilityId: 'parse.document'
+        capabilityId: 'parse.document',
+        disposition: 'shared',
+        replacement: 'Parser.parse()',
+        availability: {
+            'circuitjson-toolkit': 'shared',
+            'gerber-toolkit': 'derived',
+            'altium-toolkit': 'derived',
+            'kicad-toolkit': 'derived'
+        },
+        reason: 'CircuitJSON parsing is a source-neutral shared operation.',
+        tests: ['tests/api-entrypoints.test.mjs'],
+        documentation: ['docs/api.md']
     }
 }
 
@@ -32,19 +43,22 @@ function baselineFeature(feature) {
  * @returns {Record<string, any>} Ledger row.
  */
 function ledgerRow(feature, overrides = {}) {
+    const baseline = baselineFeature(feature)
     return {
         package: 'circuitjson-toolkit@1.0.17',
-        feature,
-        kind: 'behavior',
-        capabilityId: 'parse.document',
-        disposition: 'shared',
-        replacement: 'Parser.parse',
-        availability: { 'circuitjson-toolkit': 'shared' },
-        reason: 'Preserved.',
-        tests: ['tests/api-entrypoints.test.mjs'],
-        documentation: ['docs/api.md'],
+        ...baseline,
         ...overrides
     }
+}
+
+/**
+ * Creates one capability inventory row.
+ * @param {string} id Capability id.
+ * @returns {Record<string, string>} Capability row.
+ */
+function capabilityRow(id) {
+    const [category, operation] = id.split('.')
+    return { id, category, operation }
 }
 
 /**
@@ -109,10 +123,17 @@ test('feature checker requires complete preservation decisions and evidence', as
 })
 
 test('strict feature checker rejects fictitious capability mappings', async (context) => {
-    const packageRoot = await packedFixture(context, [{ id: 'parse.document' }])
+    const packageRoot = await packedFixture(context, [
+        capabilityRow('parse.document')
+    ])
     const apiBaseline = {
         entrypoints: [{ entrypoint: '.', target: './index.mjs', exports: [] }],
-        features: [baselineFeature('mapped')]
+        features: [
+            {
+                ...baselineFeature('mapped'),
+                capabilityId: 'imaginary.operation'
+            }
+        ]
     }
 
     await assert.rejects(
@@ -132,10 +153,18 @@ test('strict feature checker rejects fictitious capability mappings', async (con
 })
 
 test('strict feature checker rejects missing evidence paths', async (context) => {
-    const packageRoot = await packedFixture(context, [{ id: 'parse.document' }])
+    const packageRoot = await packedFixture(context, [
+        capabilityRow('parse.document')
+    ])
     const apiBaseline = {
         entrypoints: [{ entrypoint: '.', target: './index.mjs', exports: [] }],
-        features: [baselineFeature('mapped')]
+        features: [
+            {
+                ...baselineFeature('mapped'),
+                tests: ['missing.test.mjs'],
+                documentation: ['index.mjs']
+            }
+        ]
     }
 
     await assert.rejects(
@@ -157,13 +186,16 @@ test('strict feature checker rejects missing evidence paths', async (context) =>
 })
 
 test('strict feature checker rejects stale packed API mappings', async (context) => {
-    const packageRoot = await packedFixture(context, [{ id: 'parse.document' }])
+    const packageRoot = await packedFixture(context, [
+        capabilityRow('parse.document')
+    ])
     const apiFeature = {
-        feature: '.#MissingExport',
+        ...baselineFeature('.#MissingExport'),
         kind: 'export',
-        capabilityId: 'parse.document',
         entrypoint: '.',
-        exportName: 'MissingExport'
+        exportName: 'MissingExport',
+        tests: ['index.mjs'],
+        documentation: ['index.mjs']
     }
     const apiBaseline = {
         entrypoints: [{ entrypoint: '.', target: './index.mjs', exports: [] }],
@@ -270,7 +302,7 @@ test('strict file-backed checker imports entrypoints from an npm pack', async (c
     )
     await writeFile(
         join(root, 'index.mjs'),
-        "export class ToolkitCapabilities { static inventory() { return [{ id: 'parse.document' }] } }\n"
+        `export class ToolkitCapabilities { static inventory() { return ${JSON.stringify([capabilityRow('parse.document')])} } }\n`
     )
     await writeFile(
         apiPath,
@@ -278,7 +310,13 @@ test('strict file-backed checker imports entrypoints from an npm pack', async (c
             entrypoints: [
                 { entrypoint: '.', target: './index.mjs', exports: [] }
             ],
-            features: [baselineFeature('mapped')]
+            features: [
+                {
+                    ...baselineFeature('mapped'),
+                    tests: ['index.mjs'],
+                    documentation: ['index.mjs']
+                }
+            ]
         })
     )
     await writeFile(
@@ -300,4 +338,145 @@ test('strict file-backed checker imports entrypoints from an npm pack', async (c
     })
 
     assert.equal(result.featureCount, 1)
+})
+
+test('feature checker rejects duplicate baseline and ledger features', async () => {
+    const feature = baselineFeature('duplicate')
+
+    await assert.rejects(
+        () =>
+            validateFeaturePreservation({
+                apiBaseline: {
+                    package: 'circuitjson-toolkit',
+                    packageVersion: '1.0.17',
+                    entrypoints: [],
+                    features: [feature, feature]
+                },
+                ledger: [ledgerRow('duplicate')]
+            }),
+        /Duplicate baseline features: duplicate/
+    )
+    await assert.rejects(
+        () =>
+            validateFeaturePreservation({
+                apiBaseline: {
+                    package: 'circuitjson-toolkit',
+                    packageVersion: '1.0.17',
+                    entrypoints: [],
+                    features: [feature]
+                },
+                ledger: [ledgerRow('duplicate'), ledgerRow('duplicate')]
+            }),
+        /Duplicate ledger features: duplicate/
+    )
+})
+
+test('feature checker requires exact baseline and ledger mapping values', async () => {
+    const apiBaseline = {
+        package: 'circuitjson-toolkit',
+        packageVersion: '1.0.17',
+        entrypoints: [],
+        features: [
+            {
+                ...baselineFeature('mapped'),
+                tests: ['index.mjs'],
+                documentation: ['index.mjs']
+            }
+        ]
+    }
+    const mismatches = [
+        { kind: 'field' },
+        { capabilityId: 'query.document' },
+        { disposition: 'native-extension' },
+        { replacement: 'Different replacement' },
+        {
+            availability: {
+                ...baselineFeature('mapped').availability,
+                'gerber-toolkit': 'unavailable'
+            }
+        },
+        { tests: ['tests/package-layout.test.mjs'] },
+        { documentation: ['docs/model-format.md'] }
+    ]
+
+    for (const mismatch of mismatches) {
+        await assert.rejects(
+            () =>
+                validateFeaturePreservation({
+                    apiBaseline,
+                    ledger: [ledgerRow('mapped', mismatch)]
+                }),
+            /Baseline and ledger mapping differ for mapped/
+        )
+    }
+})
+
+test('feature checker rejects incomplete or invalid availability maps', async () => {
+    const apiBaseline = {
+        package: 'circuitjson-toolkit',
+        packageVersion: '1.0.17',
+        entrypoints: [],
+        features: [baselineFeature('mapped')]
+    }
+    const invalidAvailability = [
+        { 'circuitjson-toolkit': 'shared' },
+        {
+            ...baselineFeature('mapped').availability,
+            'made-up-toolkit': 'shared'
+        },
+        {
+            ...baselineFeature('mapped').availability,
+            'gerber-toolkit': 'maybe'
+        }
+    ]
+
+    for (const availability of invalidAvailability) {
+        await assert.rejects(
+            () =>
+                validateFeaturePreservation({
+                    apiBaseline,
+                    ledger: [ledgerRow('mapped', { availability })]
+                }),
+            /Invalid feature-preservation row for mapped/
+        )
+    }
+})
+
+test('strict feature checker verifies inventory category and operation identity', async (context) => {
+    const packageRoot = await packedFixture(context, [
+        {
+            id: 'parse.document',
+            category: 'query',
+            operation: 'document'
+        }
+    ])
+    const apiBaseline = {
+        package: 'circuitjson-toolkit',
+        packageVersion: '1.0.17',
+        entrypoints: [{ entrypoint: '.', target: './index.mjs', exports: [] }],
+        features: [
+            {
+                ...baselineFeature('mapped'),
+                tests: ['index.mjs'],
+                documentation: ['index.mjs']
+            }
+        ]
+    }
+
+    await assert.rejects(
+        () =>
+            validateFeaturePreservation({
+                apiBaseline,
+                ledger: [
+                    ledgerRow('mapped', {
+                        tests: ['index.mjs'],
+                        documentation: ['index.mjs']
+                    })
+                ],
+                strict: true,
+                packageRoot,
+                repositoryRoot: packageRoot
+            }),
+        /Capability inventory identity mismatch: parse\.document/
+    )
 })

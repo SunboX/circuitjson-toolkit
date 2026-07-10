@@ -1,6 +1,10 @@
 {
     "schema": "circuitjson-toolkit.benchmark.v1",
     "packageVersion": "1.0.17",
+    "provenance": {
+        "sourceCommit": "8c9d7deb0229d7d7d8d2f7bdcd621933e88753f9",
+        "sourceTree": "6740d0a6d8a1c0db3da7423c6595b8231d392f0d"
+    },
     "environment": {
         "node": "v20.17.0",
         "platform": "darwin",
@@ -15,15 +19,15 @@
             "primary": true,
             "warmups": 1,
             "samples": [
-                162.438291, 176.077917, 155.384167, 159.119208, 157.780417
+                171.108417, 161.834375, 180.357833, 157.400875, 161.204958
             ],
-            "medianMilliseconds": 159.119208,
+            "medianMilliseconds": 161.834375,
             "cloneBytes": 3527835,
             "retainedHeap": {
-                "gcAvailable": false,
-                "beforeBytes": 72656944,
-                "afterBytes": 153504984,
-                "deltaBytes": 80848040
+                "gcControlled": true,
+                "beforeBytes": 18197616,
+                "afterBytes": 18272744,
+                "retainedBytes": 75128
             }
         },
         {
@@ -31,16 +35,16 @@
             "primary": true,
             "warmups": 2,
             "samples": [
-                79.872334, 89.715166, 83.473375, 85.290458, 86.290667,
-                84.603542, 79.698541
+                77.069917, 79.607875, 83.753791, 81.963666, 75.808125,
+                80.864541, 74.972041
             ],
-            "medianMilliseconds": 84.603542,
+            "medianMilliseconds": 79.607875,
             "cloneBytes": 27384,
             "retainedHeap": {
-                "gcAvailable": false,
-                "beforeBytes": 20530512,
-                "afterBytes": 85483648,
-                "deltaBytes": 64953136
+                "gcControlled": true,
+                "beforeBytes": 18826296,
+                "afterBytes": 18596920,
+                "retainedBytes": 0
             }
         },
         {
@@ -48,16 +52,16 @@
             "primary": false,
             "warmups": 3,
             "samples": [
-                0.854584, 0.860125, 0.859667, 0.872167, 0.890375, 0.878917,
-                0.861917, 0.896292, 0.874
+                1.305834, 0.937958, 0.868583, 0.876125, 0.860541, 0.860541,
+                0.862875, 0.857709, 0.861916
             ],
-            "medianMilliseconds": 0.872167,
+            "medianMilliseconds": 0.862875,
             "cloneBytes": 158036,
             "retainedHeap": {
-                "gcAvailable": false,
-                "beforeBytes": 85616360,
-                "afterBytes": 85969344,
-                "deltaBytes": 352984
+                "gcControlled": true,
+                "beforeBytes": 18593792,
+                "afterBytes": 18597264,
+                "retainedBytes": 3472
             }
         },
         {
@@ -65,16 +69,16 @@
             "primary": false,
             "warmups": 2,
             "samples": [
-                5.664875, 5.710666, 5.124083, 5.296667, 4.928875, 5.156791,
-                9.261959
+                5.201833, 5.540625, 5.086625, 5.736667, 5.164083, 5.417084,
+                5.913584
             ],
-            "medianMilliseconds": 5.296667,
+            "medianMilliseconds": 5.417084,
             "cloneBytes": 27384,
             "retainedHeap": {
-                "gcAvailable": false,
-                "beforeBytes": 94178104,
-                "afterBytes": 20493664,
-                "deltaBytes": -73684440
+                "gcControlled": true,
+                "beforeBytes": 18637296,
+                "afterBytes": 19113096,
+                "retainedBytes": 475800
             }
         },
         {
@@ -82,17 +86,18 @@
             "primary": false,
             "warmups": 3,
             "samples": [
-                0.42625, 0.423375, 0.434917, 0.422417, 0.434959, 0.431417,
-                0.43075, 0.431, 0.43125
+                0.466709, 0.433292, 0.431792, 0.443125, 0.451666, 0.43575,
+                0.439208, 0.434375, 0.428667
             ],
-            "medianMilliseconds": 0.431,
+            "medianMilliseconds": 0.43575,
             "cloneBytes": 193406,
             "retainedHeap": {
-                "gcAvailable": false,
-                "beforeBytes": 21538216,
-                "afterBytes": 24490248,
-                "deltaBytes": 2952032
+                "gcControlled": true,
+                "beforeBytes": 18980544,
+                "afterBytes": 18749184,
+                "retainedBytes": 0
             }
         }
-    ]
+    ],
+    "reportChecksum": "fe492f4df495f80e24ffc351a67cf4ee7be493d90278656c499f1a245ffc3c79"
 }

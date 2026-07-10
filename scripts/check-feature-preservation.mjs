@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { promisify } from 'node:util'
+import { isDeepStrictEqual, promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
@@ -13,6 +13,29 @@ const ALLOWED_DISPOSITIONS = new Set([
     'native-extension',
     'unavailable'
 ])
+const ALLOWED_AVAILABILITY = new Set([
+    'native',
+    'shared',
+    'derived',
+    'unavailable'
+])
+const TOOLKIT_NAMES = [
+    'altium-toolkit',
+    'circuitjson-toolkit',
+    'gerber-toolkit',
+    'kicad-toolkit'
+]
+const MAPPING_FIELDS = [
+    'feature',
+    'kind',
+    'capabilityId',
+    'disposition',
+    'replacement',
+    'availability',
+    'reason',
+    'tests',
+    'documentation'
+]
 
 /**
  * Packs and extracts a repository into a temporary package root.
@@ -128,19 +151,38 @@ function validateCapabilities(ledger, modules) {
     }
 
     const inventory = toolkit.ToolkitCapabilities.inventory()
-    const capabilityIds = new Set(
-        (Array.isArray(inventory) ? inventory : []).map((row) => row.id)
+    const inventoryRows = Array.isArray(inventory) ? inventory : []
+    const duplicateInventory = duplicateValues(
+        inventoryRows.map((row) => row.id)
     )
+    if (duplicateInventory.length > 0) {
+        throw new Error(
+            `Duplicate capability inventory ids: ${duplicateInventory.join(', ')}`
+        )
+    }
+    const inventoryById = new Map(inventoryRows.map((row) => [row.id, row]))
     const fictitious = [
         ...new Set(
             ledger
                 .map((row) => row.capabilityId)
-                .filter((capabilityId) => !capabilityIds.has(capabilityId))
+                .filter((capabilityId) => !inventoryById.has(capabilityId))
         )
     ]
     if (fictitious.length > 0) {
         throw new Error(
             `Fictitious capabilityId mappings: ${fictitious.join(', ')}`
+        )
+    }
+    const identityMismatch = ledger.find((row) => {
+        const capability = inventoryById.get(row.capabilityId)
+        return (
+            `${String(capability.category)}.${String(capability.operation)}` !==
+            row.capabilityId
+        )
+    })
+    if (identityMismatch) {
+        throw new Error(
+            `Capability inventory identity mismatch: ${identityMismatch.capabilityId}`
         )
     }
 }
@@ -193,13 +235,28 @@ function isNonEmptyStringArray(value) {
 }
 
 /**
- * Returns whether a ledger row has the required preservation decision fields.
- * @param {Record<string, any>} row Ledger row.
- * @returns {boolean} True for a complete row.
+ * Returns whether availability has every known toolkit and only allowed values.
+ * @param {unknown} value Availability candidate.
+ * @returns {boolean} True for the exact availability contract.
  */
-function isCompleteRow(row) {
+function isValidAvailability(value) {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        return false
+    }
+    const keys = Object.keys(value).sort()
     return (
-        isNonEmptyString(row.package) &&
+        isDeepStrictEqual(keys, TOOLKIT_NAMES) &&
+        keys.every((key) => ALLOWED_AVAILABILITY.has(value[key]))
+    )
+}
+
+/**
+ * Returns whether a feature has a complete preservation mapping.
+ * @param {Record<string, any>} row Feature or ledger row.
+ * @returns {boolean} True for a complete mapping.
+ */
+function isCompleteMapping(row) {
+    return (
         isNonEmptyString(row.feature) &&
         ['export', 'method', 'option', 'field', 'behavior'].includes(
             row.kind
@@ -207,12 +264,46 @@ function isCompleteRow(row) {
         isNonEmptyString(row.capabilityId) &&
         ALLOWED_DISPOSITIONS.has(row.disposition) &&
         isNonEmptyString(row.replacement) &&
-        row.availability !== null &&
-        typeof row.availability === 'object' &&
-        !Array.isArray(row.availability) &&
+        isValidAvailability(row.availability) &&
         isNonEmptyString(row.reason) &&
         isNonEmptyStringArray(row.tests) &&
         isNonEmptyStringArray(row.documentation)
+    )
+}
+
+/**
+ * Returns whether a ledger row has the required preservation decision fields.
+ * @param {Record<string, any>} row Ledger row.
+ * @returns {boolean} True for a complete row.
+ */
+function isCompleteRow(row) {
+    return isNonEmptyString(row.package) && isCompleteMapping(row)
+}
+
+/**
+ * Returns duplicate non-empty values from a sequence.
+ * @param {unknown[]} values Candidate values.
+ * @returns {string[]} Unique duplicate strings.
+ */
+function duplicateValues(values) {
+    const seen = new Set()
+    const duplicates = new Set()
+    for (const value of values) {
+        const normalized = String(value || '')
+        if (seen.has(normalized)) duplicates.add(normalized)
+        seen.add(normalized)
+    }
+    return [...duplicates].filter(Boolean)
+}
+
+/**
+ * Selects the exact fields shared by API features and ledger rows.
+ * @param {Record<string, any>} row Feature or ledger row.
+ * @returns {Record<string, any>} Comparable mapping.
+ */
+function featureMapping(row) {
+    return Object.fromEntries(
+        MAPPING_FIELDS.map((field) => [field, row[field]])
     )
 }
 
@@ -226,6 +317,20 @@ export async function validateFeaturePreservation(options) {
         ? options.apiBaseline.features
         : []
     const ledger = Array.isArray(options.ledger) ? options.ledger : []
+    const duplicateBaseline = duplicateValues(
+        baselineFeatures.map((feature) => feature.feature)
+    )
+    if (duplicateBaseline.length > 0) {
+        throw new Error(
+            `Duplicate baseline features: ${duplicateBaseline.join(', ')}`
+        )
+    }
+    const duplicateLedger = duplicateValues(ledger.map((row) => row.feature))
+    if (duplicateLedger.length > 0) {
+        throw new Error(
+            `Duplicate ledger features: ${duplicateLedger.join(', ')}`
+        )
+    }
     const ledgerFeatures = new Set(ledger.map((row) => row.feature))
     const baselineFeatureNames = new Set(
         baselineFeatures.map((feature) => feature.feature)
@@ -247,11 +352,43 @@ export async function validateFeaturePreservation(options) {
             `Stale feature-preservation mappings: ${stale.join(', ')}`
         )
     }
+    const invalidFeature = baselineFeatures.find(
+        (feature) => !isCompleteMapping(feature)
+    )
+    if (invalidFeature) {
+        throw new Error(
+            `Invalid API baseline feature for ${String(invalidFeature.feature)}`
+        )
+    }
     const invalidRow = ledger.find((row) => !isCompleteRow(row))
     if (invalidRow) {
         throw new Error(
             `Invalid feature-preservation row for ${String(invalidRow.feature)}`
         )
+    }
+    const ledgerByFeature = new Map(ledger.map((row) => [row.feature, row]))
+    const mismatch = baselineFeatures.find((feature) => {
+        const row = ledgerByFeature.get(feature.feature)
+        return !isDeepStrictEqual(featureMapping(feature), featureMapping(row))
+    })
+    if (mismatch) {
+        throw new Error(
+            `Baseline and ledger mapping differ for ${mismatch.feature}`
+        )
+    }
+    if (
+        isNonEmptyString(options.apiBaseline.package) &&
+        isNonEmptyString(options.apiBaseline.packageVersion)
+    ) {
+        const expectedPackage = `${options.apiBaseline.package}@${options.apiBaseline.packageVersion}`
+        const wrongPackage = ledger.find(
+            (row) => row.package !== expectedPackage
+        )
+        if (wrongPackage) {
+            throw new Error(
+                `Baseline and ledger package differ for ${wrongPackage.feature}`
+            )
+        }
     }
     if (options.strict) {
         const modules = await importPackedEntrypoints(

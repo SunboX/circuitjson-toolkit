@@ -17,14 +17,20 @@ import { SyntheticCircuitJsonFactory } from './SyntheticCircuitJsonFactory.mjs'
 export class CircuitJsonBenchmarkSuite {
     /**
      * Runs every frozen benchmark case and returns a clone-safe report.
-     * @param {{ packageVersion?: string }} options Report metadata.
+     * @param {{ packageVersion?: string, provenance?: { sourceCommit: string, sourceTree: string } }} options Report metadata.
      * @returns {Record<string, any>} Benchmark report.
      */
     static run(options = {}) {
+        if (typeof globalThis.gc !== 'function') {
+            throw new Error(
+                'Benchmarks require controlled garbage collection via --expose-gc.'
+            )
+        }
         const fixture = CircuitJsonBenchmarkSuite.#fixture()
         return {
             schema: 'circuitjson-toolkit.benchmark.v1',
             packageVersion: String(options.packageVersion || '1.0.17'),
+            provenance: structuredClone(options.provenance || {}),
             environment: CircuitJsonBenchmarkSuite.#environment(),
             fixtureChecksum: CircuitJsonBenchmarkSuite.#checksum(fixture.data),
             cases: fixture.cases.map((benchmarkCase) =>
@@ -174,6 +180,7 @@ export class CircuitJsonBenchmarkSuite {
             benchmarkCase.run()
         }
 
+        CircuitJsonBenchmarkSuite.#forceGc()
         const beforeBytes = process.memoryUsage().heapUsed
         const samples = []
         for (let index = 0; index < benchmarkCase.sampleCount; index += 1) {
@@ -183,6 +190,7 @@ export class CircuitJsonBenchmarkSuite {
                 CircuitJsonBenchmarkSuite.#round(performance.now() - start)
             )
         }
+        CircuitJsonBenchmarkSuite.#forceGc()
         const afterBytes = process.memoryUsage().heapUsed
 
         return {
@@ -193,12 +201,21 @@ export class CircuitJsonBenchmarkSuite {
             medianMilliseconds: CircuitJsonBenchmarkSuite.#median(samples),
             cloneBytes: serialize(benchmarkCase.cloneValue).byteLength,
             retainedHeap: {
-                gcAvailable: typeof globalThis.gc === 'function',
+                gcControlled: true,
                 beforeBytes,
                 afterBytes,
-                deltaBytes: afterBytes - beforeBytes
+                retainedBytes: Math.max(0, afterBytes - beforeBytes)
             }
         }
+    }
+
+    /**
+     * Runs repeated full garbage collection around retained-heap boundaries.
+     * @returns {void}
+     */
+    static #forceGc() {
+        globalThis.gc()
+        globalThis.gc()
     }
 
     /**
