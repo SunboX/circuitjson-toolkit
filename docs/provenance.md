@@ -10,43 +10,155 @@ The implementation is an independent, contract-driven reimplementation over
 CircuitJSON indexes. No source text or package-native data model from the
 consulted Altium or KiCad implementations is copied into this repository.
 
-## Consulted duplicate implementations
+## Adapted-module records
 
-### Altium Toolkit
+Every adapted module has a complete record for both consulted repositories.
+The records deliberately distinguish behavior observation from implementation
+reuse.
+
+### RegexPattern.mjs
+
+- Local path: `src/core/query/RegexPattern.mjs`
+
+#### Altium Toolkit source
 
 - Repository: `https://github.com/SunboX/altium-toolkit`
-- Inspected worktree: `../altium-toolkit-api-convergence`
+- Path: `src/core/netlist-query/RegexPattern.mjs`
 - Inspected worktree commit: `9fa22e1028d96e583275093279bf6e03e8619588`
 - Source-introducing commit: `e8a8cd551ad103cd0cf96bb5b5f5b816874ed72b`
-- Paths: `src/core/netlist-query/RegexPattern.mjs`,
-  `src/core/netlist-query/ComponentGrouping.mjs`,
-  `src/core/netlist-query/CircuitTraversal.mjs`,
-  `src/core/netlist-query/QueryNetlistBuilder.mjs`, and
-  `src/core/netlist-query/LoadedDesignNetlistService.mjs`
 - Copyright: `2026 André Fiedler`
 - License: `GPL-3.0-or-later`
-- Reuse classification: observable behavior, result-field vocabulary, and
-  repository-owned fake-test expectations were reviewed. Source logic and
-  algorithm shape were not copied; the Task 6 modules are independently
-  implemented from the approved shared contract and CircuitJSON indexes.
 
-### KiCad Toolkit
+#### KiCad Toolkit source
 
 - Repository: `https://github.com/SunboX/kicad-toolkit`
-- Inspected worktree: `../kicad-toolkit-api-convergence`
+- Path: `src/core/netlist-query/RegexPattern.mjs`
 - Inspected worktree commit: `c71c88d69d236accce123656dfa66914c0d5489c`
 - Source-introducing commit: `02e38fe0b961a09d2ff25462b9b00207326743d2`
-- Paths: `src/core/netlist-query/RegexPattern.mjs`,
-  `src/core/netlist-query/ComponentGrouping.mjs`,
-  `src/core/netlist-query/CircuitTraversal.mjs`,
-  `src/core/netlist-query/QueryNetlistBuilder.mjs`, and
-  `src/core/netlist-query/LoadedDesignNetlistService.mjs`
 - Copyright: `2026 André Fiedler`
 - License: `GPL-3.0-or-later`
-- Reuse classification: observable behavior, result-field vocabulary, and
-  repository-owned fake-test expectations were reviewed. The files are
-  byte-identical to the Altium copies, but no source logic or algorithm shape
-  is copied into the independent Task 6 implementation.
+
+#### Decision
+
+- Consulted behavior: string-sourced regular-expression matching and reset
+  behavior between tests.
+- Reuse classification: behavior-only, independent bounded validation. No
+  source text or algorithm implementation was copied.
+
+### ComponentGrouping.mjs
+
+- Local path: `src/core/query/ComponentGrouping.mjs`
+
+#### Altium Toolkit source
+
+- Repository: `https://github.com/SunboX/altium-toolkit`
+- Path: `src/core/netlist-query/ComponentGrouping.mjs`
+- Inspected worktree commit: `9fa22e1028d96e583275093279bf6e03e8619588`
+- Source-introducing commit: `e8a8cd551ad103cd0cf96bb5b5f5b816874ed72b`
+- Copyright: `2026 André Fiedler`
+- License: `GPL-3.0-or-later`
+
+#### KiCad Toolkit source
+
+- Repository: `https://github.com/SunboX/kicad-toolkit`
+- Path: `src/core/netlist-query/ComponentGrouping.mjs`
+- Inspected worktree commit: `c71c88d69d236accce123656dfa66914c0d5489c`
+- Source-introducing commit: `02e38fe0b961a09d2ff25462b9b00207326743d2`
+- Copyright: `2026 André Fiedler`
+- License: `GPL-3.0-or-later`
+
+#### Decision
+
+- Consulted behavior: deterministic grouping vocabulary and stable result
+  ordering.
+- Reuse classification: behavior-only, independent grouping over canonical
+  CircuitJSON relations. No source text or algorithm implementation was copied.
+
+### CircuitTraversal.mjs
+
+- Local path: `src/core/query/CircuitTraversal.mjs`
+
+#### Altium Toolkit source
+
+- Repository: `https://github.com/SunboX/altium-toolkit`
+- Path: `src/core/netlist-query/CircuitTraversal.mjs`
+- Inspected worktree commit: `9fa22e1028d96e583275093279bf6e03e8619588`
+- Source-introducing commit: `e8a8cd551ad103cd0cf96bb5b5f5b816874ed72b`
+- Copyright: `2026 André Fiedler`
+- License: `GPL-3.0-or-later`
+
+#### KiCad Toolkit source
+
+- Repository: `https://github.com/SunboX/kicad-toolkit`
+- Path: `src/core/netlist-query/CircuitTraversal.mjs`
+- Inspected worktree commit: `c71c88d69d236accce123656dfa66914c0d5489c`
+- Source-introducing commit: `02e38fe0b961a09d2ff25462b9b00207326743d2`
+- Copyright: `2026 André Fiedler`
+- License: `GPL-3.0-or-later`
+
+#### Decision
+
+- Consulted behavior: ordered traversal, visited-net handling, bounded depth,
+  and cycle termination. Sibling endpoint fields were not consulted.
+- Reuse classification: behavior-only, independent traversal. Endpoint and
+  path-connector records are derived directly from CircuitJSON ports, nets, and
+  explicit internal connections; no source text or algorithm was copied.
+
+### QueryNetlistBuilder.mjs
+
+- Local path: `src/core/query/QueryNetlistBuilder.mjs`
+
+#### Altium Toolkit source
+
+- Repository: `https://github.com/SunboX/altium-toolkit`
+- Path: `src/core/netlist-query/QueryNetlistBuilder.mjs`
+- Inspected worktree commit: `9fa22e1028d96e583275093279bf6e03e8619588`
+- Source-introducing commit: `e8a8cd551ad103cd0cf96bb5b5f5b816874ed72b`
+- Copyright: `2026 André Fiedler`
+- License: `GPL-3.0-or-later`
+
+#### KiCad Toolkit source
+
+- Repository: `https://github.com/SunboX/kicad-toolkit`
+- Path: `src/core/netlist-query/QueryNetlistBuilder.mjs`
+- Inspected worktree commit: `c71c88d69d236accce123656dfa66914c0d5489c`
+- Source-introducing commit: `02e38fe0b961a09d2ff25462b9b00207326743d2`
+- Copyright: `2026 André Fiedler`
+- License: `GPL-3.0-or-later`
+
+#### Decision
+
+- Consulted behavior: component, net, and pin result vocabulary.
+- Reuse classification: behavior-only, independent construction from prepared
+  CircuitJSON indexes. No source text or algorithm implementation was copied.
+
+### QueryService.mjs
+
+- Local path: `src/core/query/QueryService.mjs`
+
+#### Altium Toolkit source
+
+- Repository: `https://github.com/SunboX/altium-toolkit`
+- Path: `src/core/netlist-query/LoadedDesignNetlistService.mjs`
+- Inspected worktree commit: `9fa22e1028d96e583275093279bf6e03e8619588`
+- Source-introducing commit: `e8a8cd551ad103cd0cf96bb5b5f5b816874ed72b`
+- Copyright: `2026 André Fiedler`
+- License: `GPL-3.0-or-later`
+
+#### KiCad Toolkit source
+
+- Repository: `https://github.com/SunboX/kicad-toolkit`
+- Path: `src/core/netlist-query/LoadedDesignNetlistService.mjs`
+- Inspected worktree commit: `c71c88d69d236accce123656dfa66914c0d5489c`
+- Source-introducing commit: `02e38fe0b961a09d2ff25462b9b00207326743d2`
+- Copyright: `2026 André Fiedler`
+- License: `GPL-3.0-or-later`
+
+#### Decision
+
+- Consulted behavior: bound-service reuse and convenience query methods.
+- Reuse classification: behavior-only, independent canonical query boundary
+  over a prepared CircuitJSON context. No source text or algorithm was copied.
 
 ## CircuitJSON-owned inputs
 
@@ -58,16 +170,6 @@ consulted Altium or KiCad implementations is copied into this repository.
 - License: `AGPL-3.0-or-later`
 - Reuse classification: these repository-owned APIs are consumed directly as
   the single source of truth for element, relation, and connectivity data.
-
-## Task 6 module decisions
-
-| Module                    | Consulted behavior                                                  | Reuse decision                                                |
-| ------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `RegexPattern.mjs`        | String-sourced regular-expression matching and per-test state reset | Independent bounded validator; no source or algorithm copying |
-| `ComponentGrouping.mjs`   | Deterministic component ordering and grouping vocabulary            | Independent stable-ID grouping over CircuitJSON rows          |
-| `CircuitTraversal.mjs`    | Ordered connectivity results, endpoints, and cycle termination      | Independent bounded traversal over derived CircuitJSON edges  |
-| `QueryNetlistBuilder.mjs` | Component, net, and pin result vocabulary                           | Independent construction from prepared context indexes        |
-| `QueryService.mjs`        | Bound service reuse and convenience query methods                   | Independent canonical `ecad-toolkit.query.v1` service         |
 
 All new Task 6 software remains `AGPL-3.0-or-later`. Because no GPL source or
 algorithm implementation is copied, no source-file relicensing occurs. The

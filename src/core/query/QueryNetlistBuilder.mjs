@@ -20,13 +20,28 @@ export class QueryNetlistBuilder {
                 port
             ])
         )
+        const internalConnections =
+            QueryNetlistBuilder.#internalConnections(elements)
+        const internalConnectionIdsByPort =
+            QueryNetlistBuilder.#internalConnectionIdsByPort(
+                internalConnections
+            )
         const traces = [...connectivity.sourceTraceConnectivity.values()]
-            .map((trace) => QueryNetlistBuilder.#trace(trace, portsById))
+            .map((trace) =>
+                QueryNetlistBuilder.#trace(
+                    trace,
+                    portsById,
+                    internalConnectionIdsByPort
+                )
+            )
             .filter((trace) => trace.id)
             .sort((left, right) =>
                 ComponentGrouping.compareIds(left.id, right.id)
             )
-        const components = ComponentGrouping.components(elements, relations)
+        const components = QueryNetlistBuilder.#connectComponents(
+            ComponentGrouping.components(elements, relations),
+            traces
+        )
         const nets = ComponentGrouping.nets(elements, traces)
         const diagnostics = (connectivity.diagnostics || []).map((row) =>
             ToolkitDiagnostic.create({
@@ -42,22 +57,124 @@ export class QueryNetlistBuilder {
             components,
             nets,
             traces,
+            internalConnections,
             diagnostics,
             statistics: {
                 componentCount: components.length,
                 netCount: nets.length,
-                traceCount: traces.length
+                traceCount: traces.length,
+                internalConnectionCount: internalConnections.length
             }
         }
+    }
+
+    /**
+     * Builds explicit electrical bridges between source-component ports.
+     * @param {Record<string, any>} elements Prepared elements index.
+     * @returns {object[]} Stable internal-connection records.
+     */
+    static #internalConnections(elements) {
+        const records = []
+        for (const component of elements.elementsByType.get(
+            'source_component'
+        ) || []) {
+            const sourceComponentId = String(
+                component.source_component_id || ''
+            ).trim()
+            const groups = Array.isArray(
+                component.internally_connected_source_port_ids
+            )
+                ? component.internally_connected_source_port_ids
+                : []
+            groups.forEach((sourcePortIds, index) => {
+                const normalizedPortIds =
+                    QueryNetlistBuilder.#ids(sourcePortIds)
+                if (!sourceComponentId || normalizedPortIds.length < 2) return
+                records.push({
+                    id: `${sourceComponentId}:internal:${index}`,
+                    sourceComponentId,
+                    sourcePortIds: normalizedPortIds
+                })
+            })
+        }
+        for (const connection of elements.elementsByType.get(
+            'source_component_internal_connection'
+        ) || []) {
+            const id = String(
+                connection.source_component_internal_connection_id || ''
+            ).trim()
+            const sourceComponentId = String(
+                connection.source_component_id || ''
+            ).trim()
+            const sourcePortIds = QueryNetlistBuilder.#ids(
+                connection.source_port_ids
+            )
+            if (!id || !sourceComponentId || sourcePortIds.length < 2) continue
+            records.push({ id, sourceComponentId, sourcePortIds })
+        }
+        return records.sort((left, right) =>
+            ComponentGrouping.compareIds(left.id, right.id)
+        )
+    }
+
+    /**
+     * Indexes internal-connection ids by every participating source port.
+     * @param {object[]} internalConnections Internal-connection records.
+     * @returns {Map<string, string[]>} Stable ids by source-port id.
+     */
+    static #internalConnectionIdsByPort(internalConnections) {
+        const result = new Map()
+        for (const connection of internalConnections) {
+            for (const sourcePortId of connection.sourcePortIds) {
+                if (!result.has(sourcePortId)) result.set(sourcePortId, [])
+                result.get(sourcePortId).push(connection.id)
+            }
+        }
+        for (const ids of result.values()) {
+            ids.sort(ComponentGrouping.compareIds)
+        }
+        return result
+    }
+
+    /**
+     * Adds trace-derived net ids to detached component pin records.
+     * @param {object[]} components Component records.
+     * @param {object[]} traces Trace records.
+     * @returns {object[]} Connected component records.
+     */
+    static #connectComponents(components, traces) {
+        const netIdsByPort = new Map()
+        for (const trace of traces) {
+            for (const portId of trace.sourcePortIds) {
+                if (!netIdsByPort.has(portId)) {
+                    netIdsByPort.set(portId, new Set())
+                }
+                const netIds = netIdsByPort.get(portId)
+                for (const netId of trace.sourceNetIds) netIds.add(netId)
+            }
+        }
+        return components.map((component) => ({
+            ...component,
+            pins: component.pins.map((pin) => ({
+                ...pin,
+                netIds: [
+                    ...new Set([
+                        ...(pin.netIds || []),
+                        ...(netIdsByPort.get(pin.id) || [])
+                    ])
+                ].sort(ComponentGrouping.compareIds)
+            }))
+        }))
     }
 
     /**
      * Builds one canonical trace record and its stable endpoints.
      * @param {Record<string, any>} trace Connectivity index row.
      * @param {Map<string, object>} portsById Source ports by id.
+     * @param {Map<string, string[]>} internalConnectionIdsByPort Internal connections by port.
      * @returns {Record<string, any>} Trace record.
      */
-    static #trace(trace, portsById) {
+    static #trace(trace, portsById, internalConnectionIdsByPort) {
         const sourcePortIds = QueryNetlistBuilder.#ids(
             trace.connectedSourcePortIds
         )
@@ -72,6 +189,13 @@ export class QueryNetlistBuilder {
                         String(port?.source_component_id || '').trim()
                     )
                     .filter(Boolean)
+            )
+        ].sort(ComponentGrouping.compareIds)
+        const internalConnectionIds = [
+            ...new Set(
+                sourcePortIds.flatMap(
+                    (id) => internalConnectionIdsByPort.get(id) || []
+                )
             )
         ].sort(ComponentGrouping.compareIds)
         const endpoints = [
@@ -95,6 +219,7 @@ export class QueryNetlistBuilder {
             sourcePortIds,
             sourceNetIds,
             sourceComponentIds,
+            internalConnectionIds,
             endpoints
         }
     }

@@ -17,7 +17,8 @@ export class ComponentGrouping {
         return components
             .map((component) => {
                 const id = String(component.source_component_id || '').trim()
-                const pins = (byComponent.get(id) || [])
+                const related = byComponent.get(id) || []
+                const pins = related
                     .filter((element) => element?.type === 'source_port')
                     .map((port) => ComponentGrouping.#pin(port))
                     .sort((left, right) =>
@@ -25,13 +26,15 @@ export class ComponentGrouping {
                     )
                 return ComponentGrouping.#withoutEmpty({
                     id,
-                    name: String(component.name || id),
+                    name: String(
+                        component.display_name || component.name || id
+                    ),
                     designator: String(component.name || id),
                     type: String(component.ftype || ''),
-                    value: ComponentGrouping.#text(component.value),
-                    footprint: ComponentGrouping.#text(
-                        component.footprint || component.footprint_name
+                    value: ComponentGrouping.#text(
+                        component.display_value || component.value
                     ),
+                    footprint: ComponentGrouping.#footprint(component, related),
                     mpn: ComponentGrouping.#mpn(component),
                     description: ComponentGrouping.#text(component.description),
                     doNotPopulate:
@@ -115,6 +118,32 @@ export class ComponentGrouping {
                 port.connected_source_net_ids
             ])
         })
+    }
+
+    /**
+     * Resolves the first linked PCB footprint before legacy source fields.
+     * @param {Record<string, any>} component Source component.
+     * @param {object[]} related Elements related by source-component id.
+     * @returns {string | undefined} Footprint name.
+     */
+    static #footprint(component, related) {
+        const pcbComponents = related
+            .filter((element) => element?.type === 'pcb_component')
+            .sort((left, right) =>
+                ComponentGrouping.compareIds(
+                    left.pcb_component_id,
+                    right.pcb_component_id
+                )
+            )
+        for (const pcbComponent of pcbComponents) {
+            const footprint = ComponentGrouping.#text(
+                pcbComponent.metadata?.kicad_footprint?.footprintName
+            )
+            if (footprint) return footprint
+        }
+        return ComponentGrouping.#text(
+            component.footprint || component.footprint_name
+        )
     }
 
     /**

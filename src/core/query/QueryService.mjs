@@ -49,8 +49,12 @@ export class QueryService {
      */
     static create(document, options = {}) {
         try {
-            QueryService.#record(options, new Set(['indexes']))
+            const normalizedOptions = QueryService.#record(
+                options,
+                new Set(['indexes'])
+            )
             const context = CircuitJsonDocumentContext.prepare(document, {
+                ...normalizedOptions,
                 indexes: ['elements', 'relations', 'connectivity']
             })
             return new QueryService(context)
@@ -91,7 +95,11 @@ export class QueryService {
                 'Query select must be components or nets.'
             )
         }
-        const items = this.#find(select, normalized.where || {}, options)
+        const items = this.#find(
+            select,
+            normalized.where === undefined ? {} : normalized.where,
+            options
+        )
         return {
             schema: 'ecad-toolkit.query.v1',
             items,
@@ -205,7 +213,7 @@ export class QueryService {
             throw QueryService.#error('Query caseSensitive must be boolean.')
         }
         const flags = normalized.flags === undefined ? '' : normalized.flags
-        if (typeof flags !== 'string') {
+        if (match !== 'regex' && typeof flags !== 'string') {
             throw QueryService.#error('Query regex flags must be a string.')
         }
         return {

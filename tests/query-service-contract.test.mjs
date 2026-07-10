@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { CircuitJsonDocumentContext } from '../src/core/context/CircuitJsonDocumentContext.mjs'
 import { DocumentResult } from '../src/core/contracts/DocumentResult.mjs'
+import { CircuitTraversal } from '../src/core/query/CircuitTraversal.mjs'
 import { QueryService } from '../src/core/query/QueryService.mjs'
 
 /**
@@ -16,14 +17,26 @@ function createConnectedDocument() {
             source_component_id: 'source_u1',
             name: 'U1',
             ftype: 'simple_chip',
-            value: 'MCU'
+            value: 'MCU',
+            display_name: 'Controller',
+            display_value: 'MCU-X'
         },
         {
             type: 'source_component',
             source_component_id: 'source_r1',
             name: 'R1',
             ftype: 'simple_resistor',
-            value: '10k'
+            value: '10k',
+            internally_connected_source_port_ids: [
+                ['source_r1_pin1', 'source_r1_pin2']
+            ]
+        },
+        {
+            type: 'source_port',
+            source_port_id: 'source_u1_pin2',
+            source_component_id: 'source_u1',
+            name: 'ALT',
+            pin_number: 2
         },
         {
             type: 'source_port',
@@ -48,6 +61,11 @@ function createConnectedDocument() {
         },
         {
             type: 'source_net',
+            source_net_id: 'source_net_aux',
+            name: 'AUX'
+        },
+        {
+            type: 'source_net',
             source_net_id: 'source_net_sig',
             name: 'SIG'
         },
@@ -55,6 +73,12 @@ function createConnectedDocument() {
             type: 'source_net',
             source_net_id: 'source_net_gnd',
             name: 'GND'
+        },
+        {
+            type: 'source_trace',
+            source_trace_id: 'source_trace_aux',
+            connected_source_port_ids: ['source_u1_pin2'],
+            connected_source_net_ids: ['source_net_aux']
         },
         {
             type: 'source_trace',
@@ -67,6 +91,19 @@ function createConnectedDocument() {
             source_trace_id: 'source_trace_gnd',
             connected_source_port_ids: ['source_r1_pin2'],
             connected_source_net_ids: ['source_net_gnd']
+        },
+        {
+            type: 'pcb_component',
+            pcb_component_id: 'pcb_u1',
+            source_component_id: 'source_u1',
+            center: { x: 0, y: 0 },
+            layer: 'top',
+            rotation: 0,
+            width: 4,
+            height: 4,
+            metadata: {
+                kicad_footprint: { footprintName: 'Package_QFP' }
+            }
         }
     ]
 }
@@ -88,7 +125,7 @@ test('QueryService reuses indexes and returns stable CircuitJSON ids', () => {
     )
     assert.deepEqual(
         service
-            .traceConnectivity({ sourceComponentId: 'source_u1' })
+            .traceConnectivity({ sourcePortId: 'source_u1_pin1' })
             .map((row) => row.id),
         ['source_trace_sig', 'source_trace_gnd']
     )
@@ -133,13 +170,38 @@ test('QueryService returns exact clone-safe query and netlist records', () => {
     )
     assert.deepEqual(
         first.nets.map((row) => row.id),
-        ['source_net_gnd', 'source_net_sig']
+        ['source_net_aux', 'source_net_gnd', 'source_net_sig']
     )
     assert.deepEqual(
         first.traces.map((row) => row.id),
-        ['source_trace_gnd', 'source_trace_sig']
+        ['source_trace_aux', 'source_trace_gnd', 'source_trace_sig']
+    )
+    assert.deepEqual(
+        first.components
+            .find((row) => row.id === 'source_u1')
+            .pins.map((pin) => ({ id: pin.id, netIds: pin.netIds })),
+        [
+            { id: 'source_u1_pin1', netIds: ['source_net_sig'] },
+            { id: 'source_u1_pin2', netIds: ['source_net_aux'] }
+        ]
+    )
+    assert.deepEqual(
+        first.components
+            .find((row) => row.id === 'source_r1')
+            .pins.map((pin) => ({ id: pin.id, netIds: pin.netIds })),
+        [
+            { id: 'source_r1_pin1', netIds: ['source_net_sig'] },
+            { id: 'source_r1_pin2', netIds: ['source_net_gnd'] }
+        ]
     )
     assert.equal(service.statistics.netlistBuilds, 1)
+    assert.deepEqual(first.internalConnections, [
+        {
+            id: 'source_r1:internal:0',
+            sourceComponentId: 'source_r1',
+            sourcePortIds: ['source_r1_pin1', 'source_r1_pin2']
+        }
+    ])
 
     first.components[0].name = 'mutated'
     assert.notEqual(service.buildNetlist().components[0].name, 'mutated')
@@ -155,7 +217,7 @@ test('QueryService accepts prepared contexts without rebuilding indexes', () => 
     const second = QueryService.create(context)
 
     assert.equal(first.findComponents().length, 2)
-    assert.equal(second.findNets().length, 2)
+    assert.equal(second.findNets().length, 3)
     assert.deepEqual(context.statistics.indexBuilds, before.indexBuilds)
     assert.equal(context.statistics.derivedBuilds['query:netlist-v1'], 1)
 })
@@ -166,7 +228,7 @@ test('QueryService treats patterns only as bounded data', () => {
     assert.deepEqual(
         service
             .findComponents({
-                field: 'name',
+                field: 'designator',
                 pattern: 'u1',
                 match: 'exact'
             })
@@ -182,6 +244,36 @@ test('QueryService treats patterns only as bounded data', () => {
             })
             .map((row) => row.id),
         ['source_r1']
+    )
+    assert.deepEqual(
+        service
+            .findComponents({
+                field: 'name',
+                pattern: 'Controller',
+                match: 'exact'
+            })
+            .map((row) => row.id),
+        ['source_u1']
+    )
+    assert.deepEqual(
+        service
+            .findComponents({
+                field: 'value',
+                pattern: 'MCU-X',
+                match: 'exact'
+            })
+            .map((row) => row.id),
+        ['source_u1']
+    )
+    assert.deepEqual(
+        service
+            .findComponents({
+                field: 'footprint',
+                pattern: 'Package_QFP',
+                match: 'exact'
+            })
+            .map((row) => row.id),
+        ['source_u1']
     )
 
     for (const criteria of [
@@ -210,6 +302,16 @@ test('QueryService treats patterns only as bounded data', () => {
         code: 'ERR_QUERY_REQUEST'
     })
     assert.equal(getterCalls, 0)
+
+    assert.throws(
+        () =>
+            service.findComponents({
+                pattern: 'U',
+                match: 'regex',
+                flags: false
+            }),
+        { code: 'ERR_QUERY_PATTERN' }
+    )
 })
 
 test('QueryService connectivity traversal is ordered, bounded, and cycle-safe', () => {
@@ -224,14 +326,29 @@ test('QueryService connectivity traversal is ordered, bounded, and cycle-safe', 
             {
                 id: 'source_trace_sig',
                 depth: 0,
-                path: ['source_trace_sig']
+                path: [{ traceId: 'source_trace_sig', via: null }]
             },
             {
                 id: 'source_trace_gnd',
                 depth: 1,
-                path: ['source_trace_sig', 'source_trace_gnd']
+                path: [
+                    { traceId: 'source_trace_sig', via: null },
+                    {
+                        traceId: 'source_trace_gnd',
+                        via: {
+                            kind: 'internalConnection',
+                            id: 'source_r1:internal:0'
+                        }
+                    }
+                ]
             }
         ]
+    )
+    assert.deepEqual(
+        service
+            .traceConnectivity({ sourceTraceId: 'source_trace_sig' })
+            .map((row) => row.id),
+        ['source_trace_sig', 'source_trace_gnd']
     )
     assert.deepEqual(
         service
@@ -284,4 +401,81 @@ test('QueryService validates select, fields, paging, and caller records', () => 
     assert.throws(() => service.query(null), {
         code: 'ERR_QUERY_REQUEST'
     })
+    assert.throws(() => service.query({ select: 'components', where: null }), {
+        code: 'ERR_QUERY_REQUEST'
+    })
+})
+
+test('QueryService honors explicit source internal-connection elements', () => {
+    const model = createConnectedDocument().map((element) => {
+        if (
+            element.source_component_id !== 'source_r1' ||
+            element.type !== 'source_component'
+        ) {
+            return element
+        }
+        const { internally_connected_source_port_ids: _omitted, ...rest } =
+            element
+        return rest
+    })
+    model.push({
+        type: 'source_component_internal_connection',
+        source_component_internal_connection_id: 'internal_r1',
+        source_component_id: 'source_r1',
+        source_port_ids: ['source_r1_pin1', 'source_r1_pin2']
+    })
+    const service = QueryService.create(model)
+    const result = service.traceConnectivity({
+        sourceTraceId: 'source_trace_sig'
+    })
+
+    assert.deepEqual(
+        result.map((row) => row.id),
+        ['source_trace_sig', 'source_trace_gnd']
+    )
+    assert.deepEqual(result[1].path[1].via, {
+        kind: 'internalConnection',
+        id: 'internal_r1'
+    })
+})
+
+test('CircuitTraversal expands shared memberships once and bounds fanout work', () => {
+    const graph = CircuitTraversal.prepare({
+        traces: Array.from({ length: 6 }, (_, index) => ({
+            id: `trace_${index}`,
+            sourcePortIds: [],
+            sourceNetIds: ['shared_net'],
+            sourceComponentIds: [],
+            internalConnectionIds: []
+        }))
+    })
+    const memberships = graph.traceIdsByMembership
+    let membershipReads = 0
+    graph.traceIdsByMembership = {
+        get(key) {
+            membershipReads += 1
+            return memberships.get(key)
+        }
+    }
+
+    assert.deepEqual(
+        CircuitTraversal.trace(
+            graph,
+            { sourceTraceId: 'trace_0' },
+            { maxDepth: 64, maxResults: 3 }
+        ).map((row) => row.id),
+        ['trace_0', 'trace_1', 'trace_2']
+    )
+    assert.equal(membershipReads, 1)
+
+    membershipReads = 0
+    assert.deepEqual(
+        CircuitTraversal.trace(
+            graph,
+            { sourceTraceId: 'trace_0' },
+            { maxDepth: 64, maxResults: 1 }
+        ).map((row) => row.id),
+        ['trace_0']
+    )
+    assert.equal(membershipReads, 0)
 })
