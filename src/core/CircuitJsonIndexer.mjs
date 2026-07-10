@@ -1,4 +1,5 @@
 import { CircuitJsonDocument } from './CircuitJsonDocument.mjs'
+import { CircuitJsonValidationProof } from './context/CircuitJsonValidationProof.mjs'
 
 const ID_FIELDS_BY_TYPE = {
     pcb_board: 'pcb_board_id',
@@ -41,10 +42,13 @@ export class CircuitJsonIndexer {
     /**
      * Indexes a CircuitJSON model.
      * @param {object[]} circuitJson CircuitJSON model.
+     * @param {{ validated?: boolean }} [options] Internal validation options.
      * @returns {{ elements: object[], elementsByType: Map<string, object[]>, elementsById: Map<string, object>, relationsByField: Map<string, Map<string, object[]>>, sourceComponentById: Map<string, object>, pcbComponentById: Map<string, object>, sourceTraceById: Map<string, object>, sourceTraceConnectivity: Map<string, object>, componentsBySourceId: Map<string, object>, groupsById: Map<string, object>, elementsByGroupId: Map<string, object[]>, elementsBySubcircuitId: Map<string, object[]>, diagnostics: object[] }}
      */
-    static index(circuitJson) {
-        CircuitJsonDocument.assertModel(circuitJson)
+    static index(circuitJson, options = {}) {
+        if (!CircuitJsonValidationProof.permitsIndex(circuitJson, options)) {
+            CircuitJsonDocument.assertModel(circuitJson)
+        }
         const elementsByType = new Map()
         const elementsById = new Map()
         const relationsByField = new Map()
@@ -96,7 +100,7 @@ export class CircuitJsonIndexer {
             elementsBySubcircuitId:
                 CircuitJsonIndexer.#elementsBySubcircuitId(circuitJson),
             diagnostics: [
-                ...CircuitJsonIndexer.collectDiagnostics(circuitJson),
+                ...CircuitJsonIndexer.#collectDiagnostics(circuitJson),
                 ...CircuitJsonIndexer.#referenceDiagnostics(
                     elementsByType,
                     sourceTraceById,
@@ -124,6 +128,15 @@ export class CircuitJsonIndexer {
      */
     static collectDiagnostics(circuitJson) {
         CircuitJsonDocument.assertModel(circuitJson)
+        return CircuitJsonIndexer.#collectDiagnostics(circuitJson)
+    }
+
+    /**
+     * Collects normalized diagnostic rows from an already validated model.
+     * @param {object[]} circuitJson CircuitJSON model.
+     * @returns {object[]}
+     */
+    static #collectDiagnostics(circuitJson) {
         return circuitJson
             .filter((element) => CircuitJsonIndexer.#isDiagnostic(element))
             .map((element) => CircuitJsonIndexer.#diagnostic(element))

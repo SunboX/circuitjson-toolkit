@@ -1,3 +1,5 @@
+import { CircuitJsonDocument } from '../CircuitJsonDocument.mjs'
+import { CircuitJsonValidationProof } from '../context/CircuitJsonValidationProof.mjs'
 import { ToolkitAsset } from './ToolkitAsset.mjs'
 import { ToolkitDiagnostic, cloneSafeValue } from './ToolkitDiagnostic.mjs'
 
@@ -40,6 +42,19 @@ export class DocumentResult {
                 : [],
             statistics: cloneSafeValue(fields.statistics, {})
         }
+    }
+
+    /**
+     * Creates a canonical envelope whose model is validated and immutable.
+     * @param {Record<string, any>} [fields] Document fields.
+     * @returns {Record<string, any>} Proven canonical document result.
+     */
+    static createValidated(fields = {}) {
+        const model = fields.model === undefined ? [] : fields.model
+        CircuitJsonDocument.assertModel(model, { freeze: true })
+        return CircuitJsonValidationProof.attach(
+            DocumentResult.create({ ...fields, model })
+        )
     }
 
     /**

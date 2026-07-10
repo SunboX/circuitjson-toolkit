@@ -1,4 +1,5 @@
 import { CircuitJsonUnits } from './CircuitJsonUnits.mjs'
+import { CircuitJsonValidationProof } from './context/CircuitJsonValidationProof.mjs'
 
 const KNOWN_ELEMENT_TYPES = new Set([
     'cad_component',
@@ -274,16 +275,24 @@ export class CircuitJsonElementValidator {
     /**
      * Returns validation errors for a candidate model.
      * @param {unknown} value Candidate model.
+     * @param {{ freeze?: boolean }} [options] Validation options.
      * @returns {string[]}
      */
-    static validateModel(value) {
+    static validateModel(value, options = {}) {
         if (!Array.isArray(value)) {
             return ['Expected a CircuitJSON element array.']
         }
 
-        return value.flatMap((element, index) =>
-            CircuitJsonElementValidator.validateElement(element, index)
+        const freezeTraversal = CircuitJsonValidationProof.freezeTraversal(
+            value,
+            options.freeze === true
         )
+        const errors = value.flatMap((element, index) => {
+            freezeTraversal.visit(element)
+            return CircuitJsonElementValidator.validateElement(element, index)
+        })
+        freezeTraversal.commit(errors.length === 0)
+        return errors
     }
 
     /**

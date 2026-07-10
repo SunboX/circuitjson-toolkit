@@ -25,19 +25,21 @@ export class CircuitJsonDocument {
     /**
      * Returns validation errors for a candidate CircuitJSON element array.
      * @param {unknown} value Candidate model.
+     * @param {{ freeze?: boolean }} [options] Validation options.
      * @returns {string[]}
      */
-    static validateModel(value) {
-        return CircuitJsonElementValidator.validateModel(value)
+    static validateModel(value, options = {}) {
+        return CircuitJsonElementValidator.validateModel(value, options)
     }
 
     /**
      * Throws when a value is not a CircuitJSON element array.
      * @param {unknown} value Candidate model.
+     * @param {{ freeze?: boolean }} [options] Validation options.
      * @returns {void}
      */
-    static assertModel(value) {
-        const errors = CircuitJsonDocument.validateModel(value)
+    static assertModel(value, options = {}) {
+        const errors = CircuitJsonDocument.validateModel(value, options)
         if (errors.length) {
             throw new TypeError(errors[0])
         }
