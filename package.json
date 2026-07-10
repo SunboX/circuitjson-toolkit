@@ -29,6 +29,7 @@
     "exports": {
         ".": "./src/index.mjs",
         "./parser": "./src/parser.mjs",
+        "./project": "./src/project.mjs",
         "./renderers": "./src/renderers.mjs"
     },
     "files": [

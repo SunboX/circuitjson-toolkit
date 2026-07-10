@@ -58,6 +58,7 @@ test('package exports public entrypoints', async () => {
     assert.equal(pkg.type, 'module')
     assert.equal(pkg.exports['.'], './src/index.mjs')
     assert.equal(pkg.exports['./parser'], './src/parser.mjs')
+    assert.equal(pkg.exports['./project'], './src/project.mjs')
     assert.equal(pkg.exports['./renderers'], './src/renderers.mjs')
     assert.equal(
         pkg.repository.url,
