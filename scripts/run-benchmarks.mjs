@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
 
+import { BenchmarkCaseCatalog } from '../benchmarks/BenchmarkCaseCatalog.mjs'
 import { CircuitJsonBenchmarkSuite } from '../benchmarks/CircuitJsonBenchmarkSuite.mjs'
 import {
     BaselineProvenance,
@@ -11,13 +12,6 @@ import {
 } from './BaselineArtifacts.mjs'
 
 const repositoryRoot = new URL('../', import.meta.url)
-const REQUIRED_CASES = [
-    { id: 'parse-context-50000', primary: true },
-    { id: 'repeated-query-hit-test', primary: true },
-    { id: 'repeated-netlist-query', primary: false },
-    { id: 'multi-layer-render', primary: false },
-    { id: 'context-reuse', primary: false }
-]
 
 /**
  * Reads the current package version.
@@ -91,16 +85,33 @@ async function readExistingBaseline(path) {
  * @param {{ sourceCommit: string, sourceTree: string }} provenance Expected provenance.
  * @returns {void}
  */
-function validateExistingBaseline(report, version, provenance) {
+export function validateExistingBaseline(report, version, provenance) {
+    const catalog = BenchmarkCaseCatalog.load()
     const { reportChecksum, ...reportBody } = report
-    const cases = Array.isArray(report.cases)
-        ? report.cases.map(({ id, primary }) => ({ id, primary }))
-        : []
+    const cases = Array.isArray(report.cases) ? report.cases : []
+    const caseContracts = cases.map((entry) => ({
+        id: entry.id,
+        primary: entry.primary,
+        warmups: entry.warmups,
+        sampleCount: entry.sampleCount,
+        workload: entry.workload,
+        cloneTarget: entry.cloneTarget,
+        expectedResult: entry.expectedResult,
+        expectedCloneBytes: entry.cloneBytes
+    }))
+    const measurementsValid = cases.every((entry) =>
+        validateCaseMeasurement(entry)
+    )
     if (
         report.schema !== 'circuitjson-toolkit.benchmark.v1' ||
         report.packageVersion !== version ||
+        catalog.packageVersion !== version ||
         !isDeepStrictEqual(report.provenance, provenance) ||
-        !isDeepStrictEqual(cases, REQUIRED_CASES) ||
+        report.caseCatalogChecksum !== catalog.catalogChecksum ||
+        !isDeepStrictEqual(report.measurementContract, catalog.measurement) ||
+        report.fixtureChecksum !== catalog.fixture.checksum ||
+        !isDeepStrictEqual(caseContracts, catalog.cases) ||
+        !measurementsValid ||
         reportChecksum !== benchmarkChecksum(reportBody)
     ) {
         throw new Error(
@@ -110,11 +121,47 @@ function validateExistingBaseline(report, version, provenance) {
 }
 
 /**
+ * Verifies one benchmark measurement against its internally derived values.
+ * @param {Record<string, any>} entry Benchmark case report.
+ * @returns {boolean} True when samples and retained memory reconcile exactly.
+ */
+function validateCaseMeasurement(entry) {
+    const samples = Array.isArray(entry.samples) ? entry.samples : []
+    const retainedHeap = entry.retainedHeap || {}
+    const memoryValues = [retainedHeap.beforeBytes, retainedHeap.afterBytes]
+    return (
+        Number.isInteger(entry.sampleCount) &&
+        entry.sampleCount > 0 &&
+        samples.length === entry.sampleCount &&
+        samples.every((sample) => Number.isFinite(sample) && sample >= 0) &&
+        entry.medianMilliseconds === median(samples) &&
+        retainedHeap.gcControlled === true &&
+        memoryValues.every((value) => Number.isInteger(value) && value >= 0) &&
+        retainedHeap.retainedBytes ===
+            Math.max(0, retainedHeap.afterBytes - retainedHeap.beforeBytes)
+    )
+}
+
+/**
+ * Returns the stable six-decimal median used by benchmark reports.
+ * @param {number[]} samples Timing samples.
+ * @returns {number} Median sample.
+ */
+function median(samples) {
+    if (samples.length === 0) return Number.NaN
+    const sorted = [...samples].sort((left, right) => left - right)
+    const middle = Math.floor(sorted.length / 2)
+    return sorted.length % 2 === 1
+        ? sorted[middle]
+        : Number(((sorted[middle - 1] + sorted[middle]) / 2).toFixed(6))
+}
+
+/**
  * Hashes a benchmark report body for immutable readback validation.
  * @param {Record<string, any>} report Report without reportChecksum.
  * @returns {string} SHA-256 checksum.
  */
-function benchmarkChecksum(report) {
+export function benchmarkChecksum(report) {
     return createHash('sha256').update(JSON.stringify(report)).digest('hex')
 }
 

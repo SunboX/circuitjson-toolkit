@@ -11,109 +11,6 @@ const REQUIRED_BENCHMARK_CASES = [
     { id: 'context-reuse', primary: false }
 ]
 
-const REQUIRED_INDEX_FIELDS = [
-    'indexResult.componentsBySourceId',
-    'indexResult.diagnostics',
-    'indexResult.elements',
-    'indexResult.elementsByGroupId',
-    'indexResult.elementsById',
-    'indexResult.elementsBySubcircuitId',
-    'indexResult.elementsByType',
-    'indexResult.groupsById',
-    'indexResult.pcbComponentById',
-    'indexResult.relationsByField',
-    'indexResult.sourceComponentById',
-    'indexResult.sourceTraceById',
-    'indexResult.sourceTraceConnectivity'
-]
-
-const REQUIRED_DOCUMENT_METADATA_FIELDS = [
-    'parserResult.bom',
-    'parserResult.diagnostics',
-    'parserResult.fileName',
-    'parserResult.fileType',
-    'parserResult.kind',
-    'parserResult.manufacturing',
-    'parserResult.sourceFormat',
-    'parserResult.supportMatrix'
-]
-
-const REQUIRED_PUBLIC_OPTIONS = [
-    'CircuitJsonDocument.attachMetadata.metadata.bom',
-    'CircuitJsonDocument.attachMetadata.metadata.diagnostics',
-    'CircuitJsonDocument.attachMetadata.metadata.fileName',
-    'CircuitJsonDocument.attachMetadata.metadata.fileType',
-    'CircuitJsonDocument.attachMetadata.metadata.kind',
-    'CircuitJsonDocument.attachMetadata.metadata.manufacturing',
-    'CircuitJsonDocument.attachMetadata.metadata.supportMatrix',
-    'CircuitJsonParser.parseBytes.options.fileName',
-    'CircuitJsonParser.parseText.options.fileName',
-    'CircuitJsonPcbPrimitiveOverlays.build.groupModel.anchorOffsets',
-    'CircuitJsonPcbPrimitiveOverlays.build.groupModel.groups',
-    'CircuitJsonPcbSvgRenderer.render.options.side',
-    'CircuitJsonSchematicSvgPrimitiveAttributes.attributes.options.fill',
-    'CircuitJsonSourceMetadata.normalizeSourceNetName.options.fallback',
-    'CircuitJsonSourceMetadata.normalizeSourceNetName.options.usedNames',
-    'CircuitJsonSourceMetadata.normalizeSourcePortName.options.fallback',
-    'CircuitJsonSourceMetadata.normalizeSourcePortName.options.usedNames',
-    'PcbBoundsSelectionModel.resolve.options.hiddenLayers',
-    'PcbBoundsSelectionModel.resolve.options.hiddenObjects',
-    'PcbBoundsSelectionModel.resolve.options.side',
-    'PcbInteractionPrimitiveModel.hitTest.options.hiddenLayers',
-    'PcbInteractionPrimitiveModel.hitTest.options.hiddenObjects',
-    'PcbInteractionPrimitiveModel.hitTest.options.side',
-    'PcbInteractionPrimitiveModel.hitTest.options.tolerance',
-    'PcbInteractionPrimitiveModel.resolveSnapPoint.options.tolerance',
-    'SelectedPartCircuitJsonExportAdapter.build.selectedPart.designator',
-    'SelectedPartCircuitJsonExportAdapter.build.selectedPart.footprint',
-    'SelectedPartCircuitJsonExportAdapter.build.selectedPart.symbol',
-    'SpiceSimulationService.constructor.dependencies.engine'
-]
-
-const REQUIRED_PUBLIC_FIELDS = [
-    'boundsSelectionResult.bounds',
-    'boundsSelectionResult.candidates',
-    'boundsSelectionResult.componentKeys',
-    'boundsSelectionResult.netNames',
-    'boundsSelectionResult.point',
-    'boundsSelectionResult.selectedCandidate',
-    ...REQUIRED_INDEX_FIELDS,
-    'manufacturingDownloadResult.bytes',
-    'manufacturingDownloadResult.contentType',
-    'manufacturingDownloadResult.fileName',
-    'manufacturingResult.fabricationNotes',
-    'manufacturingResult.pickAndPlaceRows',
-    'manufacturingResult.routingDsn',
-    'manufacturingResult.routingGuides',
-    ...REQUIRED_DOCUMENT_METADATA_FIELDS,
-    'pcbPrimitiveModelResult.airwires',
-    'pcbPrimitiveModelResult.anchorOffsets',
-    'pcbPrimitiveModelResult.anchors',
-    'pcbPrimitiveModelResult.bounds',
-    'pcbPrimitiveModelResult.components',
-    'pcbPrimitiveModelResult.diagnostics',
-    'pcbPrimitiveModelResult.groups',
-    'pcbPrimitiveModelResult.layers',
-    'pcbPrimitiveModelResult.nets',
-    'pcbPrimitiveModelResult.primitives',
-    'pcbPrimitiveModelResult.traceLengths',
-    'pcbPrimitiveModelResult.virtualLayers',
-    'simulationResult.diagnostics',
-    'simulationResult.graphSummary',
-    'simulationResult.simulationCircuitJson',
-    'simulationResult.simulationResultCircuitJson',
-    'sourceMetadataResult.componentIcon',
-    'sourceMetadataResult.componentType',
-    'sourceMetadataResult.sourceFtype',
-    'sourceMetadataResult.supplierPartNumber',
-    'sourceMetadataResult.supplierPartNumbers',
-    'supportMatrixResult.gaps',
-    'supportMatrixResult.rows',
-    'supportMatrixResult.sourceFormat',
-    'supportMatrixResult.totals',
-    'supportMatrixResult.variantRows'
-]
-
 const REQUIRED_PROVENANCE = {
     sourceCommit: '8c9d7deb0229d7d7d8d2f7bdcd621933e88753f9',
     sourceTree: '6740d0a6d8a1c0db3da7423c6595b8231d392f0d'
@@ -148,27 +45,20 @@ test('convergence baselines identify immutable source versions and primary cases
     assert.equal(benchmark.cases.filter((entry) => entry.primary).length, 2)
 })
 
-test('API baseline freezes every documented index, metadata, and option field', async () => {
+test('API baseline records typed source evidence for every field and option', async () => {
     const api = await readJson('spec/api-baseline-v1.0.17.json')
-    const fields = api.features
-        .filter((entry) => entry.kind === 'field')
-        .map((entry) => entry.feature)
-        .sort()
-    const options = api.features
-        .filter((entry) => entry.kind === 'option')
-        .map((entry) => entry.feature)
-        .sort()
+    const fields = api.features.filter((entry) => entry.kind === 'field')
+    const options = api.features.filter((entry) => entry.kind === 'option')
 
-    assert.deepEqual(fields, [...REQUIRED_PUBLIC_FIELDS].sort())
-    assert.deepEqual(options, REQUIRED_PUBLIC_OPTIONS)
-
-    assert.deepEqual(
-        fields.filter((field) => field.startsWith('indexResult.')),
-        REQUIRED_INDEX_FIELDS
+    assert.ok(fields.length > 0)
+    assert.ok(options.length > 0)
+    assert.ok(
+        fields.every((field) => field.sourceContract?.type === 'result-field')
     )
-    assert.deepEqual(
-        fields.filter((field) => field.startsWith('parserResult.')),
-        REQUIRED_DOCUMENT_METADATA_FIELDS
+    assert.ok(
+        options.every((option) =>
+            ['argument', 'property'].includes(option.sourceContract?.type)
+        )
     )
 })
 

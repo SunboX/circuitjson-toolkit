@@ -12,12 +12,25 @@
         "cpu": "Apple M3 Max",
         "logicalCpuCount": 16
     },
+    "caseCatalogChecksum": "aa5a3a80cd4d8c3a3b40cffb53a750673076c17108ce2e9764de1fc82e8fe05e",
+    "measurementContract": {
+        "clonePhase": "after-workload",
+        "median": "sorted-middle-six-decimal",
+        "retainedBytes": "max(0,afterBytes-beforeBytes)"
+    },
     "fixtureChecksum": "76b9f8d819bdff0c0a08080e9891c5a7f2717b8151c77eff836a1112027990a5",
     "cases": [
         {
             "id": "parse-context-50000",
             "primary": true,
             "warmups": 1,
+            "sampleCount": 5,
+            "workload": {
+                "operation": "parse-and-index",
+                "source": "largeDocument"
+            },
+            "cloneTarget": "largeDocument",
+            "expectedResult": 50000,
             "samples": [
                 171.108417, 161.834375, 180.357833, 157.400875, 161.204958
             ],
@@ -34,6 +47,21 @@
             "id": "repeated-query-hit-test",
             "primary": true,
             "warmups": 2,
+            "sampleCount": 7,
+            "workload": {
+                "operation": "grid-hit-test",
+                "source": "interactiveDocument",
+                "iterations": 40,
+                "xCycle": 16,
+                "yCycle": 12,
+                "spacing": 1.5,
+                "xOffset": -12,
+                "yOffset": -9,
+                "tolerance": 0.25,
+                "resultMetric": "candidate-count"
+            },
+            "cloneTarget": "interactiveDocument",
+            "expectedResult": 80,
             "samples": [
                 77.069917, 79.607875, 83.753791, 81.963666, 75.808125,
                 80.864541, 74.972041
@@ -51,6 +79,15 @@
             "id": "repeated-netlist-query",
             "primary": false,
             "warmups": 3,
+            "sampleCount": 9,
+            "workload": {
+                "operation": "net-name-filter",
+                "source": "netlistDocument",
+                "netNamePrefix": "BUS_",
+                "netCount": 128
+            },
+            "cloneTarget": "netlistDocument",
+            "expectedResult": 1024,
             "samples": [
                 1.305834, 0.937958, 0.868583, 0.876125, 0.860541, 0.860541,
                 0.862875, 0.857709, 0.861916
@@ -68,6 +105,14 @@
             "id": "multi-layer-render",
             "primary": false,
             "warmups": 2,
+            "sampleCount": 7,
+            "workload": {
+                "operation": "render-sides",
+                "source": "interactiveDocument",
+                "sides": ["top", "bottom"]
+            },
+            "cloneTarget": "interactiveDocument",
+            "expectedResult": 82113,
             "samples": [
                 5.201833, 5.540625, 5.086625, 5.736667, 5.164083, 5.417084,
                 5.913584
@@ -85,6 +130,16 @@
             "id": "context-reuse",
             "primary": false,
             "warmups": 3,
+            "sampleCount": 9,
+            "workload": {
+                "operation": "indexed-id-lookup",
+                "source": "netlistIndex",
+                "iterations": 4096,
+                "modulus": 128,
+                "idPrefix": "source_net:source_net_bus_"
+            },
+            "cloneTarget": "netlistIndex",
+            "expectedResult": 4096,
             "samples": [
                 0.466709, 0.433292, 0.431792, 0.443125, 0.451666, 0.43575,
                 0.439208, 0.434375, 0.428667
@@ -99,5 +154,5 @@
             }
         }
     ],
-    "reportChecksum": "fe492f4df495f80e24ffc351a67cf4ee7be493d90278656c499f1a245ffc3c79"
+    "reportChecksum": "734cc40ba998efd9ae3f686a5825e9ceaad4034938ca530156879053a3394140"
 }

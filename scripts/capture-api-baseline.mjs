@@ -1,14 +1,15 @@
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 
 import {
     BaselineProvenance,
     ImmutableBaselineWriter
 } from './BaselineArtifacts.mjs'
+import { PublicContractExtractor } from './PublicContractExtractor.mjs'
 
 const repositoryRoot = new URL('../', import.meta.url)
 const BASELINE_VERSION = '1.0.17'
-const IGNORED_CLASS_MEMBERS = new Set(['length', 'name', 'prototype'])
+const IGNORED_CLASS_MEMBERS = new Set(['name', 'prototype'])
 const EXTENSION_EXPORTS = new Set([
     'CircuitJsonPcbClearanceDiagnostics',
     'CircuitJsonPcbCopperGeometry',
@@ -140,294 +141,71 @@ const CAPABILITY_POLICIES = Object.freeze({
     }
 })
 
-const CONTRACT_FEATURES = [
-    contractFeature(
-        'CircuitJsonParser.parseText.options.fileName',
-        'option',
-        'parse.document'
-    ),
-    contractFeature(
-        'CircuitJsonParser.parseBytes.options.fileName',
-        'option',
-        'parse.document'
-    ),
-    contractFeature(
-        'CircuitJsonPcbSvgRenderer.render.options.side',
-        'option',
-        'render.pcb'
-    ),
-    contractFeature(
-        'PcbBoundsSelectionModel.resolve.options.side',
-        'option',
-        'interaction.pcb'
-    ),
-    contractFeature(
-        'PcbBoundsSelectionModel.resolve.options.hiddenLayers',
-        'option',
-        'interaction.pcb'
-    ),
-    contractFeature(
-        'PcbBoundsSelectionModel.resolve.options.hiddenObjects',
-        'option',
-        'interaction.pcb'
-    ),
-    contractFeature(
-        'PcbInteractionPrimitiveModel.resolveSnapPoint.options.tolerance',
-        'option',
-        'interaction.pcb'
-    ),
-    contractFeature(
-        'PcbInteractionPrimitiveModel.hitTest.options.side',
-        'option',
-        'interaction.pcb'
-    ),
-    contractFeature(
-        'PcbInteractionPrimitiveModel.hitTest.options.hiddenLayers',
-        'option',
-        'interaction.pcb'
-    ),
-    contractFeature(
-        'PcbInteractionPrimitiveModel.hitTest.options.hiddenObjects',
-        'option',
-        'interaction.pcb'
-    ),
-    contractFeature(
-        'PcbInteractionPrimitiveModel.hitTest.options.tolerance',
-        'option',
-        'interaction.pcb'
-    ),
-    contractFeature(
-        'CircuitJsonSourceMetadata.normalizeSourceNetName.options.fallback',
-        'option',
-        'metadata.normalize'
-    ),
-    contractFeature(
-        'CircuitJsonSourceMetadata.normalizeSourceNetName.options.usedNames',
-        'option',
-        'metadata.normalize'
-    ),
-    contractFeature(
-        'CircuitJsonSourceMetadata.normalizeSourcePortName.options.fallback',
-        'option',
-        'metadata.normalize'
-    ),
-    contractFeature(
-        'CircuitJsonSourceMetadata.normalizeSourcePortName.options.usedNames',
-        'option',
-        'metadata.normalize'
-    ),
-    contractFeature(
-        'CircuitJsonSchematicSvgPrimitiveAttributes.attributes.options.fill',
-        'option',
-        'render.schematic'
-    ),
-    contractFeature(
-        'SpiceSimulationService.constructor.dependencies.engine',
-        'option',
-        'simulation.spice'
-    ),
-    ...contractFeatures(
-        'CircuitJsonDocument.attachMetadata.metadata',
-        [
-            'fileName',
-            'fileType',
-            'kind',
-            'diagnostics',
-            'bom',
-            'supportMatrix',
-            'manufacturing'
-        ],
-        'option',
-        'validation.document'
-    ),
-    ...contractFeatures(
-        'CircuitJsonPcbPrimitiveOverlays.build.groupModel',
-        ['groups', 'anchorOffsets'],
-        'option',
-        'render.pcb'
-    ),
-    ...contractFeatures(
-        'SelectedPartCircuitJsonExportAdapter.build.selectedPart',
-        ['designator', 'symbol', 'footprint'],
-        'option',
-        'export.selected-part'
-    ),
-    ...contractFeatures(
-        'parserResult',
-        [
-            'fileName',
-            'fileType',
-            'kind',
-            'sourceFormat',
-            'diagnostics',
-            'bom',
-            'supportMatrix',
-            'manufacturing'
-        ],
-        'field',
-        'parse.document'
-    ),
-    ...contractFeatures(
-        'indexResult',
-        [
-            'elements',
-            'elementsByType',
-            'elementsById',
-            'relationsByField',
-            'sourceComponentById',
-            'pcbComponentById',
-            'sourceTraceById',
-            'sourceTraceConnectivity',
-            'componentsBySourceId',
-            'groupsById',
-            'elementsByGroupId',
-            'elementsBySubcircuitId',
-            'diagnostics'
-        ],
-        'field',
-        'query.document'
-    ),
-    ...contractFeatures(
-        'simulationResult',
-        [
-            'simulationResultCircuitJson',
-            'simulationCircuitJson',
-            'graphSummary',
-            'diagnostics'
-        ],
-        'field',
-        'simulation.spice'
-    ),
-    ...contractFeatures(
-        'pcbPrimitiveModelResult',
-        [
-            'bounds',
-            'layers',
-            'virtualLayers',
-            'components',
-            'nets',
-            'primitives',
-            'anchors',
-            'diagnostics',
-            'airwires',
-            'traceLengths',
-            'groups',
-            'anchorOffsets'
-        ],
-        'field',
-        'interaction.pcb'
-    ),
-    ...contractFeatures(
-        'manufacturingResult',
-        ['pickAndPlaceRows', 'routingDsn', 'routingGuides', 'fabricationNotes'],
-        'field',
-        'manufacturing.export'
-    ),
-    ...contractFeatures(
-        'manufacturingDownloadResult',
-        ['fileName', 'bytes', 'contentType'],
-        'field',
-        'manufacturing.export'
-    ),
-    ...contractFeatures(
-        'sourceMetadataResult',
-        [
-            'sourceFtype',
-            'componentType',
-            'componentIcon',
-            'supplierPartNumber',
-            'supplierPartNumbers'
-        ],
-        'field',
-        'metadata.normalize'
-    ),
-    ...contractFeatures(
-        'supportMatrixResult',
-        ['sourceFormat', 'totals', 'rows', 'variantRows', 'gaps'],
-        'field',
-        'metadata.normalize'
-    ),
-    ...contractFeatures(
-        'boundsSelectionResult',
-        [
-            'bounds',
-            'point',
-            'candidates',
-            'selectedCandidate',
-            'componentKeys',
-            'netNames'
-        ],
-        'field',
-        'interaction.pcb'
-    ),
+const BEHAVIOR_FEATURES = [
     contractFeature(
         'parser rejects malformed JSON with SyntaxError',
         'behavior',
-        'parse.document'
+        'parse.document',
+        'CircuitJsonParser'
     ),
     contractFeature(
         'parser rejects non-CircuitJSON JSON with TypeError',
         'behavior',
-        'parse.document'
+        'parse.document',
+        'CircuitJsonParser'
     ),
     contractFeature(
         'validator rejects unknown element types',
         'behavior',
-        'validation.document'
+        'validation.document',
+        'CircuitJsonElementValidator'
     ),
     contractFeature(
         'parser metadata survives structured cloning',
         'behavior',
-        'parse.document'
+        'parse.document',
+        'CircuitJsonParser'
     ),
     contractFeature(
         'indexer builds deterministic type and id lookups',
         'behavior',
-        'query.document'
+        'query.document',
+        'CircuitJsonIndexer'
     ),
     contractFeature(
         'PCB renderer selects top or bottom side deterministically',
         'behavior',
-        'render.pcb'
+        'render.pcb',
+        'CircuitJsonPcbSvgRenderer'
     ),
     contractFeature(
         'SPICE simulation returns deterministic transient graph summaries',
         'behavior',
-        'simulation.spice'
+        'simulation.spice',
+        'SpiceSimulationService'
     ),
     contractFeature(
         'manufacturing downloads reject unsupported formats',
         'behavior',
-        'manufacturing.export'
+        'manufacturing.export',
+        'CircuitJsonManufacturingDownloadBuilder'
     )
 ]
 
 /**
- * Creates related contract features with one common prefix.
- * @param {string} prefix Feature prefix.
- * @param {string[]} names Field or option names.
- * @param {'option' | 'field'} kind Feature kind.
- * @param {string} capabilityId Owning capability id.
- * @returns {Record<string, string>[]} Baseline features.
- */
-function contractFeatures(prefix, names, kind, capabilityId) {
-    return names.map((name) =>
-        contractFeature(`${prefix}.${name}`, kind, capabilityId)
-    )
-}
-
-/**
- * Creates one manually documented API contract feature.
+ * Creates one explicitly tested observable behavior feature.
  * @param {string} feature Stable feature description.
- * @param {'option' | 'field' | 'behavior'} kind Feature kind.
+ * @param {'behavior'} kind Feature kind.
  * @param {string} capabilityId Owning capability id.
+ * @param {string} evidenceToken Symbol exercised by the evidence test.
  * @returns {Record<string, string>} Baseline feature.
  */
-function contractFeature(feature, kind, capabilityId) {
+function contractFeature(feature, kind, capabilityId, evidenceToken) {
     return {
         feature,
         kind,
-        capabilityId
+        capabilityId,
+        evidenceToken
     }
 }
 
@@ -646,12 +424,65 @@ function preservationMapping(feature) {
 }
 
 /**
+ * Recursively reads repository-owned test sources for evidence discovery.
+ * @param {URL} directory Current directory URL.
+ * @param {string} relativeDirectory Repository-relative directory.
+ * @returns {Promise<{ path: string, source: string }[]>} Test source records.
+ */
+async function readTestSources(directory, relativeDirectory = 'tests') {
+    const records = []
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+        const relativePath = `${relativeDirectory}/${entry.name}`
+        const entryUrl = new URL(entry.name, directory)
+        if (entry.isDirectory()) {
+            records.push(
+                ...(await readTestSources(
+                    new URL(`${entry.name}/`, directory),
+                    relativePath
+                ))
+            )
+        } else if (entry.name.endsWith('.test.mjs')) {
+            records.push({
+                path: relativePath,
+                source: await readFile(entryUrl, 'utf8')
+            })
+        }
+    }
+    return records.sort((left, right) => left.path.localeCompare(right.path))
+}
+
+/**
+ * Finds repository tests that reference a public symbol token.
+ * @param {string} evidenceToken Public symbol token.
+ * @param {{ path: string, source: string }[]} testSources Test sources.
+ * @returns {string[]} Matching repository-relative test paths.
+ */
+function evidenceTests(evidenceToken, testSources) {
+    return testSources
+        .filter((testSource) => testSource.source.includes(evidenceToken))
+        .map((testSource) => testSource.path)
+}
+
+/**
  * Adds the complete preservation mapping to one baseline feature.
  * @param {Record<string, any>} feature Baseline feature.
+ * @param {{ path: string, source: string }[]} testSources Test sources.
  * @returns {Record<string, any>} Mapped baseline feature.
  */
-function mapFeature(feature) {
-    return { ...feature, ...preservationMapping(feature) }
+function mapFeature(feature, testSources) {
+    const evidenceToken = feature.evidenceToken || feature.exportName
+    const tests = evidenceTests(evidenceToken, testSources)
+    if (tests.length === 0) {
+        throw new Error(
+            `No repository test references public symbol ${evidenceToken}.`
+        )
+    }
+    return {
+        ...feature,
+        ...preservationMapping(feature),
+        evidenceToken,
+        tests
+    }
 }
 
 /**
@@ -669,6 +500,8 @@ function createLedger(features) {
         replacement: feature.replacement,
         availability: feature.availability,
         reason: feature.reason,
+        evidenceToken: feature.evidenceToken,
+        sourceContract: feature.sourceContract,
         tests: feature.tests,
         documentation: feature.documentation
     }))
@@ -693,8 +526,18 @@ export async function captureApiBaseline() {
                 captureEntrypoint(entrypoint, definition)
             )
     )
-    const features = [...flattenEntrypoints(entrypoints), ...CONTRACT_FEATURES]
-        .map((feature) => mapFeature(feature))
+    const [sourceContracts, testSources] = await Promise.all([
+        PublicContractExtractor.extract(repositoryRoot),
+        readTestSources(new URL('tests/', repositoryRoot))
+    ])
+    const features = [
+        ...sourceContracts.map((feature) => ({
+            ...feature,
+            capabilityId: capabilityForExport(feature.exportName)
+        })),
+        ...BEHAVIOR_FEATURES
+    ]
+        .map((feature) => mapFeature(feature, testSources))
         .sort((left, right) => left.feature.localeCompare(right.feature))
     const provenance = await BaselineProvenance.capture(repositoryRoot)
     const baseline = {

@@ -31,6 +31,7 @@ function baselineFeature(feature) {
             'kicad-toolkit': 'derived'
         },
         reason: 'CircuitJSON parsing is a source-neutral shared operation.',
+        evidenceToken: 'ToolkitCapabilities',
         tests: ['tests/api-entrypoints.test.mjs'],
         documentation: ['docs/api.md']
     }
@@ -182,6 +183,41 @@ test('strict feature checker rejects missing evidence paths', async (context) =>
                 repositoryRoot: packageRoot
             }),
         /Missing evidence paths: missing\.test\.mjs/
+    )
+})
+
+test('strict feature checker rejects evidence files without the mapped symbol', async (context) => {
+    const packageRoot = await packedFixture(context, [
+        capabilityRow('parse.document')
+    ])
+    const apiBaseline = {
+        entrypoints: [{ entrypoint: '.', target: './index.mjs', exports: [] }],
+        features: [
+            {
+                ...baselineFeature('mapped'),
+                evidenceToken: 'ExpectedPublicSymbol',
+                tests: ['index.mjs'],
+                documentation: ['index.mjs']
+            }
+        ]
+    }
+
+    await assert.rejects(
+        () =>
+            validateFeaturePreservation({
+                apiBaseline,
+                ledger: [
+                    ledgerRow('mapped', {
+                        evidenceToken: 'ExpectedPublicSymbol',
+                        tests: ['index.mjs'],
+                        documentation: ['index.mjs']
+                    })
+                ],
+                strict: true,
+                packageRoot,
+                repositoryRoot: packageRoot
+            }),
+        /Evidence tests do not reference ExpectedPublicSymbol for mapped/
     )
 })
 

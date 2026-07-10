@@ -33,6 +33,8 @@ const MAPPING_FIELDS = [
     'replacement',
     'availability',
     'reason',
+    'evidenceToken',
+    'sourceContract',
     'tests',
     'documentation'
 ]
@@ -210,6 +212,26 @@ async function validateEvidencePaths(ledger, repositoryRoot) {
     if (missing.length > 0) {
         throw new Error(`Missing evidence paths: ${missing.join(', ')}`)
     }
+
+    const testContents = new Map()
+    for (const row of ledger) {
+        const referencesSymbol = await Promise.all(
+            row.tests.map(async (path) => {
+                if (!testContents.has(path)) {
+                    testContents.set(
+                        path,
+                        await readFile(resolve(repositoryRoot, path), 'utf8')
+                    )
+                }
+                return testContents.get(path).includes(row.evidenceToken)
+            })
+        )
+        if (!referencesSymbol.some(Boolean)) {
+            throw new Error(
+                `Evidence tests do not reference ${row.evidenceToken} for ${row.feature}`
+            )
+        }
+    }
 }
 
 /**
@@ -266,6 +288,7 @@ function isCompleteMapping(row) {
         isNonEmptyString(row.replacement) &&
         isValidAvailability(row.availability) &&
         isNonEmptyString(row.reason) &&
+        isNonEmptyString(row.evidenceToken) &&
         isNonEmptyStringArray(row.tests) &&
         isNonEmptyStringArray(row.documentation)
     )
