@@ -98,8 +98,8 @@ reuse.
 
 #### Decision
 
-- Consulted behavior: ordered traversal, visited-net handling, bounded depth,
-  and cycle termination. Sibling endpoint fields were not consulted.
+- Consulted behavior: ordered traversal, visited-net handling, and cycle
+  termination. Sibling endpoint and traversal-bound fields were not consulted.
 - Reuse classification: behavior-only, independent traversal. Endpoint and
   path-connector records are derived directly from CircuitJSON ports, nets, and
   explicit internal connections; no source text or algorithm was copied.

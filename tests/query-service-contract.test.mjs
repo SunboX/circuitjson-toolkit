@@ -26,7 +26,7 @@ function createConnectedDocument() {
             source_component_id: 'source_r1',
             name: 'R1',
             ftype: 'simple_resistor',
-            value: '10k',
+            resistance: 10000,
             internally_connected_source_port_ids: [
                 ['source_r1_pin1', 'source_r1_pin2']
             ]
@@ -177,6 +177,22 @@ test('QueryService returns exact clone-safe query and netlist records', () => {
         ['source_trace_aux', 'source_trace_gnd', 'source_trace_sig']
     )
     assert.deepEqual(
+        first.traces.find((row) => row.id === 'source_trace_sig').endpoints,
+        [
+            { id: 'source_net_sig', kind: 'net' },
+            {
+                id: 'source_r1_pin1',
+                kind: 'port',
+                componentId: 'source_r1'
+            },
+            {
+                id: 'source_u1_pin1',
+                kind: 'port',
+                componentId: 'source_u1'
+            }
+        ]
+    )
+    assert.deepEqual(
         first.components
             .find((row) => row.id === 'source_u1')
             .pins.map((pin) => ({ id: pin.id, netIds: pin.netIds })),
@@ -197,7 +213,7 @@ test('QueryService returns exact clone-safe query and netlist records', () => {
     assert.equal(service.statistics.netlistBuilds, 1)
     assert.deepEqual(first.internalConnections, [
         {
-            id: 'source_r1:internal:0',
+            id: 'source_r1:internal:source_r1_pin1+source_r1_pin2',
             sourceComponentId: 'source_r1',
             sourcePortIds: ['source_r1_pin1', 'source_r1_pin2']
         }
@@ -248,6 +264,16 @@ test('QueryService treats patterns only as bounded data', () => {
     assert.deepEqual(
         service
             .findComponents({
+                field: 'value',
+                pattern: '10000',
+                match: 'exact'
+            })
+            .map((row) => row.id),
+        ['source_r1']
+    )
+    assert.deepEqual(
+        service
+            .findComponents({
                 field: 'name',
                 pattern: 'Controller',
                 match: 'exact'
@@ -279,6 +305,7 @@ test('QueryService treats patterns only as bounded data', () => {
     for (const criteria of [
         { pattern: '[', match: 'regex' },
         { pattern: 'U', match: 'regex', flags: 'g' },
+        { pattern: 'U', match: 'regex', flags: 'y' },
         { pattern: 'U', match: 'regex', flags: 'ii' },
         { pattern: 'U', match: 'unknown' },
         { pattern: () => true, match: 'regex' }
@@ -337,7 +364,7 @@ test('QueryService connectivity traversal is ordered, bounded, and cycle-safe', 
                         traceId: 'source_trace_gnd',
                         via: {
                             kind: 'internalConnection',
-                            id: 'source_r1:internal:0'
+                            id: 'source_r1:internal:source_r1_pin1+source_r1_pin2'
                         }
                     }
                 ]
@@ -368,6 +395,14 @@ test('QueryService connectivity traversal is ordered, bounded, and cycle-safe', 
             .map((row) => row.id),
         ['source_trace_sig']
     )
+
+    full[0].endpoints[0].id = 'mutated'
+    full[1].path[1].via.id = 'mutated'
+    const repeated = service.traceConnectivity({
+        sourceTraceId: 'source_trace_sig'
+    })
+    assert.notEqual(repeated[0].endpoints[0].id, 'mutated')
+    assert.notEqual(repeated[1].path[1].via.id, 'mutated')
 
     assert.throws(() => service.traceConnectivity({}), {
         code: 'ERR_QUERY_REQUEST'
@@ -440,42 +475,173 @@ test('QueryService honors explicit source internal-connection elements', () => {
 })
 
 test('CircuitTraversal expands shared memberships once and bounds fanout work', () => {
+    const traceIds = Array.from(
+        { length: 100 },
+        (_, index) => `trace_${String(index).padStart(3, '0')}`
+    )
     const graph = CircuitTraversal.prepare({
-        traces: Array.from({ length: 6 }, (_, index) => ({
-            id: `trace_${index}`,
+        traces: traceIds.map((id) => ({
+            id,
             sourcePortIds: [],
             sourceNetIds: ['shared_net'],
             sourceComponentIds: [],
             internalConnectionIds: []
         }))
     })
-    const memberships = graph.traceIdsByMembership
-    let membershipReads = 0
-    graph.traceIdsByMembership = {
-        get(key) {
-            membershipReads += 1
-            return memberships.get(key)
-        }
-    }
-
-    assert.deepEqual(
-        CircuitTraversal.trace(
-            graph,
-            { sourceTraceId: 'trace_0' },
-            { maxDepth: 64, maxResults: 3 }
-        ).map((row) => row.id),
-        ['trace_0', 'trace_1', 'trace_2']
+    const yielded = { count: 0 }
+    graph.traceIdsByMembership.set(
+        'net:shared_net',
+        countedIterable(traceIds, yielded)
     )
-    assert.equal(membershipReads, 1)
 
-    membershipReads = 0
     assert.deepEqual(
         CircuitTraversal.trace(
             graph,
-            { sourceTraceId: 'trace_0' },
+            { sourceTraceId: 'trace_000' },
+            { maxDepth: 64, maxResults: 2 }
+        ).map((row) => row.id),
+        ['trace_000', 'trace_001']
+    )
+    assert.equal(yielded.count, 2)
+
+    yielded.count = 0
+    assert.deepEqual(
+        CircuitTraversal.trace(
+            graph,
+            { sourceNetId: 'shared_net' },
             { maxDepth: 64, maxResults: 1 }
         ).map((row) => row.id),
-        ['trace_0']
+        ['trace_000']
     )
-    assert.equal(membershipReads, 0)
+    assert.equal(yielded.count, 1)
 })
+
+test('QueryService query matrix is stable across labels, order, and Unicode', () => {
+    const document = [
+        ...createConnectedDocument(),
+        {
+            type: 'source_component',
+            source_component_id: 'source_duplicate_a',
+            name: 'D1',
+            display_name: 'Δevice',
+            ftype: 'simple_chip'
+        },
+        {
+            type: 'source_component',
+            source_component_id: 'source_duplicate_b',
+            name: 'D2',
+            display_name: 'Δevice',
+            ftype: 'simple_chip'
+        }
+    ]
+    const service = QueryService.create(document)
+
+    assert.deepEqual(
+        service
+            .findComponents({
+                field: 'id',
+                pattern: 'source_u1',
+                match: 'exact'
+            })
+            .map((row) => row.id),
+        ['source_u1']
+    )
+    assert.deepEqual(
+        service
+            .findNets({
+                field: 'id',
+                pattern: '^source_net_[ag]',
+                match: 'regex'
+            })
+            .map((row) => row.id),
+        ['source_net_aux', 'source_net_gnd']
+    )
+    assert.deepEqual(
+        service
+            .findNets({ pattern: 'nd', match: 'contains' })
+            .map((row) => row.id),
+        ['source_net_gnd']
+    )
+    assert.deepEqual(
+        service
+            .findComponents({ pattern: 'δEVICE', match: 'exact' })
+            .map((row) => row.id),
+        ['source_duplicate_a', 'source_duplicate_b']
+    )
+    assert.deepEqual(
+        service
+            .findComponents({
+                pattern: 'δEVICE',
+                match: 'exact',
+                caseSensitive: true
+            })
+            .map((row) => row.id),
+        []
+    )
+    const repeatedRegex = {
+        field: 'designator',
+        pattern: '^D',
+        match: 'regex'
+    }
+    assert.deepEqual(
+        service.findComponents(repeatedRegex),
+        service.findComponents(repeatedRegex)
+    )
+    assert.deepEqual(
+        QueryService.create([...document].reverse()).buildNetlist(),
+        service.buildNetlist()
+    )
+})
+
+test('inline internal-connection ids derive from stable port membership', () => {
+    const groups = [
+        ['port_4', 'port_3'],
+        ['port_2', 'port_1']
+    ]
+    const createDocument = (connectionGroups) => [
+        {
+            type: 'source_component',
+            source_component_id: 'component_a',
+            name: 'U1',
+            ftype: 'simple_chip',
+            internally_connected_source_port_ids: connectionGroups
+        },
+        ...Array.from({ length: 4 }, (_, index) => ({
+            type: 'source_port',
+            source_port_id: `port_${index + 1}`,
+            source_component_id: 'component_a',
+            name: String(index + 1),
+            pin_number: index + 1
+        }))
+    ]
+    const forward = QueryService.create(createDocument(groups)).buildNetlist()
+    const reversed = QueryService.create(
+        createDocument([...groups].reverse())
+    ).buildNetlist()
+
+    assert.deepEqual(forward.internalConnections, reversed.internalConnections)
+    assert.deepEqual(
+        forward.internalConnections.map((row) => row.id),
+        [
+            'component_a:internal:port_1+port_2',
+            'component_a:internal:port_3+port_4'
+        ]
+    )
+})
+
+/**
+ * Wraps sorted ids with a deterministic yield counter.
+ * @param {string[]} ids Sorted trace ids.
+ * @param {{ count: number }} counter Mutable yield counter.
+ * @returns {Iterable<string>} Counted iterable.
+ */
+function countedIterable(ids, counter) {
+    return {
+        *[Symbol.iterator]() {
+            for (const id of ids) {
+                counter.count += 1
+                yield id
+            }
+        }
+    }
+}

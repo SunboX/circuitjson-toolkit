@@ -1,3 +1,31 @@
+const COMPONENT_VALUE_FIELDS_BY_TYPE = Object.freeze({
+    simple_battery: ['capacity'],
+    simple_capacitor: ['display_capacitance', 'capacitance'],
+    simple_crystal: ['frequency'],
+    simple_current_source: ['current'],
+    simple_fuse: ['current_rating_amps'],
+    simple_inductor: ['display_inductance', 'inductance'],
+    simple_potentiometer: ['display_max_resistance', 'max_resistance'],
+    simple_power_source: ['voltage'],
+    simple_resistor: ['display_resistance', 'resistance'],
+    simple_resonator: ['frequency'],
+    simple_voltage_source: ['voltage']
+})
+const COMPONENT_VALUE_FALLBACK_FIELDS = [
+    'display_resistance',
+    'display_capacitance',
+    'display_inductance',
+    'display_max_resistance',
+    'resistance',
+    'capacitance',
+    'inductance',
+    'frequency',
+    'max_resistance',
+    'voltage',
+    'current',
+    'capacity'
+]
+
 /**
  * Builds deterministic component and net records from prepared CircuitJSON indexes.
  */
@@ -31,9 +59,7 @@ export class ComponentGrouping {
                     ),
                     designator: String(component.name || id),
                     type: String(component.ftype || ''),
-                    value: ComponentGrouping.#text(
-                        component.display_value || component.value
-                    ),
+                    value: ComponentGrouping.#componentValue(component),
                     footprint: ComponentGrouping.#footprint(component, related),
                     mpn: ComponentGrouping.#mpn(component),
                     description: ComponentGrouping.#text(component.description),
@@ -147,6 +173,27 @@ export class ComponentGrouping {
     }
 
     /**
+     * Resolves standard display and typed source-component values.
+     * @param {Record<string, any>} component Source component.
+     * @returns {string | undefined} Canonical display value.
+     */
+    static #componentValue(component) {
+        const typedFields =
+            COMPONENT_VALUE_FIELDS_BY_TYPE[String(component.ftype || '')] || []
+        const fields = [
+            'display_value',
+            ...typedFields,
+            'value',
+            ...COMPONENT_VALUE_FALLBACK_FIELDS
+        ]
+        for (const field of new Set(fields)) {
+            const value = ComponentGrouping.#scalarText(component[field])
+            if (value !== undefined) return value
+        }
+        return undefined
+    }
+
+    /**
      * Resolves the first source-native manufacturer/supplier part number.
      * @param {Record<string, any>} component Source component.
      * @returns {string | undefined} Part number.
@@ -196,6 +243,18 @@ export class ComponentGrouping {
     static #text(value) {
         return typeof value === 'string' && value.trim()
             ? value.trim()
+            : undefined
+    }
+
+    /**
+     * Normalizes a string or finite numeric scalar for query matching.
+     * @param {unknown} value Scalar candidate.
+     * @returns {string | undefined} Normalized scalar text.
+     */
+    static #scalarText(value) {
+        if (typeof value === 'string') return ComponentGrouping.#text(value)
+        return typeof value === 'number' && Number.isFinite(value)
+            ? String(value)
             : undefined
     }
 

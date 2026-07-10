@@ -86,12 +86,15 @@ export class QueryNetlistBuilder {
             )
                 ? component.internally_connected_source_port_ids
                 : []
-            groups.forEach((sourcePortIds, index) => {
+            groups.forEach((sourcePortIds) => {
                 const normalizedPortIds =
                     QueryNetlistBuilder.#ids(sourcePortIds)
                 if (!sourceComponentId || normalizedPortIds.length < 2) return
                 records.push({
-                    id: `${sourceComponentId}:internal:${index}`,
+                    id: QueryNetlistBuilder.#inlineConnectionId(
+                        sourceComponentId,
+                        normalizedPortIds
+                    ),
                     sourceComponentId,
                     sourcePortIds: normalizedPortIds
                 })
@@ -115,6 +118,17 @@ export class QueryNetlistBuilder {
         return records.sort((left, right) =>
             ComponentGrouping.compareIds(left.id, right.id)
         )
+    }
+
+    /**
+     * Derives an insertion-independent id from one inline port membership.
+     * @param {string} sourceComponentId Source-component id.
+     * @param {string[]} sourcePortIds Sorted source-port ids.
+     * @returns {string} Stable internal-connection id.
+     */
+    static #inlineConnectionId(sourceComponentId, sourcePortIds) {
+        const membership = sourcePortIds.map(encodeURIComponent).join('+')
+        return `${sourceComponentId}:internal:${membership}`
     }
 
     /**

@@ -76,30 +76,33 @@ export class CircuitTraversal {
             if (results.length >= options.maxResults) break
             if (current.depth >= options.maxDepth) continue
 
-            const neighbors = new Map()
+            const sources = []
             for (const key of CircuitTraversal.#membershipKeys(trace).sort(
                 ComponentGrouping.compareIds
             )) {
                 if (expandedMemberships.has(key)) continue
                 expandedMemberships.add(key)
-                const via = CircuitTraversal.#connector(key)
-                for (const id of graph.traceIdsByMembership.get(key) || []) {
-                    if (!visited.has(id) && !queued.has(id)) {
-                        neighbors.set(id, via)
-                    }
-                }
+                const ids = graph.traceIdsByMembership.get(key)
+                if (!ids) continue
+                sources.push({
+                    key,
+                    ids,
+                    via: CircuitTraversal.#connector(key)
+                })
             }
-            for (const id of [...neighbors.keys()].sort(
-                ComponentGrouping.compareIds
+            const capacity = options.maxResults - queue.length
+            for (const neighbor of CircuitTraversal.#takeSortedUnique(
+                sources,
+                capacity,
+                new Set([...visited, ...queued])
             )) {
-                if (queue.length >= options.maxResults) break
-                queued.add(id)
+                queued.add(neighbor.id)
                 queue.push({
-                    id,
+                    id: neighbor.id,
                     depth: current.depth + 1,
                     path: [
                         ...current.path,
-                        { traceId: id, via: neighbors.get(id) }
+                        { traceId: neighbor.id, via: neighbor.via }
                     ]
                 })
             }
@@ -115,35 +118,111 @@ export class CircuitTraversal {
      * @returns {string[]} Stable starting trace ids.
      */
     static #initialTraceIds(graph, request, maxResults) {
-        const ids = new Set()
+        const sources = []
         if (
             request.sourceTraceId &&
             graph.tracesById.has(request.sourceTraceId)
         ) {
-            ids.add(request.sourceTraceId)
+            sources.push({
+                key: 'trace',
+                ids: [request.sourceTraceId],
+                via: null
+            })
         }
         if (request.sourceComponentId) {
-            for (const id of graph.traceIdsByComponent.get(
-                request.sourceComponentId
-            ) || []) {
-                ids.add(id)
+            const ids = graph.traceIdsByComponent.get(request.sourceComponentId)
+            if (ids) {
+                sources.push({ key: 'component', ids, via: null })
             }
         }
         if (request.sourcePortId) {
-            for (const id of graph.traceIdsByMembership.get(
+            const ids = graph.traceIdsByMembership.get(
                 `port:${request.sourcePortId}`
-            ) || []) {
-                ids.add(id)
+            )
+            if (ids) {
+                sources.push({ key: 'port', ids, via: null })
             }
         }
         if (request.sourceNetId) {
-            for (const id of graph.traceIdsByMembership.get(
+            const ids = graph.traceIdsByMembership.get(
                 `net:${request.sourceNetId}`
-            ) || []) {
-                ids.add(id)
+            )
+            if (ids) {
+                sources.push({ key: 'net', ids, via: null })
             }
         }
-        return [...ids].sort(ComponentGrouping.compareIds).slice(0, maxResults)
+        return CircuitTraversal.#takeSortedUnique(sources, maxResults).map(
+            (row) => row.id
+        )
+    }
+
+    /**
+     * Takes a bounded sorted union without materializing complete source lists.
+     * @param {{ key: string, ids: Iterable<string>, via: object | null }[]} sources Sorted id sources.
+     * @param {number} limit Maximum returned rows.
+     * @param {Set<string>} [excluded] Ids that must not be returned.
+     * @returns {{ id: string, via: object | null }[]} Stable unique rows.
+     */
+    static #takeSortedUnique(sources, limit, excluded = new Set()) {
+        if (limit <= 0) return []
+        const states = sources
+            .map((source, index) =>
+                CircuitTraversal.#iteratorState(source, index)
+            )
+            .filter(Boolean)
+        const seen = new Set(excluded)
+        const result = []
+
+        while (states.length && result.length < limit) {
+            states.sort(CircuitTraversal.#compareIteratorStates)
+            const current = states.shift()
+            const accepted = !seen.has(current.id)
+            if (accepted) {
+                seen.add(current.id)
+                result.push({ id: current.id, via: current.via })
+                if (result.length >= limit) break
+            }
+            const next = current.iterator.next()
+            if (!next.done) {
+                current.id = String(next.value)
+                states.push(current)
+            }
+        }
+        return result
+    }
+
+    /**
+     * Opens one sorted source iterator and reads only its first id.
+     * @param {{ key: string, ids: Iterable<string>, via: object | null }} source Id source.
+     * @param {number} index Stable source index.
+     * @returns {object | null} Active iterator state.
+     */
+    static #iteratorState(source, index) {
+        const iterator = source.ids[Symbol.iterator]()
+        const first = iterator.next()
+        return first.done
+            ? null
+            : {
+                  id: String(first.value),
+                  index,
+                  iterator,
+                  key: source.key,
+                  via: source.via
+              }
+    }
+
+    /**
+     * Orders active iterator heads by id and deterministic connector source.
+     * @param {object} left Left iterator state.
+     * @param {object} right Right iterator state.
+     * @returns {number} Stable sort order.
+     */
+    static #compareIteratorStates(left, right) {
+        return (
+            ComponentGrouping.compareIds(left.id, right.id) ||
+            ComponentGrouping.compareIds(left.key, right.key) ||
+            left.index - right.index
+        )
     }
 
     /**
