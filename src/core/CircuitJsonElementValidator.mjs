@@ -1,4 +1,4 @@
-import { CircuitJsonUnits } from './CircuitJsonUnits.mjs'
+import * as ValidationUnits from './CircuitJsonValidationUnits.mjs'
 import { CircuitJsonModelFreezeTraversal } from './context/CircuitJsonModelFreezeTraversal.mjs'
 const KNOWN_ELEMENT_TYPES = new Set([
     'cad_component',
@@ -776,7 +776,7 @@ export class CircuitJsonElementValidator {
      * @returns {void}
      */
     static #requireLength(element, type, field, errors) {
-        if (CircuitJsonUnits.optionalLength(element[field]) === null) {
+        if (ValidationUnits.optionalLength(element[field]) === null) {
             errors.push(type + ' ' + field + ' is required.')
         }
     }
@@ -788,7 +788,7 @@ export class CircuitJsonElementValidator {
      * @returns {boolean}
      */
     static #hasLength(element, field) {
-        return CircuitJsonUnits.optionalLength(element[field]) !== null
+        return ValidationUnits.optionalLength(element[field]) !== null
     }
 
     /**
@@ -800,7 +800,7 @@ export class CircuitJsonElementValidator {
      * @returns {void}
      */
     static #requireAngle(element, type, field, errors) {
-        if (CircuitJsonUnits.optionalAngle(element[field]) === null) {
+        if (ValidationUnits.optionalAngle(element[field]) === null) {
             errors.push(type + ' ' + field + ' is required.')
         }
     }
@@ -816,7 +816,7 @@ export class CircuitJsonElementValidator {
     static #optionalLength(element, type, field, errors) {
         if (
             Object.hasOwn(element, field) &&
-            CircuitJsonUnits.optionalLength(element[field]) === null
+            ValidationUnits.optionalLength(element[field]) === null
         ) {
             errors.push(type + ' ' + field + ' must be a finite length.')
         }
@@ -833,7 +833,7 @@ export class CircuitJsonElementValidator {
     static #optionalAngle(element, type, field, errors) {
         if (
             Object.hasOwn(element, field) &&
-            CircuitJsonUnits.optionalAngle(element[field]) === null
+            ValidationUnits.optionalAngle(element[field]) === null
         ) {
             errors.push(type + ' ' + field + ' must be a finite angle.')
         }
@@ -872,7 +872,7 @@ export class CircuitJsonElementValidator {
             return
         }
 
-        if (CircuitJsonUnits.optionalPoint(point) === null) {
+        if (ValidationUnits.optionalPoint(point) === null) {
             errors.push(type + ' ' + field + ' is required.')
         }
     }
@@ -892,7 +892,7 @@ export class CircuitJsonElementValidator {
             return
         }
 
-        if (CircuitJsonUnits.optionalSize(size) === null) {
+        if (ValidationUnits.optionalSize(size) === null) {
             errors.push(type + ' ' + field + ' is required.')
         }
     }

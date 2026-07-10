@@ -27,9 +27,14 @@ export class CircuitJsonModelFreezeTraversal {
      * @returns {void}
      */
     visit(value) {
-        if (!this.#enabled || value === null || typeof value !== 'object') {
+        if (!this.#enabled) {
             return
         }
+        if (typeof value === 'function') {
+            this.#unsupportedContainer = true
+            return
+        }
+        if (value === null || typeof value !== 'object') return
         if (!CircuitJsonModelFreezeTraversal.#plain(value)) {
             this.#unsupportedContainer = true
             return

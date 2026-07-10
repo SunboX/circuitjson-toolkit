@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { CircuitJsonDocument } from '../src/core/CircuitJsonDocument.mjs'
 import { CircuitJsonIndexer } from '../src/core/CircuitJsonIndexer.mjs'
+import { CircuitJsonUnits } from '../src/core/CircuitJsonUnits.mjs'
 import { CircuitJsonDocumentContext } from '../src/core/context/CircuitJsonDocumentContext.mjs'
 import { CircuitJsonValidationProof } from '../src/core/context/CircuitJsonValidationProof.mjs'
 import { DocumentResult } from '../src/core/contracts/DocumentResult.mjs'
@@ -230,7 +231,36 @@ test('public validator monkey-patching cannot mint validation proofs', () => {
     }
 })
 
-test('proof attachment stays bound to the model reference it validated', () => {
+test('public unit-parser monkey-patching cannot mint validation proofs', () => {
+    const originalOptionalPoint = CircuitJsonUnits.optionalPoint
+    const originalOptionalLength = CircuitJsonUnits.optionalLength
+    const document = DocumentResult.create({
+        fileName: 'invalid-units-proof.json',
+        model: [
+            {
+                type: 'pcb_board',
+                pcb_board_id: 'invalid-units-proof',
+                center: {},
+                width: 1,
+                height: 1
+            }
+        ]
+    })
+
+    try {
+        CircuitJsonUnits.optionalPoint = () => ({ x: 0, y: 0 })
+        CircuitJsonUnits.optionalLength = () => 0
+        assert.throws(
+            () => CircuitJsonValidationProof.validateAndAttach(document),
+            /pcb_board center is required/
+        )
+    } finally {
+        CircuitJsonUnits.optionalPoint = originalOptionalPoint
+        CircuitJsonUnits.optionalLength = originalOptionalLength
+    }
+})
+
+test('proof attachment rejects accessor-backed envelope models', () => {
     const original = createBoard('captured')
     const replacement = Object.freeze([
         {
@@ -256,7 +286,7 @@ test('proof attachment stays bound to the model reference it validated', () => {
 
     assert.throws(
         () => CircuitJsonValidationProof.validateAndAttach(document),
-        /changed during validation/
+        /own data property/
     )
 })
 
@@ -314,6 +344,20 @@ test('proof-producing validation rejects custom-prototype model values', () => {
                         center: new PointRecord()
                     }
                 ]
+            }),
+        /plain objects and arrays/
+    )
+})
+
+test('proof-producing validation rejects mutable function values', () => {
+    const model = createBoard('function-value')
+    model[0].runtimeHook = () => 'mutable'
+
+    assert.throws(
+        () =>
+            DocumentResult.createValidated({
+                fileName: 'function-value.json',
+                model
             }),
         /plain objects and arrays/
     )

@@ -62,7 +62,7 @@ export class CircuitJsonValidationProof {
      * @returns {Record<string, any>} The same read-only document envelope.
      */
     static validateAndAttach(document) {
-        const model = document?.model
+        const model = CircuitJsonValidationProof.#requireModelData(document)
         if (!CircuitJsonValidationProof.#matches(document, model)) {
             const errors = CircuitJsonValidationProof.#validateAndFreeze(model)
             if (errors.length) throw new TypeError(errors[0])
@@ -81,7 +81,17 @@ export class CircuitJsonValidationProof {
                 writable: false
             })
         }
-        return CircuitJsonReadOnlyDocument.freeze(document)
+        const readonlyDocument = CircuitJsonReadOnlyDocument.freeze(document)
+        if (
+            CircuitJsonValidationProof.#requireModelData(readonlyDocument) !==
+                model ||
+            !CircuitJsonValidationProof.#matches(readonlyDocument, model)
+        ) {
+            throw new TypeError(
+                'CircuitJSON document model changed while sealing its validation proof.'
+            )
+        }
+        return readonlyDocument
     }
 
     /**
@@ -90,7 +100,10 @@ export class CircuitJsonValidationProof {
      * @returns {boolean} Whether the envelope carries a reusable proof.
      */
     static has(document) {
-        const model = document?.model
+        if (!document || typeof document !== 'object') return false
+        const descriptor = Object.getOwnPropertyDescriptor(document, 'model')
+        if (!descriptor || !Object.hasOwn(descriptor, 'value')) return false
+        const model = descriptor.value
         return CircuitJsonValidationProof.#matches(document, model)
     }
 
@@ -156,6 +169,26 @@ export class CircuitJsonValidationProof {
             document?.[VALIDATION_PROOF],
             model
         )
+    }
+
+    /**
+     * Returns an envelope's stable own model data property.
+     * @param {unknown} document Document candidate.
+     * @returns {unknown} Captured model value.
+     */
+    static #requireModelData(document) {
+        if (!document || typeof document !== 'object') {
+            throw new TypeError(
+                'CircuitJSON document model must be an own data property.'
+            )
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(document, 'model')
+        if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+            throw new TypeError(
+                'CircuitJSON document model must be an own data property.'
+            )
+        }
+        return descriptor.value
     }
 
     /**

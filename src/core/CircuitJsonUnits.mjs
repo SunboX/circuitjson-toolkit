@@ -28,6 +28,83 @@ const ANGLE_FACTORS_TO_DEG = new Map([
 ])
 
 /**
+ * Rounds unit conversions to stable precision.
+ * @param {number} value Numeric value.
+ * @returns {number} Rounded value.
+ */
+function roundUnitValue(value) {
+    return Math.round(value * 1_000_000) / 1_000_000
+}
+
+/**
+ * Parses one numeric value with an optional unit suffix.
+ * @param {unknown} value Value candidate.
+ * @param {Map<string, number>} unitFactors Unit factor lookup.
+ * @returns {number | null} Parsed value or null.
+ */
+function parseUnitValue(value, unitFactors) {
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? roundUnitValue(value) : null
+    }
+
+    const text = String(value ?? '').trim()
+    if (!text) return null
+
+    const match = text.match(
+        /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)\s*([a-z]+)?$/iu
+    )
+    if (!match) return null
+
+    const number = Number(match[1])
+    if (!Number.isFinite(number)) return null
+
+    const unit = String(match[2] || '').toLowerCase()
+    const factor = unit ? unitFactors.get(unit) : 1
+    if (!Number.isFinite(factor)) return null
+    return roundUnitValue(number * factor)
+}
+
+/**
+ * Parses an optional millimeter length through module-private dependencies.
+ * @param {unknown} value Length candidate.
+ * @returns {number | null} Parsed length or null.
+ */
+function optionalLengthValue(value) {
+    return parseUnitValue(value, LENGTH_FACTORS_TO_MM)
+}
+
+/**
+ * Parses an optional degree angle through module-private dependencies.
+ * @param {unknown} value Angle candidate.
+ * @returns {number | null} Parsed angle or null.
+ */
+function optionalAngleValue(value) {
+    return parseUnitValue(value, ANGLE_FACTORS_TO_DEG)
+}
+
+/**
+ * Parses an optional point through module-private dependencies.
+ * @param {{ x?: unknown, y?: unknown } | null | undefined} point Point.
+ * @returns {{ x: number, y: number } | null} Parsed point or null.
+ */
+function optionalPointValue(point) {
+    const x = optionalLengthValue(point?.x)
+    const y = optionalLengthValue(point?.y)
+    return x === null || y === null ? null : { x, y }
+}
+
+/**
+ * Parses an optional size through module-private dependencies.
+ * @param {{ width?: unknown, height?: unknown } | null | undefined} size Size.
+ * @returns {{ width: number, height: number } | null} Parsed size or null.
+ */
+function optionalSizeValue(size) {
+    const width = optionalLengthValue(size?.width)
+    const height = optionalLengthValue(size?.height)
+    return width === null || height === null ? null : { width, height }
+}
+
+/**
  * Unit helpers for CircuitJSON's millimeter-based PCB dimensions.
  */
 export class CircuitJsonUnits {
@@ -38,10 +115,7 @@ export class CircuitJsonUnits {
      * @returns {number}
      */
     static length(value, fallback = 0) {
-        return (
-            CircuitJsonUnits.optionalLength(value) ??
-            CircuitJsonUnits.#round(fallback)
-        )
+        return optionalLengthValue(value) ?? roundUnitValue(fallback)
     }
 
     /**
@@ -50,7 +124,7 @@ export class CircuitJsonUnits {
      * @returns {number | null}
      */
     static optionalLength(value) {
-        return CircuitJsonUnits.#parseUnitValue(value, LENGTH_FACTORS_TO_MM)
+        return optionalLengthValue(value)
     }
 
     /**
@@ -60,10 +134,7 @@ export class CircuitJsonUnits {
      * @returns {number}
      */
     static angle(value, fallback = 0) {
-        return (
-            CircuitJsonUnits.optionalAngle(value) ??
-            CircuitJsonUnits.#round(fallback)
-        )
+        return optionalAngleValue(value) ?? roundUnitValue(fallback)
     }
 
     /**
@@ -72,7 +143,7 @@ export class CircuitJsonUnits {
      * @returns {number | null}
      */
     static optionalAngle(value) {
-        return CircuitJsonUnits.#parseUnitValue(value, ANGLE_FACTORS_TO_DEG)
+        return optionalAngleValue(value)
     }
 
     /**
@@ -82,8 +153,8 @@ export class CircuitJsonUnits {
      */
     static point(point) {
         return {
-            x: CircuitJsonUnits.length(point?.x, 0),
-            y: CircuitJsonUnits.length(point?.y, 0)
+            x: optionalLengthValue(point?.x) ?? 0,
+            y: optionalLengthValue(point?.y) ?? 0
         }
     }
 
@@ -93,9 +164,7 @@ export class CircuitJsonUnits {
      * @returns {{ x: number, y: number } | null}
      */
     static optionalPoint(point) {
-        const x = CircuitJsonUnits.optionalLength(point?.x)
-        const y = CircuitJsonUnits.optionalLength(point?.y)
-        return x === null || y === null ? null : { x, y }
+        return optionalPointValue(point)
     }
 
     /**
@@ -104,9 +173,7 @@ export class CircuitJsonUnits {
      * @returns {{ width: number, height: number } | null}
      */
     static optionalSize(size) {
-        const width = CircuitJsonUnits.optionalLength(size?.width)
-        const height = CircuitJsonUnits.optionalLength(size?.height)
-        return width === null || height === null ? null : { width, height }
+        return optionalSizeValue(size)
     }
 
     /**
@@ -116,8 +183,9 @@ export class CircuitJsonUnits {
      * @returns {number}
      */
     static mmToMil(value, fallback = 0) {
-        return CircuitJsonUnits.#round(
-            CircuitJsonUnits.length(value, fallback) * MILS_PER_MM
+        return roundUnitValue(
+            (optionalLengthValue(value) ?? roundUnitValue(fallback)) *
+                MILS_PER_MM
         )
     }
 
@@ -131,45 +199,5 @@ export class CircuitJsonUnits {
             x: CircuitJsonUnits.mmToMil(point?.x, 0),
             y: CircuitJsonUnits.mmToMil(point?.y, 0)
         }
-    }
-
-    /**
-     * Parses one numeric value with an optional unit suffix.
-     * @param {unknown} value Value candidate.
-     * @param {Map<string, number>} unitFactors Unit factor lookup.
-     * @returns {number | null}
-     */
-    static #parseUnitValue(value, unitFactors) {
-        if (typeof value === 'number') {
-            return Number.isFinite(value)
-                ? CircuitJsonUnits.#round(value)
-                : null
-        }
-
-        const text = String(value ?? '').trim()
-        if (!text) return null
-
-        const match = text.match(
-            /^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)\s*([a-z]+)?$/iu
-        )
-        if (!match) return null
-
-        const number = Number(match[1])
-        if (!Number.isFinite(number)) return null
-
-        const unit = String(match[2] || '').toLowerCase()
-        const factor = unit ? unitFactors.get(unit) : 1
-        if (!Number.isFinite(factor)) return null
-
-        return CircuitJsonUnits.#round(number * factor)
-    }
-
-    /**
-     * Rounds render-unit conversions to stable precision.
-     * @param {number} value Numeric value.
-     * @returns {number}
-     */
-    static #round(value) {
-        return Math.round(value * 1_000_000) / 1_000_000
     }
 }
