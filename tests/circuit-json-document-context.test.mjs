@@ -77,6 +77,25 @@ test('context validates bare caller input without a process-global cache', () =>
     assert.equal(Object.isFrozen(model[0].center), true)
 })
 
+test('context separates enumerable legacy array metadata from the pure model', () => {
+    const hybrid = createBoard('hybrid')
+    Object.assign(hybrid, {
+        fileName: 'hybrid.json',
+        kind: 'pcb',
+        sourceFormat: 'circuitjson'
+    })
+
+    const context = CircuitJsonDocumentContext.prepare(hybrid)
+
+    assert.notEqual(context.model, hybrid)
+    assert.deepEqual(context.model, [...hybrid])
+    assert.deepEqual(Reflect.ownKeys(context.model), ['0', 'length'])
+    assert.equal(context.document.source.fileName, 'hybrid.json')
+    assert.equal(context.document.source.fileType, 'pcb')
+    assert.equal(context.document.source.format, 'circuitjson')
+    assert.equal(Object.isFrozen(hybrid), false)
+})
+
 test('structured clones lose runtime proofs and validate once when prepared', () => {
     const document = DocumentResult.createValidated({
         fileName: 'worker-board.json',
@@ -428,6 +447,67 @@ test('proof-producing validation rejects custom-prototype model values', () => {
             }),
         /plain objects and arrays/
     )
+
+    const arrayPrototype = Object.create(Array.prototype)
+    arrayPrototype.runtimeHook = () => 'mutable'
+    const metadata = []
+    Object.setPrototypeOf(metadata, arrayPrototype)
+
+    assert.throws(
+        () =>
+            DocumentResult.createValidated({
+                fileName: 'custom-array.json',
+                model: [
+                    {
+                        type: 'source_net',
+                        source_net_id: 'custom-array',
+                        metadata
+                    }
+                ]
+            }),
+        /plain objects and arrays/
+    )
+})
+
+test('ordinary Node validation freezes deeply nested models without recursion', () => {
+    const documentResultUrl = new URL(
+        '../src/core/contracts/DocumentResult.mjs',
+        import.meta.url
+    ).href
+    const validationProofUrl = new URL(
+        '../src/core/context/CircuitJsonValidationProof.mjs',
+        import.meta.url
+    ).href
+    const script = `
+        const { DocumentResult } = await import(${JSON.stringify(documentResultUrl)})
+        const { CircuitJsonValidationProof } = await import(${JSON.stringify(validationProofUrl)})
+        let metadata = { leaf: true }
+        for (let index = 0; index < 12000; index += 1) {
+            metadata = { child: metadata }
+        }
+        const document = DocumentResult.createValidated({
+            fileName: 'deep-model.json',
+            model: [{
+                type: 'source_net',
+                source_net_id: 'deep-model',
+                metadata
+            }]
+        })
+        if (!CircuitJsonValidationProof.has(document)) process.exit(1)
+        let current = document.model[0].metadata
+        for (let index = 0; index < 12000; index += 1) {
+            if (!Object.isFrozen(current)) process.exit(2)
+            current = current.child
+        }
+        if (!Object.isFrozen(current)) process.exit(3)
+    `
+    const result = spawnSync(
+        process.execPath,
+        ['--input-type=module', '--eval', script],
+        { encoding: 'utf8' }
+    )
+
+    assert.equal(result.status, 0, result.stderr || result.stdout)
 })
 
 test('proof-producing validation rejects mutable function values', () => {

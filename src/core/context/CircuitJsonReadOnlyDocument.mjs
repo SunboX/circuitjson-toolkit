@@ -646,42 +646,56 @@ export class CircuitJsonReadOnlyDocument {
      * @returns {void}
      */
     static #freezeValue(value, seen) {
-        if (!CircuitJsonReadOnlyDocument.#container(value)) return
-        if (seen.has(value)) return
-        seen.add(value)
-        let keys
-        try {
-            keys = Reflect.ownKeys(value)
-        } catch {
-            throw new TypeError(
-                'Canonical document values could not be inspected safely.'
-            )
-        }
-        for (const key of keys) {
-            let descriptor
+        const stack = [{ exit: false, value }]
+        while (stack.length) {
+            const frame = stack.pop()
+            const current = frame.value
+            if (frame.exit) {
+                try {
+                    Object.freeze(current)
+                } catch {
+                    throw new TypeError(
+                        'Canonical document values could not be frozen safely.'
+                    )
+                }
+                continue
+            }
+            if (!CircuitJsonReadOnlyDocument.#container(current)) continue
+            if (seen.has(current)) continue
+            seen.add(current)
+
+            let keys
             try {
-                descriptor = Object.getOwnPropertyDescriptor(value, key)
+                keys = Reflect.ownKeys(current)
             } catch {
                 throw new TypeError(
-                    'Canonical document properties could not be inspected safely.'
+                    'Canonical document values could not be inspected safely.'
                 )
             }
-            if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
-                const protectedData =
-                    key === 'data' && PROTECTED_ASSET_BYTES.has(value)
-                if (protectedData) continue
-                throw new TypeError(
-                    'Canonical document may contain only data properties.'
-                )
+            const children = []
+            for (const key of keys) {
+                let descriptor
+                try {
+                    descriptor = Object.getOwnPropertyDescriptor(current, key)
+                } catch {
+                    throw new TypeError(
+                        'Canonical document properties could not be inspected safely.'
+                    )
+                }
+                if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+                    const protectedData =
+                        key === 'data' && PROTECTED_ASSET_BYTES.has(current)
+                    if (protectedData) continue
+                    throw new TypeError(
+                        'Canonical document may contain only data properties.'
+                    )
+                }
+                children.push(descriptor.value)
             }
-            CircuitJsonReadOnlyDocument.#freezeValue(descriptor.value, seen)
-        }
-        try {
-            Object.freeze(value)
-        } catch {
-            throw new TypeError(
-                'Canonical document values could not be frozen safely.'
-            )
+            stack.push({ exit: true, value: current })
+            for (let index = children.length - 1; index >= 0; index -= 1) {
+                stack.push({ exit: false, value: children[index] })
+            }
         }
     }
 
@@ -694,7 +708,14 @@ export class CircuitJsonReadOnlyDocument {
         if (!value || typeof value !== 'object') return false
         try {
             if (BinaryDataSnapshot.byteLength(value) !== null) return false
-            if (Array.isArray(value)) return true
+            if (Array.isArray(value)) {
+                if (Object.getPrototypeOf(value) !== Array.prototype) {
+                    throw new TypeError(
+                        'Canonical document arrays must use Array.prototype.'
+                    )
+                }
+                return true
+            }
             const prototype = Object.getPrototypeOf(value)
             return prototype === Object.prototype || prototype === null
         } catch {

@@ -200,18 +200,28 @@ export class CircuitJsonDocumentContext {
      */
     static #normalizeDocument(input) {
         if (Array.isArray(input)) {
+            const fileType = CircuitJsonDocumentContext.#ownData(
+                input,
+                'fileType',
+                false
+            )
             return DocumentResult.create({
                 fileName: CircuitJsonDocumentContext.#ownData(
                     input,
                     'fileName',
                     false
                 ),
-                fileType: CircuitJsonDocumentContext.#ownData(
-                    input,
-                    'fileType',
-                    false
-                ),
-                model: input
+                fileType:
+                    fileType ??
+                    CircuitJsonDocumentContext.#ownData(input, 'kind', false),
+                format:
+                    CircuitJsonDocumentContext.#ownData(
+                        input,
+                        'sourceFormat',
+                        false
+                    ) ??
+                    CircuitJsonDocumentContext.#ownData(input, 'format', false),
+                model: CircuitJsonDocumentContext.#canonicalModel(input)
             })
         }
         if (!input || typeof input !== 'object') {
@@ -227,6 +237,64 @@ export class CircuitJsonDocumentContext {
         throw new TypeError(
             'Expected a DocumentResult, CircuitJSON element array, or document context.'
         )
+    }
+
+    /**
+     * Preserves pure model-array identity and removes enumerable legacy
+     * metadata fields from hybrid arrays before validation.
+     * @param {any[]} model CircuitJSON model array.
+     * @returns {any[]} Pure dense model array.
+     */
+    static #canonicalModel(model) {
+        let prototype
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(model)
+            descriptors = Object.getOwnPropertyDescriptors(model)
+        } catch {
+            return model
+        }
+        const length = descriptors.length?.value
+        if (
+            prototype !== Array.prototype ||
+            !Number.isSafeInteger(length) ||
+            length < 0
+        ) {
+            return model
+        }
+        for (let index = 0; index < length; index += 1) {
+            const descriptor = descriptors[String(index)]
+            if (
+                !descriptor ||
+                !Object.hasOwn(descriptor, 'value') ||
+                descriptor.enumerable !== true
+            ) {
+                return model
+            }
+        }
+        const keys = Reflect.ownKeys(descriptors)
+        if (keys.length === length + 1) return model
+        for (const key of keys) {
+            if (key === 'length') continue
+            const index =
+                typeof key === 'string' && /^(?:0|[1-9]\d*)$/u.test(key)
+                    ? Number(key)
+                    : -1
+            if (Number.isSafeInteger(index) && index < length) continue
+            const descriptor = descriptors[key]
+            if (
+                typeof key !== 'string' ||
+                !Object.hasOwn(descriptor, 'value') ||
+                descriptor.enumerable !== true
+            ) {
+                return model
+            }
+        }
+        const canonical = new Array(length)
+        for (let index = 0; index < length; index += 1) {
+            canonical[index] = descriptors[String(index)].value
+        }
+        return canonical
     }
 
     /**

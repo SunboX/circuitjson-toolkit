@@ -324,7 +324,7 @@ test('WorkerRequestData preserves enumerable __proto__ as data', () => {
     assert.equal(Object.prototype.polluted, undefined)
 })
 
-test('worker protocol transfers worker-owned result buffers', async () => {
+test('worker protocol transfers isolated result buffers without draining protected assets', async () => {
     const listeners = new Set()
     const posts = []
     let result
@@ -373,7 +373,7 @@ test('worker protocol transfers worker-owned result buffers', async () => {
     await new Promise((resolve) => setImmediate(resolve))
     const posted = posts.find((entry) => entry.message.type === 'result')
     assert.equal(posted.transfer.length, 1)
-    assert.equal(result.assets[0].data.byteLength, 0)
+    assert.equal(result.assets[0].data.byteLength, 3)
     assert.deepEqual([...posted.message.value.assets[0].data], [1, 2, 3])
     installation.dispose()
 })
