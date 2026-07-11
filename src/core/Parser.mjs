@@ -2,6 +2,7 @@ import { DocumentResult } from './contracts/DocumentResult.mjs'
 import { ToolkitError } from './contracts/ToolkitError.mjs'
 import { ToolkitProgress } from './contracts/ToolkitProgress.mjs'
 import { ParserOptions } from './ParserOptions.mjs'
+import { ParserWorkerClient } from './worker/ParserWorkerClient.mjs'
 
 const PROGRESS_MESSAGES = {
     detect: 'Detecting CircuitJSON input.',
@@ -60,11 +61,8 @@ export class Parser {
         let normalized
         try {
             normalized = ParserOptions.normalize(input, options)
-            if (normalized.options.signal?.aborted) {
+            if (Parser.#isAborted(normalized.options.signal)) {
                 throw Parser.#cancelledError(normalized.input.fileName)
-            }
-            if (normalized.options.worker === true) {
-                throw Parser.#workerUnavailableError(normalized.input.fileName)
             }
             Parser.#assertReports(
                 normalized.options.reports,
@@ -74,8 +72,27 @@ export class Parser {
             throw Parser.#parseError(error, input)
         }
 
+        const useWorker =
+            normalized.options.worker === true ||
+            (normalized.options.worker === 'auto' &&
+                normalized.options.retainSource !== 'reference' &&
+                ParserWorkerClient.isDefaultAvailable())
+        if (useWorker) {
+            const attempt = await ParserWorkerClient.parseDefault(
+                normalized.input,
+                normalized.options
+            )
+            if (attempt.ok) return attempt.value
+            if (normalized.options.worker !== 'auto' || !attempt.unavailable) {
+                throw attempt.error
+            }
+            ParserWorkerClient.disposeDefault()
+        }
+
         let progress = Parser.#progress(normalized, 'detect')
+        Parser.#assertNotCancelled(normalized)
         progress = Parser.#progress(normalized, 'decode', progress)
+        Parser.#assertNotCancelled(normalized)
         let model
         try {
             model = Parser.#decode(normalized)
@@ -83,14 +100,18 @@ export class Parser {
             throw Parser.#parseError(error, input)
         }
 
+        Parser.#assertNotCancelled(normalized)
         progress = Parser.#progress(normalized, 'validate', progress)
+        Parser.#assertNotCancelled(normalized)
         let document
         try {
             document = Parser.#document(normalized, model)
         } catch (error) {
             throw Parser.#parseError(error, input)
         }
+        Parser.#assertNotCancelled(normalized)
         Parser.#progress(normalized, 'complete', progress)
+        Parser.#assertNotCancelled(normalized)
         return document
     }
 
@@ -227,24 +248,6 @@ export class Parser {
     }
 
     /**
-     * Creates the temporary Task 11 worker-unavailable error.
-     * @param {string} source Source file name.
-     * @returns {ToolkitError} Typed unsupported error.
-     */
-    static #workerUnavailableError(source) {
-        return new ToolkitError(
-            'CircuitJSON parser workers are not available in this build.',
-            {
-                code: 'ERR_CAPABILITY_UNAVAILABLE',
-                category: 'unsupported',
-                format: 'circuitjson',
-                source,
-                details: { capability: 'parser.worker' }
-            }
-        )
-    }
-
-    /**
      * Creates a pre-start cancellation error.
      * @param {string} source Source file name.
      * @returns {ToolkitError} Typed cancellation error.
@@ -256,5 +259,36 @@ export class Parser {
             format: 'circuitjson',
             source
         })
+    }
+
+    /**
+     * Rejects an aborted direct request between parser phases.
+     * @param {{ input: { fileName: string }, options: { signal?: unknown } }} normalized Normalized request.
+     * @returns {void}
+     */
+    static #assertNotCancelled(normalized) {
+        if (!Parser.#isAborted(normalized.options.signal)) return
+        throw Parser.#cancelledError(normalized.input.fileName)
+    }
+
+    /**
+     * Reads a genuine optional AbortSignal through its platform getter.
+     * @param {unknown} signal Signal candidate.
+     * @returns {boolean} Whether the signal is aborted.
+     */
+    static #isAborted(signal) {
+        if (signal === undefined || signal === null) return false
+        const descriptor = Object.getOwnPropertyDescriptor(
+            AbortSignal.prototype,
+            'aborted'
+        )
+        if (typeof descriptor?.get !== 'function') {
+            throw new TypeError('AbortSignal state is unavailable.')
+        }
+        try {
+            return Boolean(descriptor.get.call(signal))
+        } catch {
+            throw new TypeError('CircuitJSON signal must be an AbortSignal.')
+        }
     }
 }

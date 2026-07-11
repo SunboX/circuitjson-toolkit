@@ -3,6 +3,7 @@ import { CircuitJsonMetadataBoundary } from './CircuitJsonMetadataBoundary.mjs'
 import { StructuredDataSnapshot } from './StructuredDataSnapshot.mjs'
 
 const PROTECTED_ASSET_BYTES = new WeakMap()
+const PROTECTED_ASSET_DATA_GETTERS = new WeakSet()
 const SEALED_ASSETS = new WeakSet()
 const ASSET_PAYLOAD_LENGTHS = new WeakMap()
 const OWNED_METADATA_ROOTS = new WeakSet()
@@ -36,6 +37,28 @@ export class CircuitJsonReadOnlyDocument {
         )
         CircuitJsonReadOnlyDocument.#freezeValue(document, new Set())
         return document
+    }
+
+    /**
+     * Reads only an internally-created defensive asset data getter.
+     * @param {PropertyDescriptor | undefined} descriptor Data descriptor.
+     * @returns {{ trusted: boolean, value: unknown }} Trusted read result.
+     */
+    static readProtectedAssetData(descriptor) {
+        if (
+            !descriptor ||
+            typeof descriptor.get !== 'function' ||
+            descriptor.set !== undefined ||
+            descriptor.enumerable !== true ||
+            descriptor.configurable !== false ||
+            !PROTECTED_ASSET_DATA_GETTERS.has(descriptor.get)
+        ) {
+            return { trusted: false, value: null }
+        }
+        return {
+            trusted: true,
+            value: Reflect.apply(descriptor.get, undefined, [])
+        }
     }
 
     /**
@@ -587,6 +610,7 @@ export class CircuitJsonReadOnlyDocument {
         PROTECTED_ASSET_BYTES.set(asset, bytes)
         /** @returns {Uint8Array} A defensive payload copy. */
         const readAssetData = () => new Uint8Array(bytes)
+        PROTECTED_ASSET_DATA_GETTERS.add(readAssetData)
         Object.defineProperty(asset, 'data', {
             configurable: false,
             enumerable,

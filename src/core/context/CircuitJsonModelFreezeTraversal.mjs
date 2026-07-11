@@ -2,12 +2,15 @@
  * Collects JSON-shaped model values and freezes them only after validation.
  */
 export class CircuitJsonModelFreezeTraversal {
+    #cyclic = false
     #enabled
     #model
     #seen
     #targets = []
     #unsupportedAccessor = false
     #unsupportedContainer = false
+    #unsupportedShape = false
+    #visiting
 
     /**
      * Creates a postorder model freeze traversal.
@@ -18,6 +21,7 @@ export class CircuitJsonModelFreezeTraversal {
         this.#enabled = enabled
         this.#model = model
         this.#seen = new Set()
+        this.#visiting = new Set()
         this.visit(model)
     }
 
@@ -39,19 +43,70 @@ export class CircuitJsonModelFreezeTraversal {
             this.#unsupportedContainer = true
             return
         }
+        if (this.#visiting.has(value)) {
+            this.#cyclic = true
+            return
+        }
         if (this.#seen.has(value)) return
         this.#seen.add(value)
+        this.#visiting.add(value)
 
         const descriptors = Object.getOwnPropertyDescriptors(value)
+        if (Array.isArray(value)) this.#visitArray(value, descriptors)
+        else this.#visitRecord(descriptors)
+        this.#visiting.delete(value)
+        this.#targets.push(value)
+    }
+
+    /**
+     * Visits one dense array through enumerable index data descriptors.
+     * @param {any[]} value Array value.
+     * @param {Record<string, PropertyDescriptor>} descriptors Descriptors.
+     * @returns {void}
+     */
+    #visitArray(value, descriptors) {
+        const keys = Reflect.ownKeys(descriptors)
+        const length = descriptors.length?.value
+        if (
+            !Number.isSafeInteger(length) ||
+            length < 0 ||
+            keys.length !== length + 1
+        ) {
+            this.#unsupportedShape = true
+            return
+        }
+        for (let index = 0; index < length; index += 1) {
+            const descriptor = descriptors[String(index)]
+            if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+                this.#unsupportedAccessor = true
+                continue
+            }
+            if (descriptor.enumerable !== true) {
+                this.#unsupportedShape = true
+                continue
+            }
+            this.visit(descriptor.value)
+        }
+    }
+
+    /**
+     * Visits one record through enumerable string-keyed data descriptors.
+     * @param {Record<string, PropertyDescriptor>} descriptors Descriptors.
+     * @returns {void}
+     */
+    #visitRecord(descriptors) {
         for (const key of Reflect.ownKeys(descriptors)) {
             const descriptor = descriptors[key]
             if (!Object.hasOwn(descriptor, 'value')) {
                 this.#unsupportedAccessor = true
                 continue
             }
+            if (typeof key !== 'string' || descriptor.enumerable !== true) {
+                this.#unsupportedShape = true
+                continue
+            }
             this.visit(descriptor.value)
         }
-        this.#targets.push(value)
     }
 
     /**
@@ -69,6 +124,14 @@ export class CircuitJsonModelFreezeTraversal {
             errors.push(
                 'Immutable CircuitJSON models may contain only data properties.'
             )
+        }
+        if (this.#unsupportedShape) {
+            errors.push(
+                'Immutable CircuitJSON models must use dense arrays and enumerable string-keyed properties.'
+            )
+        }
+        if (this.#cyclic) {
+            errors.push('Immutable CircuitJSON models must not contain cycles.')
         }
         return errors
     }

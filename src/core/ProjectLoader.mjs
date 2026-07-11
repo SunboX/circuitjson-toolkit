@@ -6,7 +6,12 @@ import { ProjectResult } from './contracts/ProjectResult.mjs'
 import { ToolkitDiagnostic } from './contracts/ToolkitDiagnostic.mjs'
 import { ToolkitError } from './contracts/ToolkitError.mjs'
 import { ToolkitProgress } from './contracts/ToolkitProgress.mjs'
+import { ParserWorkerClient } from './worker/ParserWorkerClient.mjs'
 
+const ABORTED_GETTER = Object.getOwnPropertyDescriptor(
+    AbortSignal.prototype,
+    'aborted'
+)?.get
 const PARSER_OPTION_KEYS = [
     'preserveRaw',
     'decodeAssets',
@@ -87,8 +92,21 @@ export class ProjectLoader {
     static async loadAsync(entries, options = {}) {
         const normalizedOptions = ProjectLoader.#normalizeOptions(options)
         ProjectLoader.#assertNotCancelled(normalizedOptions.signal)
-        if (normalizedOptions.worker === true) {
-            throw ProjectLoader.#workerUnavailableError()
+        const useWorker =
+            normalizedOptions.worker === true ||
+            (normalizedOptions.worker === 'auto' &&
+                normalizedOptions.retainSource !== 'reference' &&
+                ParserWorkerClient.isDefaultAvailable())
+        if (useWorker) {
+            const attempt = await ParserWorkerClient.loadProjectDefault(
+                entries,
+                normalizedOptions
+            )
+            if (attempt.ok) return attempt.value
+            if (normalizedOptions.worker !== 'auto' || !attempt.unavailable) {
+                throw attempt.error
+            }
+            ParserWorkerClient.disposeDefault()
         }
 
         let progress = ProjectLoader.#progress(
@@ -156,6 +174,7 @@ export class ProjectLoader {
             },
             progress
         )
+        ProjectLoader.#assertNotCancelled(normalizedOptions.signal)
         return result
     }
 
@@ -215,6 +234,9 @@ export class ProjectLoader {
                 { fileName: '', data: '[]' },
                 parserOptions
             ).options
+            if (normalized.signal !== undefined && normalized.signal !== null) {
+                ProjectLoader.#signalState(normalized.signal)
+            }
             const archiveLimits = ArchiveLimits.normalize(
                 descriptors.archiveLimits
                     ? descriptors.archiveLimits.value
@@ -650,7 +672,8 @@ export class ProjectLoader {
      * @returns {void}
      */
     static #assertNotCancelled(signal) {
-        if (!signal?.aborted) return
+        if (signal === undefined || signal === null) return
+        if (!ProjectLoader.#signalState(signal)) return
         throw new ToolkitError('CircuitJSON project loading was cancelled.', {
             code: 'ERR_CANCELLED',
             category: 'cancelled',
@@ -659,19 +682,32 @@ export class ProjectLoader {
     }
 
     /**
+     * Reads only a genuine AbortSignal through the captured platform getter.
+     * @param {unknown} signal Signal candidate.
+     * @returns {boolean} Aborted state.
+     */
+    static #signalState(signal) {
+        if (!ABORTED_GETTER) {
+            throw new TypeError('AbortSignal state is unavailable.')
+        }
+        try {
+            return Boolean(Reflect.apply(ABORTED_GETTER, signal, []))
+        } catch {
+            throw new TypeError('Project signal must be an AbortSignal.')
+        }
+    }
+
+    /**
      * Converts option/input failures into the project validation boundary.
      * @param {unknown} error Failure candidate.
      * @returns {ToolkitError} Typed input error.
      */
     static #inputError(error) {
-        return error instanceof ToolkitError
-            ? error
-            : new ToolkitError(error?.message || error, {
-                  code: 'ERR_PROJECT_INPUT',
-                  category: 'validation',
-                  format: 'circuitjson',
-                  cause: error
-              })
+        return ToolkitError.from(error, {
+            code: 'ERR_PROJECT_INPUT',
+            category: 'validation',
+            format: 'circuitjson'
+        })
     }
 
     /**
@@ -680,14 +716,11 @@ export class ProjectLoader {
      * @returns {ToolkitError} Typed project error.
      */
     static #errorFrom(error) {
-        return error instanceof ToolkitError
-            ? error
-            : new ToolkitError(error?.message || error, {
-                  code: 'ERR_PROJECT_LOAD',
-                  category: 'runtime',
-                  format: 'circuitjson',
-                  cause: error
-              })
+        return ToolkitError.from(error, {
+            code: 'ERR_PROJECT_LOAD',
+            category: 'runtime',
+            format: 'circuitjson'
+        })
     }
 
     /**
@@ -701,22 +734,6 @@ export class ProjectLoader {
                 code: 'ERR_WORKER_SYNC_UNAVAILABLE',
                 category: 'unsupported',
                 format: 'circuitjson'
-            }
-        )
-    }
-
-    /**
-     * Creates the temporary shared-worker capability boundary.
-     * @returns {ToolkitError} Typed unsupported error.
-     */
-    static #workerUnavailableError() {
-        return new ToolkitError(
-            'CircuitJSON project workers are not available in this build.',
-            {
-                code: 'ERR_CAPABILITY_UNAVAILABLE',
-                category: 'unsupported',
-                format: 'circuitjson',
-                details: { capability: 'project.worker' }
             }
         )
     }
