@@ -22,6 +22,19 @@ export class CircuitJsonPcbPrimitiveBuilder {
      * @returns {{ bounds: object, layers: object[], virtualLayers: object[], components: object[], nets: object[], primitives: object[], anchors: object[], diagnostics: object[], airwires: object[], traceLengths: object[], groups: object[], anchorOffsets: object[] }}
      */
     static build(documentModel) {
+        return CircuitJsonPcbPrimitiveBuilder.buildComplete(
+            documentModel,
+            CircuitJsonPcbPrimitiveBuilder.buildInteraction(documentModel)
+        )
+    }
+
+    /**
+     * Builds only geometry and selection data required for interaction. It
+     * intentionally omits clearance diagnostics, airwires, and report layers.
+     * @param {object | object[]} documentModel Parsed document model.
+     * @returns {{ bounds: object, layers: object[], virtualLayers: object[], components: object[], nets: object[], primitives: object[], anchors: object[], diagnostics: object[], airwires: object[], traceLengths: object[], groups: object[], anchorOffsets: object[] }} Interaction primitive model.
+     */
+    static buildInteraction(documentModel) {
         const elements = CircuitJsonPcbPrimitiveBuilder.elements(documentModel)
         const index = CircuitJsonPcbPrimitiveIndex.build(elements)
         const boards = CircuitJsonPcbPrimitiveBuilder.#all(index, 'pcb_board')
@@ -66,36 +79,65 @@ export class CircuitJsonPcbPrimitiveBuilder {
             CircuitJsonPcbPrimitiveFields.mergedBoardBounds(boards) ||
             CircuitJsonPcbPrimitiveGeometry.mergedPrimitiveBounds(primitives) ||
             CircuitJsonPcbPrimitiveGeometry.bounds(0, 0, 1, 1)
-        const overlays = CircuitJsonPcbPrimitiveOverlays.build(
-            index,
-            components.byPcbId,
-            primitives,
-            bounds,
-            groupModel,
-            [
-                ...CircuitJsonPcbPrimitiveBuilder.#generatedDiagnostics(index),
-                ...areaModel.diagnostics
-            ]
-        )
 
         return {
             bounds,
             layers: CircuitJsonPcbPrimitiveFields.layers(boards, primitives),
-            virtualLayers: overlays.virtualLayers,
+            virtualLayers: [],
             components: components.rows,
             nets: CircuitJsonPcbNetMetadata.nets(primitives, index),
             primitives,
             anchors: primitives.flatMap((primitive) =>
                 primitive.anchors.map((anchor) => ({ ...anchor, primitive }))
             ),
+            diagnostics: [],
+            airwires: [],
+            traceLengths: [],
+            groups: groupModel.groups,
+            anchorOffsets: groupModel.anchorOffsets
+        }
+    }
+
+    /**
+     * Adds legacy report and overlay data to an interaction primitive model
+     * without rebuilding its renderer-neutral geometry.
+     * @param {object | object[]} documentModel Parsed document model.
+     * @param {Record<string, any>} interactionModel Prepared interaction model.
+     * @returns {{ bounds: object, layers: object[], virtualLayers: object[], components: object[], nets: object[], primitives: object[], anchors: object[], diagnostics: object[], airwires: object[], traceLengths: object[], groups: object[], anchorOffsets: object[] }} Complete primitive model.
+     */
+    static buildComplete(documentModel, interactionModel) {
+        const elements = CircuitJsonPcbPrimitiveBuilder.elements(documentModel)
+        const index = CircuitJsonPcbPrimitiveIndex.build(elements)
+        const components =
+            CircuitJsonPcbPrimitiveBuilder.#componentLookups(index)
+        const areaDiagnostics = CircuitJsonPcbZonePrimitiveBuilder.build(
+            index,
+            components.byPcbId
+        ).diagnostics
+        const overlays = CircuitJsonPcbPrimitiveOverlays.build(
+            index,
+            components.byPcbId,
+            interactionModel.primitives,
+            interactionModel.bounds,
+            {
+                groups: interactionModel.groups,
+                anchorOffsets: interactionModel.anchorOffsets
+            },
+            [
+                ...CircuitJsonPcbPrimitiveBuilder.#generatedDiagnostics(index),
+                ...areaDiagnostics
+            ]
+        )
+
+        return {
+            ...interactionModel,
+            virtualLayers: overlays.virtualLayers,
             diagnostics: overlays.diagnostics,
             airwires: overlays.airwires,
             traceLengths: CircuitJsonPcbPrimitiveArtwork.traceLengths(
-                primitives,
+                interactionModel.primitives,
                 index
-            ),
-            groups: groupModel.groups,
-            anchorOffsets: groupModel.anchorOffsets
+            )
         }
     }
 

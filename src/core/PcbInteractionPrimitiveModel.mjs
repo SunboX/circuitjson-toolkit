@@ -1,5 +1,6 @@
 import { CircuitJsonDocument } from './CircuitJsonDocument.mjs'
 import { CircuitJsonPcbPrimitiveBuilder } from './CircuitJsonPcbPrimitiveBuilder.mjs'
+import { PcbInteractionBounds } from './interaction/PcbInteractionBounds.mjs'
 
 /**
  * Builds renderer-neutral PCB primitives for element-array board documents.
@@ -47,6 +48,21 @@ export class PcbInteractionPrimitiveModel {
      * @returns {{ snapped: boolean, point: { x: number, y: number } }}
      */
     static resolveSnapPoint(documentModel, point, options = {}) {
+        return PcbInteractionPrimitiveModel.resolveSnapPointFromModel(
+            PcbInteractionPrimitiveModel.build(documentModel),
+            point,
+            options
+        )
+    }
+
+    /**
+     * Snaps against anchors from one already prepared primitive model.
+     * @param {{ anchors?: object[] }} model Prepared primitive model.
+     * @param {{ x?: unknown, y?: unknown }} point Board-space point.
+     * @param {{ tolerance?: number }} [options] Snap options.
+     * @returns {{ snapped: boolean, point: { x: number, y: number } }}
+     */
+    static resolveSnapPointFromModel(model, point, options = {}) {
         const normalizedPoint = PcbInteractionPrimitiveModel.#point(point)
         if (!normalizedPoint) return { snapped: false, point: { x: 0, y: 0 } }
 
@@ -57,8 +73,7 @@ export class PcbInteractionPrimitiveModel {
         let bestPoint = null
         let bestDistanceSq = Infinity
 
-        for (const anchor of PcbInteractionPrimitiveModel.build(documentModel)
-            .anchors) {
+        for (const anchor of model?.anchors || []) {
             const distanceSq = PcbInteractionPrimitiveModel.#distanceSquared(
                 normalizedPoint,
                 anchor.point
@@ -102,6 +117,27 @@ export class PcbInteractionPrimitiveModel {
      * @returns {object[]} Prioritized hit candidates.
      */
     static hitTestPrimitives(primitives, point, options = {}, groups = []) {
+        return PcbInteractionPrimitiveModel.hitTestRecords(
+            (primitives || []).map((primitive, index) => ({
+                recordId: String(index),
+                primitive
+            })),
+            point,
+            options,
+            groups
+        ).map(({ recordId: _recordId, ...hit }) => hit)
+    }
+
+    /**
+     * Applies the exact narrow phase while preserving a caller-owned stable
+     * record identity independently from non-unique primitive ids.
+     * @param {{ recordId: string, primitive: object }[]} records Prepared primitive records.
+     * @param {{ x?: unknown, y?: unknown }} point Board-space point.
+     * @param {{ side?: 'top' | 'bottom', hiddenLayers?: string[], hiddenObjects?: string[], tolerance?: number }} [options] Hit-test options.
+     * @param {object[]} [groups] Prepared group rows.
+     * @returns {object[]} Prioritized hits carrying their stable record ids.
+     */
+    static hitTestRecords(records, point, options = {}, groups = []) {
         const normalizedPoint = PcbInteractionPrimitiveModel.#point(point)
         if (!normalizedPoint) return []
         const preparedOptions =
@@ -115,7 +151,8 @@ export class PcbInteractionPrimitiveModel {
         )
         const hits = []
 
-        for (const primitive of primitives || []) {
+        for (const record of records || []) {
+            const primitive = record.primitive
             if (
                 !PcbInteractionPrimitiveModel.#isVisible(
                     primitive,
@@ -132,6 +169,7 @@ export class PcbInteractionPrimitiveModel {
             if (distance === null) continue
 
             hits.push({
+                recordId: String(record.recordId),
                 ...PcbInteractionPrimitiveModel.#candidate(
                     primitive,
                     groupsById
@@ -154,35 +192,7 @@ export class PcbInteractionPrimitiveModel {
      * @returns {{ minX: number, minY: number, maxX: number, maxY: number } | null} Interaction bounds.
      */
     static interactionBounds(primitive) {
-        const points = Array.isArray(primitive?.points)
-            ? primitive.points
-                  .map(PcbInteractionPrimitiveModel.#point)
-                  .filter(Boolean)
-            : []
-        if (points.length >= 2) {
-            return PcbInteractionPrimitiveModel.#pointsBounds(points)
-        }
-        const center = PcbInteractionPrimitiveModel.#point(primitive)
-        const width = PcbInteractionPrimitiveModel.#finite(primitive?.width)
-        const height = PcbInteractionPrimitiveModel.#finite(primitive?.height)
-        const rotation = PcbInteractionPrimitiveModel.#number(
-            primitive?.rotation,
-            0
-        )
-        if (center && width !== null && height !== null) {
-            const radians = (rotation * Math.PI) / 180
-            const cos = Math.abs(Math.cos(radians))
-            const sin = Math.abs(Math.sin(radians))
-            const halfWidth = (width * cos + height * sin) / 2
-            const halfHeight = (width * sin + height * cos) / 2
-            return {
-                minX: center.x - halfWidth,
-                minY: center.y - halfHeight,
-                maxX: center.x + halfWidth,
-                maxY: center.y + halfHeight
-            }
-        }
-        return PcbInteractionPrimitiveModel.#normalizedBounds(primitive?.bounds)
+        return PcbInteractionBounds.resolve(primitive)
     }
 
     /**
@@ -785,43 +795,6 @@ export class PcbInteractionPrimitiveModel {
             width: maxX - minX,
             height: maxY - minY
         }
-    }
-
-    /**
-     * Resolves minimal bounds for a point list.
-     * @param {{ x: number, y: number }[]} points Points.
-     * @returns {{ minX: number, minY: number, maxX: number, maxY: number }} Bounds.
-     */
-    static #pointsBounds(points) {
-        return points.reduce(
-            (bounds, point) => ({
-                minX: Math.min(bounds.minX, point.x),
-                minY: Math.min(bounds.minY, point.y),
-                maxX: Math.max(bounds.maxX, point.x),
-                maxY: Math.max(bounds.maxY, point.y)
-            }),
-            { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
-        )
-    }
-
-    /**
-     * Copies valid primitive bounds into a compact spatial record.
-     * @param {unknown} value Bounds candidate.
-     * @returns {{ minX: number, minY: number, maxX: number, maxY: number } | null} Bounds.
-     */
-    static #normalizedBounds(value) {
-        const minX = PcbInteractionPrimitiveModel.#finite(value?.minX)
-        const minY = PcbInteractionPrimitiveModel.#finite(value?.minY)
-        const maxX = PcbInteractionPrimitiveModel.#finite(value?.maxX)
-        const maxY = PcbInteractionPrimitiveModel.#finite(value?.maxY)
-        return minX !== null &&
-            minY !== null &&
-            maxX !== null &&
-            maxY !== null &&
-            minX <= maxX &&
-            minY <= maxY
-            ? { minX, minY, maxX, maxY }
-            : null
     }
 
     /**

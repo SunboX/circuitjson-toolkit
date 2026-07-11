@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 import { BenchmarkCaseCatalog } from '../benchmarks/BenchmarkCaseCatalog.mjs'
 import { SyntheticCircuitJsonFactory } from '../benchmarks/SyntheticCircuitJsonFactory.mjs'
 import { runBenchmarks } from '../scripts/run-benchmarks.mjs'
-import { PcbInteractionPrimitiveModel } from '../src/index.mjs'
+import { PcbInteractionIndex } from '../src/interaction.mjs'
 
 const repositoryRoot = new URL('../', import.meta.url)
 const execFileAsync = promisify(execFile)
@@ -113,10 +113,10 @@ test('hit-test workload result counts returned candidates', async () => {
     const document = SyntheticCircuitJsonFactory.interactiveBoard(
         catalog.fixture.interactiveBoard
     )
+    const interaction = PcbInteractionIndex.create(document)
     let candidateCount = 0
     for (let index = 0; index < workload.iterations; index += 1) {
-        candidateCount += PcbInteractionPrimitiveModel.hitTest(
-            document,
+        candidateCount += interaction.hitTest(
             {
                 x:
                     (index % workload.xCycle) * workload.spacing +
@@ -131,6 +131,8 @@ test('hit-test workload result counts returned candidates', async () => {
 
     assert.equal(workload.resultMetric, 'candidate-count')
     assert.equal(benchmarkCase.expectedResult, candidateCount)
+    assert.equal(interaction.statistics.primitiveBuilds, 1)
+    assert.equal(interaction.statistics.spatialIndexBuilds, 1)
 })
 
 test('versioned catalog rejects an internally rechecksummed semantic mutation', async (context) => {

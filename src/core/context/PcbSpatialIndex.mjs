@@ -1,6 +1,12 @@
 import { ToolkitError } from '../contracts/ToolkitError.mjs'
 
 const NODE_SIZE = 16
+const MAX_RECORDS = 100_000
+const MAX_RECORD_ID_LENGTH = 1024
+const MAX_NESTED_ARRAY_LENGTH = 100_000
+const MAX_SNAPSHOT_DEPTH = 64
+const MAX_SNAPSHOT_SLOTS = 1_000_000
+const MAX_TOLERANCE = 1_000_000
 
 /**
  * Builds a deterministic packed spatial index over millimeter bounds.
@@ -16,12 +22,9 @@ export class PcbSpatialIndex {
      * @returns {PcbSpatialIndex} Spatial index.
      */
     static create(records) {
-        if (!Array.isArray(records)) {
-            throw PcbSpatialIndex.#recordError(
-                'Spatial index records must be an array.'
-            )
-        }
-        const entries = PcbSpatialIndex.#entries(records)
+        const entries = PcbSpatialIndex.#entries(
+            PcbSpatialIndex.#recordList(records)
+        )
         const packed = PcbSpatialIndex.#pack(entries)
         return new PcbSpatialIndex(packed.root, entries.length, packed.nodes)
     }
@@ -36,6 +39,7 @@ export class PcbSpatialIndex {
         this.#root = root
         this.#recordCount = recordCount
         this.#nodeCount = nodeCount
+        Object.freeze(this)
     }
 
     /**
@@ -49,7 +53,8 @@ export class PcbSpatialIndex {
         if (
             typeof tolerance !== 'number' ||
             !Number.isFinite(tolerance) ||
-            tolerance < 0
+            tolerance < 0 ||
+            tolerance > MAX_TOLERANCE
         ) {
             throw PcbSpatialIndex.#queryError(
                 'Spatial query tolerance must be a nonnegative finite number.'
@@ -108,22 +113,98 @@ export class PcbSpatialIndex {
      */
     static #entries(records) {
         const ids = new Set()
+        const snapshotState = {
+            seen: new WeakMap(),
+            slots: 0
+        }
         return records.map((record, order) => {
-            const fields = PcbSpatialIndex.#recordFields(record)
+            const snapshot = PcbSpatialIndex.#snapshotRecord(
+                record,
+                snapshotState
+            )
+            const fields = PcbSpatialIndex.#recordFields(snapshot)
             const id = fields.id
-            if (typeof id !== 'string' || !id.trim() || ids.has(id)) {
+            if (
+                typeof id !== 'string' ||
+                !id ||
+                id !== id.trim() ||
+                id.length > MAX_RECORD_ID_LENGTH ||
+                ids.has(id)
+            ) {
                 throw PcbSpatialIndex.#recordError(
-                    'Spatial index record ids must be non-empty and unique.'
+                    'Spatial index record ids must be bounded, trimmed, non-empty, and unique.'
                 )
             }
             ids.add(id)
             return {
                 id,
                 order,
-                record,
+                record: snapshot,
                 bounds: PcbSpatialIndex.#bounds(fields.bounds, 'record')
             }
         })
+    }
+
+    /**
+     * Reads one exact dense plain array without invoking indexed accessors.
+     * @param {unknown} records Record-list candidate.
+     * @returns {object[]} Safely read record values.
+     */
+    static #recordList(records) {
+        if (!Array.isArray(records)) {
+            throw new TypeError(
+                'Spatial index records must be a dense plain array.'
+            )
+        }
+        let prototype
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(records)
+            descriptors = Object.getOwnPropertyDescriptors(records)
+        } catch {
+            throw new TypeError(
+                'Spatial index records could not be inspected safely.'
+            )
+        }
+        if (prototype !== Array.prototype) {
+            throw new TypeError(
+                'Spatial index records must be a dense plain array.'
+            )
+        }
+        const length = PcbSpatialIndex.#dataValue(descriptors.length)
+        if (!Number.isSafeInteger(length) || length < 0) {
+            throw new TypeError(
+                'Spatial index records must have a safe array length.'
+            )
+        }
+        if (length > MAX_RECORDS) {
+            throw PcbSpatialIndex.#recordError(
+                `Spatial indexes support at most ${MAX_RECORDS} records.`
+            )
+        }
+        const values = []
+        const allowedKeys = new Set(['length'])
+        for (let index = 0; index < length; index += 1) {
+            const key = String(index)
+            const descriptor = descriptors[key]
+            if (!descriptor || descriptor.get || descriptor.set) {
+                throw new TypeError(
+                    'Spatial index records must be a dense data-only array.'
+                )
+            }
+            allowedKeys.add(key)
+            values.push(descriptor.value)
+        }
+        if (
+            Reflect.ownKeys(descriptors).some(
+                (key) => typeof key !== 'string' || !allowedKeys.has(key)
+            )
+        ) {
+            throw new TypeError(
+                'Spatial index records must not contain custom properties.'
+            )
+        }
+        return values
     }
 
     /**
@@ -160,6 +241,199 @@ export class PcbSpatialIndex {
             )
         }
         return { id, bounds }
+    }
+
+    /**
+     * Clones and freezes one data-only record without invoking accessors.
+     * @param {object} record Source record.
+     * @param {{ seen: WeakMap<object, object>, slots: number }} state Construction-wide snapshot state.
+     * @returns {object} Immutable clone-safe snapshot.
+     */
+    static #snapshotRecord(record, state) {
+        return PcbSpatialIndex.#snapshotValue(record, state, 0)
+    }
+
+    /**
+     * Recursively snapshots bounded plain data with cycle preservation.
+     * @param {unknown} value Source value.
+     * @param {{ seen: WeakMap<object, object>, slots: number }} state Construction-wide traversal state.
+     * @param {number} depth Current depth.
+     * @returns {any} Frozen clone-safe value.
+     */
+    static #snapshotValue(value, state, depth) {
+        if (
+            value === null ||
+            ['string', 'boolean', 'undefined'].includes(typeof value)
+        ) {
+            return value
+        }
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value)) {
+                throw PcbSpatialIndex.#recordError(
+                    'Spatial index record data must contain finite numbers.'
+                )
+            }
+            return value
+        }
+        if (typeof value !== 'object') {
+            throw PcbSpatialIndex.#recordError(
+                'Spatial index record data must be clone-safe plain data.'
+            )
+        }
+        if (state.seen.has(value)) return state.seen.get(value)
+        if (depth > MAX_SNAPSHOT_DEPTH) {
+            throw PcbSpatialIndex.#recordError(
+                'Spatial index record data exceeds snapshot limits.'
+            )
+        }
+
+        let prototype
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(value)
+            descriptors = Object.getOwnPropertyDescriptors(value)
+        } catch {
+            throw PcbSpatialIndex.#recordError(
+                'Spatial index record data could not be inspected safely.'
+            )
+        }
+        const isArray = Array.isArray(value)
+        if (
+            (isArray && prototype !== Array.prototype) ||
+            (!isArray && prototype !== Object.prototype && prototype !== null)
+        ) {
+            throw PcbSpatialIndex.#recordError(
+                'Spatial index record data must use plain containers.'
+            )
+        }
+        const keys = PcbSpatialIndex.#snapshotKeys(
+            descriptors,
+            isArray,
+            PcbSpatialIndex.#dataValue(descriptors.length),
+            state
+        )
+        const target = isArray
+            ? []
+            : Object.create(prototype === null ? null : Object.prototype)
+        state.seen.set(value, target)
+        for (const key of keys) {
+            if (isArray && key === 'length') continue
+            const descriptor = descriptors[key]
+            Object.defineProperty(target, key, {
+                value: PcbSpatialIndex.#snapshotValue(
+                    descriptor.value,
+                    state,
+                    depth + 1
+                ),
+                enumerable: true,
+                configurable: true,
+                writable: true
+            })
+        }
+        return Object.freeze(target)
+    }
+
+    /**
+     * Validates and returns enumerable data keys for one snapshot container.
+     * @param {Record<PropertyKey, PropertyDescriptor>} descriptors Own descriptors.
+     * @param {boolean} isArray Whether the container is an array.
+     * @param {number} length Array length when applicable.
+     * @param {{ seen: WeakMap<object, object>, slots: number }} state Construction-wide traversal state.
+     * @returns {string[]} Safe source keys.
+     */
+    static #snapshotKeys(descriptors, isArray, length, state) {
+        const keys = Reflect.ownKeys(descriptors)
+        if (!isArray) {
+            if (
+                keys.some(
+                    (key) =>
+                        typeof key !== 'string' ||
+                        descriptors[key].enumerable !== true ||
+                        !PcbSpatialIndex.#isDataDescriptor(descriptors[key])
+                )
+            ) {
+                throw PcbSpatialIndex.#recordError(
+                    'Spatial index record data must use enumerable string fields.'
+                )
+            }
+            PcbSpatialIndex.#reserveSnapshotSlots(state, 1 + keys.length)
+            return keys
+        }
+        if (
+            !Number.isSafeInteger(length) ||
+            length < 0 ||
+            length > MAX_NESTED_ARRAY_LENGTH
+        ) {
+            throw PcbSpatialIndex.#recordError(
+                `Spatial index record arrays support at most ${MAX_NESTED_ARRAY_LENGTH} values.`
+            )
+        }
+        if (
+            keys.length !== length + 1 ||
+            keys.some(
+                (key) =>
+                    key !== 'length' &&
+                    (!PcbSpatialIndex.#isArrayIndex(key, length) ||
+                        descriptors[key].enumerable !== true ||
+                        !PcbSpatialIndex.#isDataDescriptor(descriptors[key]))
+            )
+        ) {
+            throw PcbSpatialIndex.#recordError(
+                'Spatial index record arrays must be dense and data-only.'
+            )
+        }
+        PcbSpatialIndex.#reserveSnapshotSlots(state, 1 + length)
+        return keys
+    }
+
+    /**
+     * Returns whether a descriptor is an own data property.
+     * @param {PropertyDescriptor | undefined} descriptor Descriptor candidate.
+     * @returns {boolean} Whether the descriptor contains a data value.
+     */
+    static #isDataDescriptor(descriptor) {
+        return Boolean(
+            descriptor &&
+            Object.hasOwn(descriptor, 'value') &&
+            !descriptor.get &&
+            !descriptor.set
+        )
+    }
+
+    /**
+     * Returns whether a key is a canonical dense array index below length.
+     * @param {PropertyKey} key Property key.
+     * @param {number} length Validated array length.
+     * @returns {boolean} Whether the key is a valid array index.
+     */
+    static #isArrayIndex(key, length) {
+        if (typeof key !== 'string' || !key) return false
+        const index = Number(key)
+        return (
+            Number.isSafeInteger(index) &&
+            index >= 0 &&
+            index < length &&
+            String(index) === key
+        )
+    }
+
+    /**
+     * Reserves bounded aggregate slots before allocating snapshot containers.
+     * @param {{ slots: number }} state Construction-wide traversal state.
+     * @param {number} count Container and property slots to reserve.
+     * @returns {void}
+     */
+    static #reserveSnapshotSlots(state, count) {
+        if (
+            !Number.isSafeInteger(count) ||
+            count < 0 ||
+            state.slots > MAX_SNAPSHOT_SLOTS - count
+        ) {
+            throw PcbSpatialIndex.#recordError(
+                `Spatial index record data supports at most ${MAX_SNAPSHOT_SLOTS} aggregate slots.`
+            )
+        }
+        state.slots += count
     }
 
     /**
@@ -219,12 +493,8 @@ export class PcbSpatialIndex {
      * @returns {Record<string, any>} Safe field values.
      */
     static #plainFields(value, names, kind) {
-        const error =
-            kind === 'record'
-                ? PcbSpatialIndex.#recordError
-                : PcbSpatialIndex.#queryError
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
-            throw error('Spatial values must be plain objects.')
+            throw new TypeError('Spatial values must be plain objects.')
         }
         let prototype
         let descriptors
@@ -232,16 +502,18 @@ export class PcbSpatialIndex {
             prototype = Object.getPrototypeOf(value)
             descriptors = Object.getOwnPropertyDescriptors(value)
         } catch {
-            throw error('Spatial value could not be inspected safely.')
+            throw new TypeError('Spatial value could not be inspected safely.')
         }
         if (prototype !== Object.prototype && prototype !== null) {
-            throw error('Spatial values must be plain objects.')
+            throw new TypeError('Spatial values must be plain objects.')
         }
         const result = {}
         for (const name of names) {
             const entry = PcbSpatialIndex.#dataValue(descriptors[name])
             if (entry === undefined) {
-                throw error('Spatial value is missing a required data field.')
+                throw new TypeError(
+                    'Spatial value is missing a required data field.'
+                )
             }
             result[name] = entry
         }

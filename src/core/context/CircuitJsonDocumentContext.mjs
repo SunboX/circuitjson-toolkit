@@ -138,6 +138,18 @@ export class CircuitJsonDocumentContext {
     }
 
     /**
+     * Returns whether a derived object belongs to this exact context key.
+     * @param {unknown} namespace Cache namespace.
+     * @param {unknown} key Cache key.
+     * @param {unknown} value Derived value candidate.
+     * @returns {boolean} Whether exact cache ownership matches.
+     * @internal
+     */
+    ownsDerived(namespace, key, value) {
+        return this.#derived.owns(String(namespace), String(key), value)
+    }
+
+    /**
      * Creates one context and establishes a matching immutable model proof.
      * @param {unknown} input Document result or CircuitJSON model.
      * @returns {CircuitJsonDocumentContext} New context.

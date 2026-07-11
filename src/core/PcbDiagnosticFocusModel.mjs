@@ -13,6 +13,16 @@ export class PcbDiagnosticFocusModel {
      */
     static build(documentModel) {
         const model = PcbInteractionPrimitiveModel.build(documentModel)
+        return PcbDiagnosticFocusModel.buildPrepared(documentModel, model)
+    }
+
+    /**
+     * Builds focus rows from one already prepared complete primitive model.
+     * @param {object | object[]} documentModel Parsed PCB document.
+     * @param {object} model Complete primitive model.
+     * @returns {Map<string, object>} Diagnostic focus rows.
+     */
+    static buildPrepared(documentModel, model) {
         const context = PcbDiagnosticFocusModel.#context(documentModel, model)
         const rows = new Map()
 

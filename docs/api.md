@@ -80,6 +80,86 @@ the fallback, defaulting to `0`.
 
 Converts `{ x, y }` millimeter points to `{ x, y }` mil points.
 
+## PCB Interaction
+
+### `PcbInteractionIndex.create(document, options?)`
+
+Prepares one reusable exact PCB interaction service from a CircuitJSON element
+array, `DocumentResult`, or `CircuitJsonDocumentContext`. Preparation validates
+once, builds immutable interaction-only primitives once, and builds one packed
+spatial index. Clearance diagnostics, airwires, trace-length reports, and other
+render overlays remain lazy.
+
+Common `options` are:
+
+- `side`: `top`, `bottom`, or `null`;
+- `tolerance`: a finite number from `0` through `1000000` millimeters;
+- `hiddenLayers`: a bounded plain array of layer ids;
+- `hiddenObjects`: a bounded plain array of object-category ids.
+
+### `index.hitTest(point, options?)`
+
+Returns exact, ordered, clone-safe hit rows after conservative spatial
+broad-phase filtering. `point` is `{ x, y }` in millimeters. Each hit contains
+`elementId`, `primitiveId`, `kind`, `side`, `layerId`, `bounds`, `distance`,
+`componentId`, `componentKey`, `netName`, `groupIds`, and a clone-safe `source`
+summary. Primitive ids do not need to be globally unique; every envelope stays
+bound to its stable source-record ordinal.
+
+### `index.pick(point, options?)`
+
+Returns the first exact hit from `hitTest` or `null`.
+
+### `index.selectBounds(bounds, options?)`
+
+Performs area selection for `{ minX, minY, maxX, maxY }`. It returns the
+normalized `bounds`, center `point`, legacy-compatible `candidates`,
+`selectedCandidate`, unique `componentKeys`, and unique `netNames`.
+
+### `index.selectArea(bounds, options?)`
+
+Alias of `selectBounds` for source toolkits that call rectangle selection area
+selection.
+
+### `index.selectionAt(point, options?)`
+
+Returns `{ point, candidates, componentCandidate, netCandidate,
+selectedCandidate }`. Candidate ordering is identical to `hitTest`; selected
+state preserves the legacy component-first, then net-first, then first-hit
+policy.
+
+### `index.snap(point, options?)`
+
+Returns `{ snapped, point }` using the nearest prepared primitive anchor within
+`options.tolerance`. Like the legacy snapping helper, omitted per-call
+tolerance defaults to `0` (exact anchors only).
+
+### `index.resolveLayers()`
+
+Returns clone-safe `{ physicalLayers, virtualLayers }`. Complete overlay data
+is prepared lazily on the first layer or diagnostic request and then reused.
+
+### `index.resolveDiagnosticFocus(diagnosticId)`
+
+Returns the clone-safe legacy diagnostic focus shape `{ id, point, bounds,
+relatedPrimitiveIds }`, or `null` when the id is unknown.
+
+### `PcbSpatialIndex.create(records)`
+
+Accepts at most 100000 records in a dense plain array. Each record needs a
+trimmed, unique id of at most 1024 UTF-16 code units and ordered finite
+`bounds`. Records are inspected without invoking accessors, snapshotted, and
+deep-frozen. Each hostile source record is inspected exactly once, and the
+resulting snapshot is the sole source for both index bounds and returned data.
+Nested arrays are dense and limited to 100000 values; one construction is
+limited to 1000000 aggregate container/property slots. Shared source metadata
+is snapshotted once and may be reused only as the same deeply frozen value
+across otherwise independent record snapshots. `search(bounds)` and
+`candidates(point, tolerance?)` return those immutable clone-safe snapshots.
+Structural container failures throw `TypeError`. Invalid ids, limits, numeric
+bounds, or tolerances throw `ToolkitError` with
+`ERR_SPATIAL_INDEX_RECORD` or `ERR_SPATIAL_INDEX_QUERY`.
+
 ## SPICE Simulation
 
 ### `SpiceCompatibilityPreprocessor.rewrite(spiceString)`

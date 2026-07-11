@@ -13,13 +13,29 @@ export class PcbBoundsSelectionModel {
      * @returns {{ bounds: object | null, point: object | null, candidates: object[], selectedCandidate: object | null, componentKeys: string[], netNames: string[] }}
      */
     static resolve(documentModel, bounds, options = {}) {
+        return PcbBoundsSelectionModel.resolvePrimitives(
+            PcbInteractionPrimitiveModel.build(documentModel).primitives,
+            bounds,
+            options
+        )
+    }
+
+    /**
+     * Resolves area selection from an already prepared primitive list.
+     * @param {object[]} primitives Prepared PCB primitives.
+     * @param {{ minX?: unknown, minY?: unknown, maxX?: unknown, maxY?: unknown }} bounds Board-space bounds.
+     * @param {{ side?: string, hiddenLayers?: string[], hiddenObjects?: string[] }} [options] Selection options.
+     * @returns {{ bounds: object | null, point: object | null, candidates: object[], selectedCandidate: object | null, componentKeys: string[], netNames: string[] }}
+     */
+    static resolvePrimitives(primitives, bounds, options = {}) {
         const normalizedBounds = PcbBoundsSelectionModel.normalizeBounds(bounds)
         if (!normalizedBounds) return PcbBoundsSelectionModel.#empty()
 
+        const visibility = PcbBoundsSelectionModel.#visibilityOptions(options)
         const candidates = PcbBoundsSelectionModel.#containedPrimitives(
-            documentModel,
+            primitives,
             normalizedBounds,
-            options
+            visibility
         ).map((primitive) =>
             PcbCandidateSelectionModel.fromPrimitive(primitive)
         )
@@ -90,15 +106,13 @@ export class PcbBoundsSelectionModel {
 
     /**
      * Returns primitives that are visible and touch the measured bounds.
-     * @param {object | object[]} documentModel Parsed PCB document model.
+     * @param {object[]} primitives Prepared primitives.
      * @param {object} bounds Normalized bounds.
      * @param {object} options Selection options.
      * @returns {object[]}
      */
-    static #containedPrimitives(documentModel, bounds, options) {
-        return PcbInteractionPrimitiveModel.build(
-            documentModel
-        ).primitives.filter(
+    static #containedPrimitives(primitives, bounds, options) {
+        return (primitives || []).filter(
             (primitive) =>
                 PcbBoundsSelectionModel.#isVisible(primitive, options) &&
                 PcbBoundsSelectionModel.#touchesBounds(primitive, bounds)
@@ -112,24 +126,46 @@ export class PcbBoundsSelectionModel {
      * @returns {boolean}
      */
     static #isVisible(primitive, options) {
-        const side = String(options?.side || '')
+        const side = options.side
         if (side && primitive.side && primitive.side !== side) return false
 
-        const hiddenLayers = new Set(
-            (Array.isArray(options?.hiddenLayers) ? options.hiddenLayers : [])
-                .map(String)
-                .filter(Boolean)
-        )
-        if (primitive.layer && hiddenLayers.has(String(primitive.layer))) {
+        if (
+            primitive.layer &&
+            options.hiddenLayers.has(String(primitive.layer))
+        ) {
             return false
         }
 
-        const hiddenObjects = new Set(
-            (Array.isArray(options?.hiddenObjects) ? options.hiddenObjects : [])
-                .map(String)
-                .filter(Boolean)
+        return !options.hiddenObjects.has(
+            PcbBoundsSelectionModel.#objectKey(primitive)
         )
-        return !hiddenObjects.has(PcbBoundsSelectionModel.#objectKey(primitive))
+    }
+
+    /**
+     * Builds visibility lookup sets once for one area-selection operation.
+     * @param {{ side?: string, hiddenLayers?: string[], hiddenObjects?: string[] }} options Raw options.
+     * @returns {{ side: string, hiddenLayers: Set<string>, hiddenObjects: Set<string> }} Prepared visibility.
+     */
+    static #visibilityOptions(options) {
+        return {
+            side: String(options?.side || ''),
+            hiddenLayers: new Set(
+                (Array.isArray(options?.hiddenLayers)
+                    ? options.hiddenLayers
+                    : []
+                )
+                    .map(String)
+                    .filter(Boolean)
+            ),
+            hiddenObjects: new Set(
+                (Array.isArray(options?.hiddenObjects)
+                    ? options.hiddenObjects
+                    : []
+                )
+                    .map(String)
+                    .filter(Boolean)
+            )
+        }
     }
 
     /**

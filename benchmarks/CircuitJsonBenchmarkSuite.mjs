@@ -6,9 +6,10 @@ import { serialize } from 'node:v8'
 import {
     CircuitJsonIndexer,
     CircuitJsonParser,
-    CircuitJsonPcbSvgRenderer,
-    PcbInteractionPrimitiveModel
+    CircuitJsonPcbPrimitiveBuilder,
+    CircuitJsonPcbSvgRenderer
 } from '../src/index.mjs'
+import { PcbInteractionIndex } from '../src/interaction.mjs'
 import { BenchmarkCaseCatalog } from './BenchmarkCaseCatalog.mjs'
 import { SyntheticCircuitJsonFactory } from './SyntheticCircuitJsonFactory.mjs'
 
@@ -84,6 +85,12 @@ export class CircuitJsonBenchmarkSuite {
         const largeText = JSON.stringify(largeDocument)
         const netlistIndex = CircuitJsonIndexer.index(netlistDocument)
         const netlistPads = netlistIndex.elementsByType.get('pcb_smtpad') || []
+        // Retain the immutable 1.0.17 after-workload clone contract while the
+        // measured repeated queries below use the new reusable index.
+        CircuitJsonPcbPrimitiveBuilder.buildInteraction(interactiveDocument)
+        const interactionIndex = PcbInteractionIndex.create(
+            structuredClone(interactiveDocument)
+        )
 
         return {
             data: {
@@ -97,6 +104,7 @@ export class CircuitJsonBenchmarkSuite {
                 netlistDocument,
                 netlistIndex
             },
+            interactionIndex,
             largeText,
             netlistPads
         }
@@ -191,8 +199,7 @@ export class CircuitJsonBenchmarkSuite {
     static #gridHitTest(workload, fixture) {
         let candidateCount = 0
         for (let index = 0; index < workload.iterations; index += 1) {
-            const candidates = PcbInteractionPrimitiveModel.hitTest(
-                fixture.values[workload.source],
+            const candidates = fixture.interactionIndex.hitTest(
                 {
                     x:
                         (index % workload.xCycle) * workload.spacing +
