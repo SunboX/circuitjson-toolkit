@@ -165,7 +165,14 @@ export class SchematicGeometryBounds {
             (element.type === 'schematic_component'
                 ? { width: 4, height: 3 }
                 : null)
-        if (center && size) {
+        if (center && size && element.type === 'schematic_image') {
+            SchematicGeometryBounds.#includeRotatedImage(
+                geometry,
+                center,
+                size,
+                element.rotation
+            )
+        } else if (center && size) {
             SchematicGeometryBounds.#include(geometry, {
                 x: center.x - size.width / 2,
                 y: center.y - size.height / 2
@@ -275,6 +282,30 @@ export class SchematicGeometryBounds {
             tables,
             portHintCache
         )
+    }
+
+    /**
+     * Includes the exact axis-aligned extents of a center-rotated image.
+     * @param {Record<string, number>} bounds Mutable bounds.
+     * @param {{ x: number, y: number }} center Image center.
+     * @param {{ width: number, height: number }} size Image size.
+     * @param {unknown} rotation Rotation in canonical degrees.
+     * @returns {void}
+     */
+    static #includeRotatedImage(bounds, center, size, rotation) {
+        const radians = (CircuitJsonUnits.angle(rotation, 0) * Math.PI) / 180
+        const cosine = Math.abs(Math.cos(radians))
+        const sine = Math.abs(Math.sin(radians))
+        const halfWidth = (cosine * size.width + sine * size.height) / 2
+        const halfHeight = (sine * size.width + cosine * size.height) / 2
+        SchematicGeometryBounds.#include(bounds, {
+            x: center.x - halfWidth,
+            y: center.y - halfHeight
+        })
+        SchematicGeometryBounds.#include(bounds, {
+            x: center.x + halfWidth,
+            y: center.y + halfHeight
+        })
     }
 
     /**
@@ -452,6 +483,7 @@ export class SchematicGeometryBounds {
                 elementIndex += 1
             ) {
                 const element = elements[elementIndex]
+                if (element.show_label === false) continue
                 labels.set(
                     element,
                     sourceNames.get(

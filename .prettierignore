@@ -1,3 +1,6 @@
 node_modules
 output
 .playwright-cli
+spec/api-baseline-v1.0.17.json
+spec/feature-preservation.json
+src/core/CircuitJsonUpstreamSchema.mjs

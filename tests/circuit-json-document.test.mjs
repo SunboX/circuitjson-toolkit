@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { CircuitJsonDocument, CircuitJsonUnits } from '../src/index.mjs'
 import {
-    CircuitJsonDocument,
     CircuitJsonElementValidator,
     CircuitJsonParser,
-    CircuitJsonSourceMetadata,
-    CircuitJsonUnits
-} from '../src/index.mjs'
+    CircuitJsonSourceMetadata
+} from '../src/extensions.mjs'
 
 test('CircuitJsonDocument recognizes serialized CircuitJSON element arrays', () => {
     const model = [
@@ -64,7 +63,7 @@ test('CircuitJsonDocument rejects unknown element types', () => {
     )
 })
 
-test('CircuitJsonDocument accepts open courtyard artwork elements', () => {
+test('canonical validation rejects local courtyard aliases while the legacy parser maps them', () => {
     const model = [
         {
             type: 'pcb_courtyard_path',
@@ -85,8 +84,12 @@ test('CircuitJsonDocument accepts open courtyard artwork elements', () => {
         }
     ]
 
-    assert.equal(CircuitJsonDocument.isModel(model), true)
-    assert.doesNotThrow(() => CircuitJsonDocument.assertModel(model))
+    assert.equal(CircuitJsonDocument.isModel(model), false)
+    const parsed = CircuitJsonParser.parseText(JSON.stringify(model))
+    assert.deepEqual(
+        parsed.map((element) => element.type),
+        ['pcb_courtyard_outline', 'pcb_courtyard_outline']
+    )
 })
 
 test('CircuitJsonDocument rejects invalid core element fields', () => {
@@ -103,7 +106,7 @@ test('CircuitJsonDocument rejects invalid core element fields', () => {
                     layer: 'top'
                 }
             ]),
-        /pcb_smtpad shape must be one of/
+        /does not match the pinned upstream schema/
     )
     assert.throws(
         () =>
@@ -115,7 +118,7 @@ test('CircuitJsonDocument rejects invalid core element fields', () => {
                     pin_number: '1'
                 }
             ]),
-        /source_port pin_number must be a number/
+        /does not match the pinned upstream schema/
     )
     assert.throws(
         () =>
@@ -128,7 +131,7 @@ test('CircuitJsonDocument rejects invalid core element fields', () => {
                     rotation: 0
                 }
             ]),
-        /pcb_component layer is required/
+        /does not match the pinned upstream schema/
     )
     assert.throws(
         () =>
@@ -139,7 +142,7 @@ test('CircuitJsonDocument rejects invalid core element fields', () => {
                     center: { x: 0, y: 0 }
                 }
             ]),
-        /schematic_component size is required/
+        /does not match the pinned upstream schema/
     )
     assert.throws(
         () =>
@@ -152,7 +155,7 @@ test('CircuitJsonDocument rejects invalid core element fields', () => {
                     supplier_part_numbers: []
                 }
             ]),
-        /source_component supplier_part_numbers must be an object/
+        /does not match the pinned upstream schema/
     )
 })
 
@@ -180,7 +183,7 @@ test('CircuitJsonDocument validates oscilloscope trace references and units', ()
                     volts_per_div: 1
                 }
             ]),
-        /simulation_oscilloscope_trace must reference exactly one graph or probe/
+        /does not match the pinned upstream schema/
     )
     assert.throws(
         () =>
@@ -192,7 +195,7 @@ test('CircuitJsonDocument validates oscilloscope trace references and units', ()
                     amps_per_div: 0.01
                 }
             ]),
-        /voltage oscilloscope traces must use volts_per_div/
+        /does not match the pinned upstream schema/
     )
     assert.throws(
         () =>
@@ -204,7 +207,7 @@ test('CircuitJsonDocument validates oscilloscope trace references and units', ()
                     volts_per_div: 1
                 }
             ]),
-        /current oscilloscope traces must use amps_per_div/
+        /does not match the pinned upstream schema/
     )
 })
 
@@ -240,8 +243,8 @@ test('CircuitJsonDocument accepts string unit dimensions and rotations', () => {
             pcb_component_id: 'pcb_u1',
             x: '2.54mm',
             y: '100mil',
-            width: '0.8mm',
-            height: '0.4mm',
+            width: 0.8,
+            height: 0.4,
             ccw_rotation: '1.5707963268rad',
             layer: 'top'
         }
@@ -255,7 +258,7 @@ test('CircuitJsonDocument accepts string unit dimensions and rotations', () => {
     assert.equal(CircuitJsonUnits.angle(model[3].ccw_rotation), 90)
 })
 
-test('CircuitJsonDocument accepts circle pads with equivalent dimensions', () => {
+test('CircuitJsonDocument accepts exact upstream circle pad radii', () => {
     const model = [
         {
             type: 'pcb_smtpad',
@@ -263,7 +266,7 @@ test('CircuitJsonDocument accepts circle pads with equivalent dimensions', () =>
             pcb_smtpad_id: 'pad_diameter',
             x: 0,
             y: 0,
-            diameter: '1mm',
+            radius: 0.5,
             layer: 'top'
         },
         {
@@ -272,8 +275,7 @@ test('CircuitJsonDocument accepts circle pads with equivalent dimensions', () =>
             pcb_smtpad_id: 'pad_size',
             x: 2,
             y: 0,
-            width: 1,
-            height: 1,
+            radius: 0.5,
             layer: 'top'
         }
     ]
@@ -282,7 +284,7 @@ test('CircuitJsonDocument accepts circle pads with equivalent dimensions', () =>
     assert.doesNotThrow(() => CircuitJsonDocument.assertModel(model))
 })
 
-test('CircuitJsonDocument accepts defaultable PCB component and port fields', () => {
+test('CircuitJsonDocument accepts exact required PCB component and port fields', () => {
     const model = [
         {
             type: 'source_component',
@@ -293,14 +295,18 @@ test('CircuitJsonDocument accepts defaultable PCB component and port fields', ()
         {
             type: 'source_port',
             source_port_id: 'source_port_1',
-            source_component_id: 'source_u1'
+            source_component_id: 'source_u1',
+            name: ''
         },
         {
             type: 'pcb_component',
             pcb_component_id: 'pcb_u1',
             source_component_id: 'source_u1',
             center: { x: 0, y: 0 },
-            layer: 'top'
+            layer: 'top',
+            rotation: 0,
+            width: 0,
+            height: 0
         },
         {
             type: 'pcb_smtpad',
@@ -311,6 +317,7 @@ test('CircuitJsonDocument accepts defaultable PCB component and port fields', ()
             y: 0,
             width: 1,
             height: 0.4,
+            radius: 0.2,
             layer: 'top'
         }
     ]
@@ -351,10 +358,11 @@ test('CircuitJsonElementValidator compares schema variant snapshots', () => {
     })
 
     assert.equal(
-        snapshot.variantSets.pcbSmtPadShapes.includes('rounded_rect'),
+        snapshot.variantSets.pcbSmtPadShapes.includes('rotated_rect'),
         true
     )
-    assert.equal(snapshot.variantSets.pcbHoleShapes.includes('round'), true)
+    assert.equal(snapshot.variantSets.pcbHoleShapes.includes('circle'), true)
+    assert.equal(snapshot.variantSets.pcbHoleShapes.includes('round'), false)
     assert.equal(
         snapshot.variantSets.pcbCopperPourShapes.includes('brep'),
         true
@@ -389,7 +397,7 @@ test('CircuitJsonElementValidator compares schema variant snapshots', () => {
         comparison.unexpectedVariants.some(
             (variant) =>
                 variant.set === 'pcbSmtPadShapes' &&
-                variant.value === 'rounded_rect'
+                variant.value === 'rotated_rect'
         ),
         true
     )

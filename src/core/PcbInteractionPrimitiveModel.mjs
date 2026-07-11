@@ -1,5 +1,7 @@
 import { CircuitJsonDocument } from './CircuitJsonDocument.mjs'
 import { CircuitJsonPcbPrimitiveBuilder } from './CircuitJsonPcbPrimitiveBuilder.mjs'
+import { CircuitJsonDocumentContext } from './context/CircuitJsonDocumentContext.mjs'
+import { PcbPrimitivePreparation } from './context/PcbPrimitivePreparation.mjs'
 import { PcbInteractionBounds } from './interaction/PcbInteractionBounds.mjs'
 
 /**
@@ -12,13 +14,17 @@ export class PcbInteractionPrimitiveModel {
      * @returns {{ bounds: object, layers: object[], virtualLayers: object[], components: object[], nets: object[], primitives: object[], anchors: object[], diagnostics: object[], airwires: object[], traceLengths: object[], groups: object[], anchorOffsets: object[] }}
      */
     static build(documentModel) {
-        if (
-            !PcbInteractionPrimitiveModel.#isElementArrayDocument(documentModel)
-        ) {
+        const context = PcbInteractionPrimitiveModel.#context(documentModel)
+        if (context) return PcbPrimitivePreparation.prepareComplete(context)
+
+        const elements = CircuitJsonDocument.normalizeModel(
+            CircuitJsonPcbPrimitiveBuilder.elements(documentModel)
+        )
+        try {
+            return CircuitJsonPcbPrimitiveBuilder.build(elements)
+        } catch {
             return PcbInteractionPrimitiveModel.#emptyModel()
         }
-
-        return CircuitJsonPcbPrimitiveBuilder.build(documentModel)
     }
 
     /**
@@ -27,13 +33,7 @@ export class PcbInteractionPrimitiveModel {
      * @returns {{ physicalLayers: object[], virtualLayers: object[] }}
      */
     static resolveLayerGroups(documentModel) {
-        if (
-            !PcbInteractionPrimitiveModel.#isElementArrayDocument(documentModel)
-        ) {
-            return { physicalLayers: [], virtualLayers: [] }
-        }
-
-        const model = CircuitJsonPcbPrimitiveBuilder.build(documentModel)
+        const model = PcbInteractionPrimitiveModel.build(documentModel)
         return {
             physicalLayers: model.layers,
             virtualLayers: model.virtualLayers || []
@@ -196,14 +196,44 @@ export class PcbInteractionPrimitiveModel {
     }
 
     /**
-     * Returns true when the document uses the element-array source format.
-     * @param {object | object[]} documentModel Parsed document model.
-     * @returns {boolean}
+     * Resolves one canonical context without exposing validation failures from
+     * this legacy tolerant facade.
+     * @param {unknown} documentModel Document result, model, or context.
+     * @returns {CircuitJsonDocumentContext | null} Prepared context.
      */
-    static #isElementArrayDocument(documentModel) {
-        return CircuitJsonDocument.isModel(
-            CircuitJsonPcbPrimitiveBuilder.elements(documentModel)
-        )
+    static #context(documentModel) {
+        try {
+            if (documentModel instanceof CircuitJsonDocumentContext) {
+                return documentModel
+            }
+            if (
+                documentModel &&
+                typeof documentModel === 'object' &&
+                !Array.isArray(documentModel)
+            ) {
+                const schema = Object.getOwnPropertyDescriptor(
+                    documentModel,
+                    'schema'
+                )
+                const model = Object.getOwnPropertyDescriptor(
+                    documentModel,
+                    'model'
+                )
+                if (
+                    schema &&
+                    Object.hasOwn(schema, 'value') &&
+                    schema.value === 'ecad-toolkit.document.v1' &&
+                    model &&
+                    Object.hasOwn(model, 'value') &&
+                    Array.isArray(model.value)
+                ) {
+                    return CircuitJsonDocumentContext.prepare(documentModel)
+                }
+            }
+            return null
+        } catch {
+            return null
+        }
     }
 
     /**

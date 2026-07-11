@@ -8,6 +8,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 
 import { PublicContractExtractor } from '../scripts/PublicContractExtractor.mjs'
+import {
+    CircuitJsonPcbDrawingStyle,
+    CircuitJsonPcbZonePrimitiveBuilder
+} from '../src/extensions.mjs'
 
 const repositoryRoot = new URL('../', import.meta.url)
 const execFileAsync = promisify(execFile)
@@ -62,13 +66,13 @@ test('source extractor derives public signatures, arguments, property reads, and
     )
 
     for (const feature of [
-        '.#PcbInteractionPrimitiveModel.resolveSnapPoint().result.snapped',
-        '.#PcbInteractionPrimitiveModel.resolveSnapPoint().result.point',
-        '.#CircuitJsonPcbDrawingStyle.fromElement().result.strokeColor',
-        '.#CircuitJsonPcbDrawingStyle.fromElement().result.fillColor',
-        '.#CircuitJsonPcbDrawingStyle.fromElement().result.dashArray',
-        '.#CircuitJsonPcbZonePrimitiveBuilder.build().result.primitives',
-        '.#CircuitJsonPcbZonePrimitiveBuilder.build().result.diagnostics'
+        './extensions#PcbInteractionPrimitiveModel.resolveSnapPoint().result.snapped',
+        './extensions#PcbInteractionPrimitiveModel.resolveSnapPoint().result.point',
+        './extensions#CircuitJsonPcbDrawingStyle.fromElement().result.strokeColor',
+        './extensions#CircuitJsonPcbDrawingStyle.fromElement().result.fillColor',
+        './extensions#CircuitJsonPcbDrawingStyle.fromElement().result.dashArray',
+        './extensions#CircuitJsonPcbZonePrimitiveBuilder.build().result.primitives',
+        './extensions#CircuitJsonPcbZonePrimitiveBuilder.build().result.diagnostics'
     ]) {
         assert.ok(byFeature.has(feature), `missing ${feature}`)
     }
@@ -85,6 +89,8 @@ test('source extractor derives public signatures, arguments, property reads, and
             (contract) => contract.sourceContract.defaultSource === '0'
         )
     )
+    assert.equal(typeof CircuitJsonPcbDrawingStyle.fromElement, 'function')
+    assert.equal(typeof CircuitJsonPcbZonePrimitiveBuilder.build, 'function')
 })
 
 test('immutable API baseline covers the approved source-derived inventory', async (context) => {

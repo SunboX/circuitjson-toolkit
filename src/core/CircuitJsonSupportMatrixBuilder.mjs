@@ -56,12 +56,14 @@ const SCHEMATIC_RENDERED_TYPES = new Set([
     'schematic_component',
     'schematic_debug_object',
     'schematic_group',
+    'schematic_image',
     'schematic_line',
     'schematic_net_label',
     'schematic_path',
     'schematic_port',
     'schematic_rect',
     'schematic_sheet',
+    'schematic_sheet_symbol',
     'schematic_symbol',
     'schematic_table',
     'schematic_table_cell',
@@ -171,7 +173,7 @@ export class CircuitJsonSupportMatrixBuilder {
                 .map((element) => String(element?.type || ''))
                 .filter(Boolean)
         )
-        const rows = CircuitJsonElementValidator.knownElementTypes().map(
+        const rows = CircuitJsonElementValidator.canonicalElementTypes().map(
             (type) =>
                 CircuitJsonSupportMatrixBuilder.#row(
                     type,

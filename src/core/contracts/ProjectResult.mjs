@@ -75,7 +75,7 @@ export class ProjectResult {
      * Normalizes project source identity.
      * @param {unknown} source Source candidate.
      * @param {Record<string, any>[]} documents Project documents.
-     * @returns {Record<string, any>} Normalized source.
+     * @returns {{ format: string, entryNames: string[] } & Record<string, any>} Normalized source.
      */
     static #source(source, documents) {
         const provided = cloneSafeValue(source, {})

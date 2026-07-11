@@ -8,7 +8,7 @@ import {
     PcbCandidateSelectionModel,
     PcbDiagnosticFocusModel,
     PcbInteractionPrimitiveModel
-} from '../src/renderers.mjs'
+} from '../src/extensions.mjs'
 import { createRichCircuitJsonDocument } from './helpers/FakePcbInteractionDocuments.mjs'
 
 test('PcbInteractionIndex selectBounds/selectArea preserve legacy area selection', () => {

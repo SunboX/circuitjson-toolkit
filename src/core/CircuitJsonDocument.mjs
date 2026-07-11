@@ -1,4 +1,6 @@
 import { CircuitJsonElementValidator } from './CircuitJsonElementValidator.mjs'
+import { CircuitJsonLegacyModel } from './context/CircuitJsonLegacyModel.mjs'
+import { CircuitJsonLegacyNormalizer } from './context/CircuitJsonLegacyNormalizer.mjs'
 
 /**
  * Validates serialized CircuitJSON element arrays.
@@ -46,6 +48,16 @@ export class CircuitJsonDocument {
     }
 
     /**
+     * Projects supported pre-union aliases onto the current CircuitJSON model.
+     * @param {unknown} model CircuitJSON model candidate.
+     * @param {{ owned?: boolean }} [options] Ownership options.
+     * @returns {unknown} Original model or its canonical projection.
+     */
+    static normalizeModel(model, options = {}) {
+        return CircuitJsonLegacyNormalizer.normalize(model, options)
+    }
+
+    /**
      * Attaches non-serialized metadata to a CircuitJSON array.
      * @template {object[]} T
      * @param {T} circuitJson CircuitJSON model.
@@ -54,62 +66,6 @@ export class CircuitJsonDocument {
      */
     static attachMetadata(circuitJson, metadata = {}) {
         CircuitJsonDocument.assertModel(circuitJson)
-        Object.defineProperties(circuitJson, {
-            fileName: {
-                configurable: true,
-                enumerable: true,
-                value: String(metadata.fileName || ''),
-                writable: true
-            },
-            fileType: {
-                configurable: true,
-                enumerable: true,
-                value: String(metadata.fileType || 'circuitjson'),
-                writable: true
-            },
-            kind: {
-                configurable: true,
-                enumerable: true,
-                value: String(metadata.kind || 'pcb'),
-                writable: true
-            },
-            sourceFormat: {
-                configurable: true,
-                enumerable: true,
-                value: 'circuitjson',
-                writable: true
-            },
-            diagnostics: {
-                configurable: true,
-                enumerable: true,
-                value: Array.isArray(metadata.diagnostics)
-                    ? metadata.diagnostics
-                    : [],
-                writable: true
-            },
-            bom: {
-                configurable: true,
-                enumerable: true,
-                value: Array.isArray(metadata.bom) ? metadata.bom : [],
-                writable: true
-            },
-            supportMatrix: {
-                configurable: true,
-                enumerable: true,
-                value: metadata.supportMatrix || null,
-                writable: true
-            },
-            manufacturing: {
-                configurable: true,
-                enumerable: true,
-                value: metadata.manufacturing || {
-                    pickAndPlaceRows: [],
-                    routingDsn: ''
-                },
-                writable: true
-            }
-        })
-
-        return circuitJson
+        return CircuitJsonLegacyModel.attachValidated(circuitJson, metadata)
     }
 }

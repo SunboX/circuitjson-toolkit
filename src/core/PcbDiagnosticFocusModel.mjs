@@ -1,6 +1,7 @@
 import { CircuitJsonIndexer } from './CircuitJsonIndexer.mjs'
 import { CircuitJsonUnits } from './CircuitJsonUnits.mjs'
 import { PcbInteractionPrimitiveModel } from './PcbInteractionPrimitiveModel.mjs'
+import { CircuitJsonDocumentContext } from './context/CircuitJsonDocumentContext.mjs'
 
 /**
  * Resolves viewport focus targets for PCB diagnostic rows.
@@ -12,8 +13,14 @@ export class PcbDiagnosticFocusModel {
      * @returns {Map<string, object>}
      */
     static build(documentModel) {
-        const model = PcbInteractionPrimitiveModel.build(documentModel)
-        return PcbDiagnosticFocusModel.buildPrepared(documentModel, model)
+        let context
+        try {
+            context = CircuitJsonDocumentContext.prepare(documentModel)
+        } catch {
+            return new Map()
+        }
+        const model = PcbInteractionPrimitiveModel.build(context)
+        return PcbDiagnosticFocusModel.buildPrepared(context, model)
     }
 
     /**
@@ -188,7 +195,12 @@ export class PcbDiagnosticFocusModel {
             ['pcb_trace_id', [element?.pcb_trace_id, element?.pcb_trace_ids]],
             [
                 'pcb_smtpad_id',
-                [element?.pcb_smtpad_id, element?.pcb_smtpad_ids]
+                [
+                    element?.pcb_smtpad_id,
+                    element?.pcb_smtpad_ids,
+                    element?.pcb_pad_id,
+                    element?.pcb_pad_ids
+                ]
             ],
             ['pcb_via_id', [element?.pcb_via_id, element?.pcb_via_ids]],
             [
@@ -290,6 +302,11 @@ export class PcbDiagnosticFocusModel {
      * @returns {object[]}
      */
     static #elements(documentModel) {
+        try {
+            return CircuitJsonDocumentContext.prepare(documentModel).model
+        } catch {
+            // Preserve the tolerant legacy wrapper fallbacks below.
+        }
         if (Array.isArray(documentModel)) return documentModel
         if (Array.isArray(documentModel?.elements))
             return documentModel.elements

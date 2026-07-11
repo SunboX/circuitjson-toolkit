@@ -3,6 +3,7 @@ import { CircuitJsonValidationProof } from './CircuitJsonValidationProof.mjs'
 
 const INDEX_NAMES = new Set([
     'elements',
+    'identifiers',
     'relations',
     'connectivity',
     'spatial'

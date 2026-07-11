@@ -355,9 +355,15 @@ export class CircuitJsonPcbPrimitiveOverlays {
                 pcb_trace_ids:
                     diagnostic?.pcbTraceIds || diagnostic?.pcb_trace_ids,
                 pcb_smtpad_id:
-                    diagnostic?.pcbSmtpadId || diagnostic?.pcb_smtpad_id,
+                    diagnostic?.pcbSmtpadId ||
+                    diagnostic?.pcb_smtpad_id ||
+                    diagnostic?.pcbPadId ||
+                    diagnostic?.pcb_pad_id,
                 pcb_smtpad_ids:
-                    diagnostic?.pcbSmtpadIds || diagnostic?.pcb_smtpad_ids,
+                    diagnostic?.pcbSmtpadIds ||
+                    diagnostic?.pcb_smtpad_ids ||
+                    diagnostic?.pcbPadIds ||
+                    diagnostic?.pcb_pad_ids,
                 pcb_via_id: diagnostic?.pcbViaId || diagnostic?.pcb_via_id,
                 pcb_via_ids: diagnostic?.pcbViaIds || diagnostic?.pcb_via_ids,
                 pcb_plated_hole_id:
@@ -646,7 +652,12 @@ export class CircuitJsonPcbPrimitiveOverlays {
             ['pcb_trace_id', [element?.pcb_trace_id, element?.pcb_trace_ids]],
             [
                 'pcb_smtpad_id',
-                [element?.pcb_smtpad_id, element?.pcb_smtpad_ids]
+                [
+                    element?.pcb_smtpad_id,
+                    element?.pcb_smtpad_ids,
+                    element?.pcb_pad_id,
+                    element?.pcb_pad_ids
+                ]
             ],
             ['pcb_via_id', [element?.pcb_via_id, element?.pcb_via_ids]],
             [

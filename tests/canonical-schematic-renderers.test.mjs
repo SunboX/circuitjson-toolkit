@@ -530,8 +530,13 @@ test('SchematicSvgRenderer bounds every visible generated label', () => {
             type: 'schematic_table_cell',
             schematic_table_cell_id: 'cell_long_generated_label',
             schematic_table_id: 'table_long_generated_label',
-            row: 0,
-            column: 0,
+            start_row_index: 0,
+            end_row_index: 0,
+            start_column_index: 0,
+            end_column_index: 0,
+            center: { x: 0, y: 16 },
+            width: 4,
+            height: 2,
             text: longLabel
         }
     ])

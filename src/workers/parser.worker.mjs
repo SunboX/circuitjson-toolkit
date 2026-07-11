@@ -1,5 +1,6 @@
 import { Parser } from '../core/Parser.mjs'
 import { ProjectLoader } from '../core/ProjectLoader.mjs'
+import { AsyncInputOwnership } from '../core/AsyncInputOwnership.mjs'
 import { ToolkitWorkerProtocol } from '../core/worker/ToolkitWorkerProtocol.mjs'
 
 /**
@@ -9,12 +10,15 @@ import { ToolkitWorkerProtocol } from '../core/worker/ToolkitWorkerProtocol.mjs'
  * @returns {Promise<object>} Canonical document result.
  */
 async function parseInWorker(payload, runtime) {
-    return await Parser.parseAsync(payload.input, {
-        ...(payload.options || {}),
-        worker: false,
-        signal: runtime.signal,
-        onProgress: runtime.onProgress
-    })
+    return await Parser.parseAsync(
+        AsyncInputOwnership.markParser(payload.input),
+        {
+            ...(payload.options || {}),
+            worker: false,
+            signal: runtime.signal,
+            onProgress: runtime.onProgress
+        }
+    )
 }
 
 /**
@@ -24,12 +28,15 @@ async function parseInWorker(payload, runtime) {
  * @returns {Promise<object>} Canonical project result.
  */
 async function loadProjectInWorker(payload, runtime) {
-    return await ProjectLoader.loadAsync(payload.entries, {
-        ...(payload.options || {}),
-        worker: false,
-        signal: runtime.signal,
-        onProgress: runtime.onProgress
-    })
+    return await ProjectLoader.loadAsync(
+        AsyncInputOwnership.markProject(payload.entries),
+        {
+            ...(payload.options || {}),
+            worker: false,
+            signal: runtime.signal,
+            onProgress: runtime.onProgress
+        }
+    )
 }
 
 /**

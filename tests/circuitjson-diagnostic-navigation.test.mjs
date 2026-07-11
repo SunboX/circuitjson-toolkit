@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PcbDiagnosticFocusModel } from '../src/renderers.mjs'
-import { PcbInteractionPrimitiveModel } from '../src/renderers.mjs'
+import {
+    PcbDiagnosticFocusModel,
+    PcbInteractionPrimitiveModel
+} from '../src/extensions.mjs'
 
 /**
  * Builds a board with source-level pin diagnostics.

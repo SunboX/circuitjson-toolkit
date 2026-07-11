@@ -5,12 +5,9 @@ import { CircuitJsonPcbPrimitiveFields } from './CircuitJsonPcbPrimitiveFields.m
 import { CircuitJsonPcbTraceLengthModel } from './CircuitJsonPcbTraceLengthModel.mjs'
 import { CircuitJsonPcbDrawingStyle } from './CircuitJsonPcbDrawingStyle.mjs'
 
-/**
- * Builds derived and documentation PCB primitives from CircuitJSON rows.
- */
+/** Builds derived and documentation PCB primitives from CircuitJSON rows. */
 export class CircuitJsonPcbPrimitiveArtwork {
-    /**
-     * Builds supplemental primitive rows.
+    /** Builds supplemental primitive rows.
      * @param {{ elementsByType: Map<string, object[]> }} index Element index.
      * @param {Map<string, object>} componentsByPcbId Component lookup.
      * @returns {object[]}
@@ -40,8 +37,7 @@ export class CircuitJsonPcbPrimitiveArtwork {
         ].filter(Boolean)
     }
 
-    /**
-     * Builds board detail primitives.
+    /** Builds board detail primitives.
      * @param {{ elementsByType: Map<string, object[]> }} index Element index.
      * @returns {object[]}
      */
@@ -69,8 +65,7 @@ export class CircuitJsonPcbPrimitiveArtwork {
             .filter(Boolean)
     }
 
-    /**
-     * Builds total routed trace length labels.
+    /** Builds total routed trace length labels.
      * @param {object[]} primitives Primitive rows.
      * @param {{ elementsByType: Map<string, object[]> }} [index] Element index.
      * @returns {object[]}
@@ -79,8 +74,7 @@ export class CircuitJsonPcbPrimitiveArtwork {
         return CircuitJsonPcbTraceLengthModel.build(primitives, index)
     }
 
-    /**
-     * Builds generated copper clearance diagnostics.
+    /** Builds generated copper clearance diagnostics.
      * @param {{ elementsByType: Map<string, object[]> }} index Element index.
      * @param {object[]} primitives Primitive rows.
      * @returns {object[]}
@@ -448,7 +442,9 @@ export class CircuitJsonPcbPrimitiveArtwork {
             id: CircuitJsonPcbPrimitiveFields.derivedId(element),
             kind,
             shape: String(
-                element.shape || (points.length ? 'polygon' : 'rect')
+                element.legacy_shape ||
+                    element.shape ||
+                    (points.length ? 'polygon' : 'rect')
             ),
             x: center?.x ?? bounds.minX + bounds.width / 2,
             y: center?.y ?? bounds.minY + bounds.height / 2,
@@ -543,7 +539,7 @@ export class CircuitJsonPcbPrimitiveArtwork {
                 element.stroke_width ??
                 element.strokeWidth ??
                 element.line_width,
-            0.08
+            kind === 'courtyard' ? 0.05 : 0.08
         )
         return CircuitJsonPcbPrimitiveArtwork.#primitive({
             id: CircuitJsonIndexer.getElementId(element) + ':' + index,
@@ -566,17 +562,18 @@ export class CircuitJsonPcbPrimitiveArtwork {
         })
     }
 
-    /**
-     * Returns true when an element should render as open line segments.
-     * @param {object} element Element row.
-     * @returns {boolean}
-     */
+    /** Returns whether an element renders as open line segments. */
     static #isOpenPath(element) {
         const type = String(element.type || '')
-        const shape = String(element.shape || '').toLowerCase()
+        const shape = String(
+            element.legacy_shape || element.shape || ''
+        ).toLowerCase()
         return (
             type.endsWith('_line') ||
             type.endsWith('_path') ||
+            (type === 'pcb_courtyard_outline' &&
+                CircuitJsonPcbPrimitiveFields.linePoints(element).length ===
+                    2) ||
             shape === 'line' ||
             shape === 'path'
         )
@@ -655,7 +652,9 @@ export class CircuitJsonPcbPrimitiveArtwork {
             id: CircuitJsonIndexer.getElementId(element),
             kind,
             shape: String(
-                element.shape || (points.length ? 'polygon' : 'rect')
+                element.legacy_shape ||
+                    element.shape ||
+                    (points.length ? 'polygon' : 'rect')
             ),
             x: center?.x ?? bounds.minX + bounds.width / 2,
             y: center?.y ?? bounds.minY + bounds.height / 2,
@@ -707,10 +706,15 @@ export class CircuitJsonPcbPrimitiveArtwork {
      */
     static #isBoardDetailPath(element) {
         const type = String(element.type || '')
-        const shape = String(element.shape || '').toLowerCase()
+        const shape = String(
+            element.legacy_shape || element.shape || ''
+        ).toLowerCase()
         return (
             type.endsWith('_line') ||
             type.endsWith('_path') ||
+            (type === 'pcb_courtyard_outline' &&
+                CircuitJsonPcbPrimitiveFields.linePoints(element).length ===
+                    2) ||
             shape === 'line' ||
             shape === 'path'
         )
@@ -756,7 +760,7 @@ export class CircuitJsonPcbPrimitiveArtwork {
                 element.stroke_width ??
                 element.strokeWidth ??
                 element.line_width,
-            0.08
+            kind === 'courtyard' ? 0.05 : 0.08
         )
 
         return {
@@ -907,9 +911,11 @@ export class CircuitJsonPcbPrimitiveArtwork {
         if (kind === 'cutout') return 'cutouts'
         if (kind === 'keepout') return 'keepouts'
         if (kind === 'courtyard') {
-            return CircuitJsonPcbPrimitiveFields.layer(
-                element.layer || 'top_courtyard'
-            )
+            const side =
+                CircuitJsonPcbPrimitiveFields.side(
+                    CircuitJsonPcbPrimitiveFields.layer(element.layer)
+                ) || 'top'
+            return side + '_courtyard'
         }
         return CircuitJsonPcbPrimitiveFields.layer(element.layer || 'board')
     }
@@ -985,11 +991,7 @@ export class CircuitJsonPcbPrimitiveArtwork {
         }
     }
 
-    /**
-     * Rounds a numeric value for deterministic model rows.
-     * @param {number} value Numeric value.
-     * @returns {number}
-     */
+    /** Returns a deterministic rounded numeric value. */
     static #rounded(value) {
         return Number(Number(value).toFixed(6))
     }

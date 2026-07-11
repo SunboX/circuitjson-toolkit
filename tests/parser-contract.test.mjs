@@ -39,6 +39,15 @@ test('Parser.tryParse returns exact discriminated results and ToolkitError failu
     assert.equal(failure.error.cause.message.length > 0, true)
     assert.equal(failure.error.cause.code, null)
     assert.equal(Array.isArray(failure.diagnostics), true)
+    assert.equal(failure.diagnostics.length, 1)
+    assert.deepEqual(failure.diagnostics[0], {
+        code: 'ERR_CIRCUITJSON_PARSE',
+        severity: 'error',
+        message: failure.error.message,
+        source: 'bad.json',
+        location: null,
+        details: {}
+    })
 })
 
 test('Parser supports only bounded CircuitJSON input hints', () => {
@@ -209,6 +218,44 @@ test('Parser enforces direct, unavailable-worker, and cancellation boundaries', 
     )
 })
 
+test('retainSource reference preserves caller identity without freezing caller data', async () => {
+    const assetSource = { entryName: 'models/body.step' }
+    const asset = {
+        name: 'body.step',
+        data: new Uint8Array([1, 2, 3]),
+        source: assetSource
+    }
+    const input = {
+        fileName: 'reference.json',
+        data: '[]',
+        assets: [asset]
+    }
+
+    for (const result of [
+        Parser.parse(input, { retainSource: 'reference' }),
+        await Parser.parseAsync(input, {
+            retainSource: 'reference',
+            worker: 'auto'
+        })
+    ]) {
+        assert.equal(result.sourceReference, input)
+        assert.equal(Object.isFrozen(input), false)
+        assert.equal(Object.isFrozen(input.assets), false)
+        assert.equal(Object.isFrozen(asset), false)
+        assert.equal(Object.isFrozen(assetSource), false)
+    }
+
+    input.fileName = 'changed.json'
+    input.assets.push({ name: 'second.step', data: 'second' })
+    asset.name = 'changed.step'
+    assetSource.entryName = 'changed.step'
+
+    assert.equal(input.fileName, 'changed.json')
+    assert.equal(input.assets.length, 2)
+    assert.equal(asset.name, 'changed.step')
+    assert.equal(assetSource.entryName, 'changed.step')
+})
+
 test('Parser.parseAsync emits ordered direct progress and preserves callback failures', async () => {
     const input = { fileName: 'progress.json', data: '[]' }
     const progress = []
@@ -234,6 +281,38 @@ test('Parser.parseAsync emits ordered direct progress and preserves callback fai
         }),
         (error) => error === callbackError
     )
+})
+
+test('Parser.parseAsync owns exact-window bytes and full assets before progress', async () => {
+    const sourceBacking = new SharedArrayBuffer(6)
+    const source = new Uint8Array(sourceBacking, 2, 2)
+    source.set(new TextEncoder().encode('[]'))
+    const assetBacking = new SharedArrayBuffer(5)
+    const assetBytes = new Uint8Array(assetBacking, 1, 3)
+    assetBytes.set([1, 2, 3])
+    const input = {
+        fileName: 'owned-progress.json',
+        data: source,
+        assets: [{ name: 'payload.bin', data: assetBytes }]
+    }
+    const sync = Parser.parse(input, { decodeAssets: 'full' })
+    let mutated = false
+    const direct = await Parser.parseAsync(input, {
+        decodeAssets: 'full',
+        worker: false,
+        onProgress: (row) => {
+            if (mutated || row.stage !== 'detect') return
+            mutated = true
+            source.set(new TextEncoder().encode('{}'))
+            assetBytes.fill(9)
+        }
+    })
+
+    assert.equal(mutated, true)
+    assert.deepEqual(direct.model, sync.model)
+    assert.deepEqual([...direct.assets[0].data], [1, 2, 3])
+    assert.deepEqual([...source], [...new TextEncoder().encode('{}')])
+    assert.deepEqual([...assetBytes], [9, 9, 9])
 })
 
 test('Parser canonicalizes full asset payloads exactly once', () => {

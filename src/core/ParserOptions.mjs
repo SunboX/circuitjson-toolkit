@@ -1,3 +1,6 @@
+import { ToolkitAsset } from './contracts/ToolkitAsset.mjs'
+import { AttachedValueLimits } from './AttachedValueLimits.mjs'
+
 const ASSET_MODES = new Set(['none', 'metadata', 'full'])
 const EXTENSION_MODES = new Set(['none', 'metadata', 'canonical', 'full'])
 const RETAIN_SOURCE_MODES = new Set(['none', 'reference'])
@@ -14,50 +17,66 @@ export class ParserOptions {
      * @returns {{ input: { fileName: string, data: string | ArrayBuffer | Uint8Array, assets: object[] }, sourceReference: object, options: { preserveRaw: boolean, decodeAssets: string, extensions: string | string[], reports: string[], retainSource: string, worker: 'auto' | boolean, transferInput: boolean, signal: any, onProgress: Function | undefined } }} Normalized request.
      */
     static normalize(input, options = {}) {
-        if (!input || typeof input !== 'object' || Array.isArray(input)) {
-            throw new TypeError('CircuitJSON parser input must be an object.')
-        }
-        if (!ParserOptions.#isData(input.data)) {
+        const inputFields = ParserOptions.#plainDescriptors(
+            input,
+            'CircuitJSON parser input must be an object.'
+        )
+        const optionFields = ParserOptions.#plainDescriptors(
+            options,
+            'CircuitJSON parser options must be an object.'
+        )
+        const data = ParserOptions.#dataValue(inputFields.data)
+        const inputAssets = ParserOptions.#dataValue(inputFields.assets)
+        if (!ParserOptions.#isData(data)) {
             throw new TypeError(
                 'CircuitJSON parser data must be a string, ArrayBuffer, or Uint8Array.'
             )
         }
-        if (!options || typeof options !== 'object' || Array.isArray(options)) {
-            throw new TypeError('CircuitJSON parser options must be an object.')
-        }
-        if (input.assets !== undefined && !Array.isArray(input.assets)) {
+        if (inputAssets !== undefined && !Array.isArray(inputAssets)) {
             throw new TypeError('CircuitJSON parser assets must be an array.')
         }
+        if (inputAssets !== undefined) AttachedValueLimits.add(inputAssets)
 
+        const decodeAssetsValue = ParserOptions.#dataValue(
+            optionFields.decodeAssets
+        )
         const decodeAssets = String(
-            options.decodeAssets === undefined
-                ? 'metadata'
-                : options.decodeAssets
+            decodeAssetsValue === undefined ? 'metadata' : decodeAssetsValue
         )
         if (!ASSET_MODES.has(decodeAssets)) {
             throw new TypeError(
                 `Unsupported CircuitJSON asset decode mode: ${decodeAssets}.`
             )
         }
-        const extensions = ParserOptions.#extensions(options.extensions)
-        const reports = ParserOptions.#stringList(options.reports, 'report')
+        const extensions = ParserOptions.#extensions(
+            ParserOptions.#dataValue(optionFields.extensions)
+        )
+        const reports = ParserOptions.#stringList(
+            ParserOptions.#dataValue(optionFields.reports),
+            'report'
+        )
+        const retainSourceValue = ParserOptions.#dataValue(
+            optionFields.retainSource
+        )
         const retainSource = String(
-            options.retainSource === undefined ? 'none' : options.retainSource
+            retainSourceValue === undefined ? 'none' : retainSourceValue
         )
         if (!RETAIN_SOURCE_MODES.has(retainSource)) {
             throw new TypeError(
                 `Unsupported CircuitJSON source retention mode: ${retainSource}.`
             )
         }
-        const worker = options.worker === undefined ? 'auto' : options.worker
+        const workerValue = ParserOptions.#dataValue(optionFields.worker)
+        const worker = workerValue === undefined ? 'auto' : workerValue
         if (!WORKER_MODES.has(worker)) {
             throw new TypeError(
                 'CircuitJSON worker must be auto, true, or false.'
             )
         }
         if (
-            options.onProgress !== undefined &&
-            typeof options.onProgress !== 'function'
+            ParserOptions.#dataValue(optionFields.onProgress) !== undefined &&
+            typeof ParserOptions.#dataValue(optionFields.onProgress) !==
+                'function'
         ) {
             throw new TypeError('CircuitJSON onProgress must be a function.')
         }
@@ -65,20 +84,23 @@ export class ParserOptions {
         return {
             input: {
                 fileName: ParserOptions.fileName(input),
-                data: input.data,
-                assets: input.assets || []
+                data,
+                assets: inputAssets || []
             },
             sourceReference: input,
             options: {
-                preserveRaw: options.preserveRaw === true,
+                preserveRaw:
+                    ParserOptions.#dataValue(optionFields.preserveRaw) === true,
                 decodeAssets,
                 extensions,
                 reports,
                 retainSource,
                 worker,
-                transferInput: options.transferInput === true,
-                signal: options.signal,
-                onProgress: options.onProgress
+                transferInput:
+                    ParserOptions.#dataValue(optionFields.transferInput) ===
+                    true,
+                signal: ParserOptions.#dataValue(optionFields.signal),
+                onProgress: ParserOptions.#dataValue(optionFields.onProgress)
             }
         }
     }
@@ -106,13 +128,7 @@ export class ParserOptions {
      * @returns {object[]} Selected canonical assets.
      */
     static assets(assets, mode) {
-        if (mode === 'none') return []
-        if (mode === 'full') return assets
-        return assets.map((asset) => ({
-            ...asset,
-            byteLength: ParserOptions.#assetByteLength(asset),
-            data: null
-        }))
+        return ToolkitAsset.prepareAll(assets, { mode })
     }
 
     /**
@@ -122,11 +138,13 @@ export class ParserOptions {
      */
     static supports(input) {
         try {
-            if (!input || typeof input !== 'object' || Array.isArray(input)) {
-                return false
-            }
-            if (!ParserOptions.#isData(input.data)) return false
-            return ParserOptions.#prefix(input.data).trimStart().startsWith('[')
+            const descriptors = ParserOptions.#plainDescriptors(
+                input,
+                'CircuitJSON parser input must be an object.'
+            )
+            const data = ParserOptions.#dataValue(descriptors.data)
+            if (!ParserOptions.#isData(data)) return false
+            return ParserOptions.#prefix(data).trimStart().startsWith('[')
         } catch {
             return false
         }
@@ -138,9 +156,26 @@ export class ParserOptions {
      * @returns {string} Normalized file name.
      */
     static fileName(input) {
-        return String(input?.fileName || '')
-            .replaceAll('\\', '/')
-            .replace(/^\.\//u, '')
+        try {
+            const descriptors = ParserOptions.#plainDescriptors(
+                input,
+                'CircuitJSON parser input must be an object.'
+            )
+            const fileName = ParserOptions.#dataValue(descriptors.fileName)
+            if (
+                fileName !== undefined &&
+                !['string', 'number', 'boolean', 'bigint'].includes(
+                    typeof fileName
+                )
+            ) {
+                return ''
+            }
+            return String(fileName || '')
+                .replaceAll('\\', '/')
+                .replace(/^\.\//u, '')
+        } catch {
+            return ''
+        }
     }
 
     /**
@@ -170,12 +205,16 @@ export class ParserOptions {
      */
     static #stringList(value, label) {
         if (value === undefined) return []
-        if (!Array.isArray(value)) {
-            throw new TypeError(`CircuitJSON ${label}s must be an array.`)
-        }
-        const items = value.map((item) => String(item).trim())
-        if (items.some((item) => !item)) {
-            throw new TypeError(`CircuitJSON ${label} ids must not be empty.`)
+        const descriptors = ParserOptions.#arrayDescriptors(value, label)
+        const items = []
+        for (let index = 0; index < descriptors.length.value; index += 1) {
+            const item = descriptors[String(index)].value
+            if (typeof item !== 'string' || !item.trim()) {
+                throw new TypeError(
+                    `CircuitJSON ${label} ids must be non-empty strings.`
+                )
+            }
+            items.push(item.trim())
         }
         return [...new Set(items)]
     }
@@ -194,22 +233,6 @@ export class ParserOptions {
     }
 
     /**
-     * Measures supplied asset data without copying its payload.
-     * @param {unknown} asset Asset candidate.
-     * @returns {number} Byte length.
-     */
-    static #assetByteLength(asset) {
-        const data = asset?.data
-        if (data instanceof ArrayBuffer) return data.byteLength
-        if (ArrayBuffer.isView(data)) return data.byteLength
-        if (typeof data === 'string') {
-            return new TextEncoder().encode(data).byteLength
-        }
-        const declared = Number(asset?.byteLength)
-        return Number.isFinite(declared) && declared >= 0 ? declared : 0
-    }
-
-    /**
      * Decodes only a bounded prefix for format detection.
      * @param {string | ArrayBuffer | Uint8Array} data Parser payload.
      * @returns {string} Bounded text prefix.
@@ -222,5 +245,89 @@ export class ParserOptions {
                 ? data.subarray(0, limit)
                 : new Uint8Array(data, 0, Math.min(data.byteLength, limit))
         return new TextDecoder().decode(bytes)
+    }
+
+    /**
+     * Returns own data descriptors for a plain request record.
+     * @param {unknown} value Record candidate.
+     * @param {string} message Failure message.
+     * @returns {Record<string, PropertyDescriptor>} Data descriptors.
+     */
+    static #plainDescriptors(value, message) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            throw new TypeError(message)
+        }
+        let prototype
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(value)
+            descriptors = Object.getOwnPropertyDescriptors(value)
+        } catch {
+            throw new TypeError(message)
+        }
+        if (prototype !== Object.prototype && prototype !== null) {
+            throw new TypeError(message)
+        }
+        for (const descriptor of Object.values(descriptors)) {
+            if (!Object.hasOwn(descriptor, 'value')) {
+                throw new TypeError(
+                    'CircuitJSON parser fields must be data properties.'
+                )
+            }
+        }
+        return descriptors
+    }
+
+    /**
+     * Returns exact dense-array descriptors without caller iteration.
+     * @param {unknown} value Array candidate.
+     * @param {string} label Item label.
+     * @returns {Record<string, PropertyDescriptor>} Array descriptors.
+     */
+    static #arrayDescriptors(value, label) {
+        if (!Array.isArray(value)) {
+            throw new TypeError(`CircuitJSON ${label}s must be an array.`)
+        }
+        let prototype
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(value)
+            descriptors = Object.getOwnPropertyDescriptors(value)
+        } catch {
+            throw new TypeError(`CircuitJSON ${label}s must be a dense array.`)
+        }
+        const length = ParserOptions.#dataValue(descriptors.length)
+        if (
+            prototype !== Array.prototype ||
+            !Number.isSafeInteger(length) ||
+            length < 0 ||
+            Reflect.ownKeys(descriptors).length !== length + 1
+        ) {
+            throw new TypeError(`CircuitJSON ${label}s must be a dense array.`)
+        }
+        for (let index = 0; index < length; index += 1) {
+            const descriptor = descriptors[String(index)]
+            if (
+                !descriptor ||
+                !Object.hasOwn(descriptor, 'value') ||
+                descriptor.enumerable !== true
+            ) {
+                throw new TypeError(
+                    `CircuitJSON ${label}s must contain data properties.`
+                )
+            }
+        }
+        return descriptors
+    }
+
+    /**
+     * Reads one data descriptor value.
+     * @param {PropertyDescriptor | undefined} descriptor Descriptor.
+     * @returns {unknown} Data value.
+     */
+    static #dataValue(descriptor) {
+        return descriptor && Object.hasOwn(descriptor, 'value')
+            ? descriptor.value
+            : undefined
     }
 }

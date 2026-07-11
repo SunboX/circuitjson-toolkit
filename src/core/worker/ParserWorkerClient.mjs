@@ -20,7 +20,7 @@ const MESSAGE_EVENT_DATA_GETTER =
         : null
 const MAX_PENDING_REQUESTS = 1024
 const MAX_PROJECT_ENTRIES = 4096
-const DEFAULT_ATTEMPT_ERRORS = new WeakMap()
+const ATTEMPT_ERRORS = new WeakMap()
 
 /**
  * Owns one lazily-created worker speaking the common toolkit protocol.
@@ -83,12 +83,12 @@ export class ParserWorkerClient {
 
     /**
      * Returns the process-local default client for one internal attempt.
-     * @param {object | null} defaultAttemptToken Internal attempt identity.
+     * @param {object | null} attemptToken Internal attempt identity.
      * @returns {ParserWorkerClient} Default worker client.
      */
-    static #defaultClientFor(defaultAttemptToken) {
+    static #defaultClientFor(attemptToken) {
         if (!ParserWorkerClient.isDefaultAvailable()) {
-            throw ParserWorkerClient.#unavailableError(defaultAttemptToken)
+            throw ParserWorkerClient.#unavailableError(attemptToken)
         }
         if (!ParserWorkerClient.#defaultClient) {
             ParserWorkerClient.#defaultClient = new ParserWorkerClient({
@@ -151,6 +151,11 @@ export class ParserWorkerClient {
         return await this.#request('parse', prepared)
     }
 
+    /** Runs one parser request as an instance-scoped worker attempt. */
+    async parseAttempt(input, options = {}) {
+        return await this.#attempt('parse', input, options)
+    }
+
     /**
      * Loads one project entry list in the owned worker.
      * @param {unknown} entries Project entries.
@@ -160,6 +165,11 @@ export class ParserWorkerClient {
     async loadProject(entries, options = {}) {
         const prepared = ParserWorkerClient.#projectPayload(entries, options)
         return await this.#request('loadProject', prepared)
+    }
+
+    /** Runs one project request as an instance-scoped worker attempt. */
+    async loadProjectAttempt(entries, options = {}) {
+        return await this.#attempt('loadProject', entries, options)
     }
 
     /**
@@ -211,9 +221,10 @@ export class ParserWorkerClient {
      * Posts one prepared operation and observes progress/cancellation.
      * @param {'parse' | 'loadProject'} operation Worker operation.
      * @param {{ payload: object, transfer: Transferable[], signal: AbortSignal | null, onProgress: Function | null }} prepared Prepared request.
+     * @param {object | null} attemptToken Request-scoped attempt identity.
      * @returns {Promise<object>} Worker result.
      */
-    async #request(operation, prepared, defaultAttemptToken = null) {
+    async #request(operation, prepared, attemptToken = null) {
         if (this.#disposed) throw ParserWorkerClient.#disposedError()
         if (prepared.signal && ParserWorkerClient.#isAborted(prepared.signal)) {
             throw ParserWorkerClient.#cancelledError('')
@@ -234,7 +245,7 @@ export class ParserWorkerClient {
                 onAbort: null,
                 onProgress: prepared.onProgress,
                 previousProgress: null,
-                defaultAttemptToken
+                attemptToken
             }
             if (prepared.signal) {
                 pending.onAbort = () => this.cancel(requestId)
@@ -294,11 +305,8 @@ export class ParserWorkerClient {
             }
         } catch (error) {
             const requestError = ParserWorkerClient.#requestError(error, phase)
-            if (phase === 'construct' && pending.defaultAttemptToken) {
-                DEFAULT_ATTEMPT_ERRORS.set(
-                    requestError,
-                    pending.defaultAttemptToken
-                )
+            if (phase === 'construct' && pending.attemptToken) {
+                ATTEMPT_ERRORS.set(requestError, pending.attemptToken)
             }
             this.#settle(requestId, 'reject', requestError, false)
             this.#resetWorker()
@@ -681,19 +689,40 @@ export class ParserWorkerClient {
         const token = {}
         try {
             const client = ParserWorkerClient.#defaultClientFor(token)
+            return await client.#attempt(operation, input, options, token)
+        } catch (error) {
+            return ParserWorkerClient.#attemptFailure(error, token)
+        }
+    }
+
+    /**
+     * Executes one exact request and consumes only its own authorization.
+     * @param {'parse' | 'loadProject'} operation Worker operation.
+     * @param {unknown} input Operation input.
+     * @param {unknown} options Operation options.
+     * @param {object} [token] Request-scoped attempt identity.
+     * @returns {Promise<{ ok: true, value: object } | { ok: false, error: unknown, unavailable: boolean }>} Attempt result.
+     */
+    async #attempt(operation, input, options, token = {}) {
+        try {
             const prepared =
                 operation === 'parse'
                     ? ParserWorkerClient.#parsePayload(input, options)
                     : ParserWorkerClient.#projectPayload(input, options)
-            const value = await client.#request(operation, prepared, token)
+            const value = await this.#request(operation, prepared, token)
             return { ok: true, value }
         } catch (error) {
-            const unavailable =
-                Boolean(error && typeof error === 'object') &&
-                DEFAULT_ATTEMPT_ERRORS.get(error) === token
-            if (unavailable) DEFAULT_ATTEMPT_ERRORS.delete(error)
-            return { ok: false, error, unavailable }
+            return ParserWorkerClient.#attemptFailure(error, token)
         }
+    }
+
+    /** @param {unknown} error Failure. @param {object} token Attempt identity. @returns {{ ok: false, error: unknown, unavailable: boolean }} Attempt failure. */
+    static #attemptFailure(error, token) {
+        const unavailable =
+            Boolean(error && typeof error === 'object') &&
+            ATTEMPT_ERRORS.get(error) === token
+        if (unavailable) ATTEMPT_ERRORS.delete(error)
+        return { ok: false, error, unavailable }
     }
 
     /**
@@ -921,10 +950,10 @@ export class ParserWorkerClient {
 
     /**
      * Creates one one-shot default-worker availability authorization.
-     * @param {object | null} defaultAttemptToken Internal attempt identity.
+     * @param {object | null} attemptToken Internal attempt identity.
      * @returns {ToolkitError} Typed unavailable error.
      */
-    static #unavailableError(defaultAttemptToken) {
+    static #unavailableError(attemptToken) {
         const error = new ToolkitError(
             'Toolkit parser workers are not available in this host.',
             {
@@ -933,8 +962,8 @@ export class ParserWorkerClient {
                 details: { capability: 'parser.worker' }
             }
         )
-        if (defaultAttemptToken) {
-            DEFAULT_ATTEMPT_ERRORS.set(error, defaultAttemptToken)
+        if (attemptToken) {
+            ATTEMPT_ERRORS.set(error, attemptToken)
         }
         return error
     }

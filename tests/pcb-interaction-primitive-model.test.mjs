@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PcbInteractionPrimitiveModel } from '../src/renderers.mjs'
+import { PcbInteractionPrimitiveModel } from '../src/extensions.mjs'
 
 /**
  * Builds a compact standards-native PCB document.
@@ -281,4 +281,39 @@ test('PcbInteractionPrimitiveModel builds rich CircuitJSON PCB primitives', () =
         )[0].componentKey,
         'U2'
     )
+})
+
+test('legacy circle pad diameters normalize through the canonical boundary', () => {
+    const model = PcbInteractionPrimitiveModel.build([
+        {
+            type: 'source_component',
+            source_component_id: 'source_u3',
+            name: 'U3',
+            ftype: 'simple_chip'
+        },
+        {
+            type: 'pcb_component',
+            pcb_component_id: 'pcb_u3',
+            source_component_id: 'source_u3',
+            center: { x: 0, y: 0 },
+            layer: 'top'
+        },
+        {
+            type: 'pcb_smtpad',
+            pcb_smtpad_id: 'pad_diameter',
+            pcb_component_id: 'pcb_u3',
+            shape: 'circle',
+            x: 0,
+            y: 0,
+            diameter: '1mm',
+            layer: 'top'
+        }
+    ])
+
+    const pad = model.primitives.find(
+        (primitive) => primitive.id === 'pad_diameter'
+    )
+    assert.ok(pad)
+    assert.equal(pad.width, 1)
+    assert.equal(pad.height, 1)
 })

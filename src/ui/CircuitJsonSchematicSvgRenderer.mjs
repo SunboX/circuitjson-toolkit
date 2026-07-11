@@ -1,8 +1,11 @@
 import { CircuitJsonIndexer } from '../core/CircuitJsonIndexer.mjs'
 import { CircuitJsonUnits } from '../core/CircuitJsonUnits.mjs'
+import { CircuitJsonLegacyNormalizer } from '../core/context/CircuitJsonLegacyNormalizer.mjs'
 import { CircuitJsonSchematicSvgArcPath } from './CircuitJsonSchematicSvgArcPath.mjs'
 import { CircuitJsonSchematicDebugRenderer } from './CircuitJsonSchematicDebugRenderer.mjs'
 import { CircuitJsonSchematicLineRenderer } from './CircuitJsonSchematicLineRenderer.mjs'
+import { CircuitJsonSchematicImageSvgRenderer } from './CircuitJsonSchematicImageSvgRenderer.mjs'
+import { CircuitJsonSchematicSheetSymbolSvgRenderer } from './CircuitJsonSchematicSheetSymbolSvgRenderer.mjs'
 import { CircuitJsonSchematicSvgPortMetadata } from './CircuitJsonSchematicSvgPortMetadata.mjs'
 import { CircuitJsonSchematicSvgPrimitiveAttributes } from './CircuitJsonSchematicSvgPrimitiveAttributes.mjs'
 import { CircuitJsonSchematicTableSvgRenderer } from './CircuitJsonSchematicTableSvgRenderer.mjs'
@@ -17,14 +20,17 @@ export class CircuitJsonSchematicSvgRenderer {
     /**
      * Renders one schematic document into SVG markup.
      * @param {object | object[]} documentModel Parsed document model.
+     * @param {{ assets?: object[] }} [options] Render resources.
      * @returns {string}
      */
-    static render(documentModel) {
+    static render(documentModel, options = {}) {
         const prepared = documentModel?.elementsByType instanceof Map
         const index = prepared
             ? documentModel
             : CircuitJsonIndexer.index(
-                  CircuitJsonSchematicSvgRenderer.#elements(documentModel)
+                  CircuitJsonLegacyNormalizer.normalize(
+                      CircuitJsonSchematicSvgRenderer.#elements(documentModel)
+                  )
               )
         const sourcePorts = CircuitJsonSchematicSvgPortMetadata.sourcePorts(
             CircuitJsonSchematicSvgRenderer.#all(index, 'source_port')
@@ -34,7 +40,6 @@ export class CircuitJsonSchematicSvgRenderer {
             ? SchematicGeometryBounds.resolve(index, sourcePorts, portHintCache)
             : SchematicGeometryBounds.legacy(index)
         const viewBox = CircuitJsonSchematicSvgRenderer.#viewBox(bounds)
-
         return (
             '<svg class="schematic-svg schematic-svg--circuitjson" xmlns="http://www.w3.org/2000/svg" role="img"' +
             (prepared ? ' font-size="1"' : '') +
@@ -42,9 +47,19 @@ export class CircuitJsonSchematicSvgRenderer {
             CircuitJsonSchematicSvgRenderer.#formatViewBox(viewBox) +
             '">' +
             CircuitJsonSchematicSvgRenderer.#renderSheet(bounds) +
+            CircuitJsonSchematicImageSvgRenderer.render(
+                CircuitJsonSchematicSvgRenderer.#all(index, 'schematic_image'),
+                options.assets || documentModel?.assets || []
+            ) +
             CircuitJsonSchematicSvgRenderer.#renderComponents(index) +
             CircuitJsonSchematicSvgRenderer.#renderSymbols(index) +
             CircuitJsonSchematicSvgRenderer.#renderGroups(index) +
+            CircuitJsonSchematicSheetSymbolSvgRenderer.render(
+                CircuitJsonSchematicSvgRenderer.#all(
+                    index,
+                    'schematic_sheet_symbol'
+                )
+            ) +
             CircuitJsonSchematicSvgRenderer.#renderLines(index) +
             CircuitJsonSchematicSvgRenderer.#renderShapes(index) +
             CircuitJsonSchematicSvgRenderer.#renderPorts(
@@ -95,11 +110,7 @@ export class CircuitJsonSchematicSvgRenderer {
         )
     }
 
-    /**
-     * Renders schematic component boxes.
-     * @param {{ elementsByType: Map<string, object[]> }} index Element index.
-     * @returns {string}
-     */
+    /** @param {{ elementsByType: Map<string, object[]> }} index Element index. @returns {string} Schematic component markup. */
     static #renderComponents(index) {
         const sourceNames = CircuitJsonSchematicSvgRenderer.#sourceNames(index)
         const components = CircuitJsonSchematicSvgRenderer.#all(
@@ -121,6 +132,16 @@ export class CircuitJsonSchematicSvgRenderer {
                 String(component.name || 'U' + (componentIndex + 1))
             const x = center.x - size.width / 2
             const y = center.y - size.height / 2
+            const label =
+                component.show_label === false
+                    ? ''
+                    : '<text class="schematic-component__label" x="' +
+                      CircuitJsonSchematicSvgRenderer.#formatNumber(center.x) +
+                      '" y="' +
+                      CircuitJsonSchematicSvgRenderer.#formatNumber(center.y) +
+                      '" text-anchor="middle" dominant-baseline="central">' +
+                      CircuitJsonSchematicSvgRenderer.#escapeHtml(key) +
+                      '</text>'
 
             return (
                 '<g class="schematic-component" data-component-key="' +
@@ -138,13 +159,9 @@ export class CircuitJsonSchematicSvgRenderer {
                 CircuitJsonSchematicSvgRenderer.#formatNumber(size.width) +
                 '" height="' +
                 CircuitJsonSchematicSvgRenderer.#formatNumber(size.height) +
-                '"></rect><text class="schematic-component__label" x="' +
-                CircuitJsonSchematicSvgRenderer.#formatNumber(center.x) +
-                '" y="' +
-                CircuitJsonSchematicSvgRenderer.#formatNumber(center.y) +
-                '" text-anchor="middle" dominant-baseline="central">' +
-                CircuitJsonSchematicSvgRenderer.#escapeHtml(key) +
-                '</text></g>'
+                '"></rect>' +
+                label +
+                '</g>'
             )
         })
 

@@ -5,7 +5,7 @@ import { CircuitJsonDocumentContext } from '../src/core/context/CircuitJsonDocum
 import { PcbPrimitivePreparation } from '../src/core/context/PcbPrimitivePreparation.mjs'
 import { CircuitJsonPcbClearanceDiagnostics } from '../src/core/CircuitJsonPcbClearanceDiagnostics.mjs'
 import { PcbInteractionIndex } from '../src/interaction.mjs'
-import { PcbInteractionPrimitiveModel } from '../src/renderers.mjs'
+import { PcbInteractionPrimitiveModel } from '../src/extensions.mjs'
 import { createRichCircuitJsonDocument } from './helpers/FakePcbInteractionDocuments.mjs'
 
 /**

@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
+import { CircuitJsonPcbPrimitiveFields } from '../src/extensions.mjs'
+
 const REQUIRED_BENCHMARK_CASES = [
     { id: 'parse-context-50000', primary: true },
     { id: 'repeated-query-hit-test', primary: true },
@@ -72,9 +74,17 @@ test('feature baseline records explicit shared and extension preservation eviden
     )
 
     assert.equal(shared.disposition, 'shared')
-    assert.match(shared.replacement, /^Parser\./)
-    assert.equal(extension.disposition, 'native-extension')
-    assert.equal(extension.availability['gerber-toolkit'], 'unavailable')
+    assert.equal(
+        shared.replacement,
+        'circuitjson-toolkit/extensions#CircuitJsonParser'
+    )
+    assert.equal(extension.disposition, 'shared')
+    assert.equal(
+        extension.replacement,
+        'circuitjson-toolkit/extensions#CircuitJsonPcbPrimitiveFields'
+    )
+    assert.equal(typeof CircuitJsonPcbPrimitiveFields.boardBounds, 'function')
+    assert.equal(extension.availability['gerber-toolkit'], 'derived')
     assert.equal(
         api.features.some((entry) =>
             String(entry.replacement).startsWith(

@@ -6,6 +6,7 @@ import { CircuitJsonDocument } from '../src/core/CircuitJsonDocument.mjs'
 import { CircuitJsonIndexer } from '../src/core/CircuitJsonIndexer.mjs'
 import { CircuitJsonUnits } from '../src/core/CircuitJsonUnits.mjs'
 import { CircuitJsonDocumentContext } from '../src/core/context/CircuitJsonDocumentContext.mjs'
+import { CircuitJsonReadOnlyDocument } from '../src/core/context/CircuitJsonReadOnlyDocument.mjs'
 import { CircuitJsonValidationProof } from '../src/core/context/CircuitJsonValidationProof.mjs'
 import { DocumentResult } from '../src/core/contracts/DocumentResult.mjs'
 
@@ -22,15 +23,36 @@ function createBoard(id = 'board_1') {
             width: 2,
             height: 1,
             center: { x: 0, y: 0 },
-            outline: {
-                points: [
-                    { x: -1, y: -0.5 },
-                    { x: 1, y: 0.5 }
-                ]
-            }
+            outline: [
+                { x: -1, y: -0.5 },
+                { x: 1, y: 0.5 }
+            ]
         }
     ]
 }
+
+test('only prepare can construct a trusted document context', () => {
+    let reads = 0
+    const hostile = { type: 'hostile' }
+    Object.defineProperty(hostile, 'payload', {
+        enumerable: true,
+        get() {
+            reads += 1
+            return 'executed'
+        }
+    })
+
+    assert.throws(
+        () => new CircuitJsonDocumentContext({}, [hostile], 0),
+        /CircuitJsonDocumentContext\.prepare/u
+    )
+    assert.equal(reads, 0)
+    assert.throws(
+        () => CircuitJsonDocumentContext.prepare([hostile]),
+        TypeError
+    )
+    assert.equal(reads, 0)
+})
 
 test('context reuses parser proof and constructs requested indexes once', () => {
     const document = DocumentResult.createValidated({
@@ -59,8 +81,8 @@ test('context reuses parser proof and constructs requested indexes once', () => 
     assert.equal(Object.isFrozen(document.model[0]), true)
     assert.equal(Object.isFrozen(document.model[0].center), true)
     assert.equal(Object.isFrozen(document.model[0].outline), true)
-    assert.equal(Object.isFrozen(document.model[0].outline.points), true)
-    assert.equal(Object.isFrozen(document.model[0].outline.points[0]), true)
+    assert.equal(Object.isFrozen(document.model[0].outline), true)
+    assert.equal(Object.isFrozen(document.model[0].outline[0]), true)
 })
 
 test('context validates bare caller input without a process-global cache', () => {
@@ -75,6 +97,127 @@ test('context validates bare caller input without a process-global cache', () =>
     assert.equal(second.statistics.validationPasses, 1)
     assert.equal(Object.isFrozen(model), true)
     assert.equal(Object.isFrozen(model[0].center), true)
+})
+
+test('proof validation seals the model exactly once', () => {
+    let freezePasses = 0
+    const model = new Proxy(createBoard('single-freeze'), {
+        preventExtensions(target) {
+            freezePasses += 1
+            return Reflect.preventExtensions(target)
+        }
+    })
+
+    const document = DocumentResult.createValidated({
+        fileName: 'single-freeze.json',
+        model
+    })
+
+    assert.equal(document.model, model)
+    assert.equal(Object.isFrozen(model), true)
+    assert.equal(freezePasses, 1)
+})
+
+test('public validated sealing rejects a shallow-frozen mutable model', () => {
+    const nested = createBoard('shallow')[0]
+    const model = Object.freeze([nested])
+
+    assert.throws(
+        () =>
+            CircuitJsonReadOnlyDocument.freezeValidated(
+                { model, source: {}, extensions: {}, assets: [] },
+                model
+            ),
+        /unforgeable validation proof/u
+    )
+    nested.center.x = 4
+    assert.equal(nested.center.x, 4)
+})
+
+test('public validated sealing cannot accept a shallow-frozen proxy root', () => {
+    const nested = createBoard('proxy-seal')[0]
+    const model = new Proxy([nested], {})
+    Object.freeze(model)
+
+    assert.throws(
+        () =>
+            CircuitJsonReadOnlyDocument.freezeValidated(
+                { model, source: {}, extensions: {}, assets: [] },
+                model
+            ),
+        /unforgeable validation proof/u
+    )
+    assert.equal(Object.isFrozen(nested), false)
+})
+
+test('public validated sealing rejects nested accessors without invoking them', () => {
+    const element = createBoard('accessor-seal')[0]
+    let reads = 0
+    Object.defineProperty(element, 'metadata', {
+        configurable: true,
+        enumerable: true,
+        get() {
+            reads += 1
+            return {}
+        }
+    })
+    const model = Object.freeze([element])
+
+    assert.throws(
+        () =>
+            CircuitJsonReadOnlyDocument.freezeValidated(
+                { model, source: {}, extensions: {}, assets: [] },
+                model
+            ),
+        /unforgeable validation proof/u
+    )
+    assert.equal(reads, 0)
+})
+
+test('public validated sealing rejects custom prototypes and deep mutable graphs', () => {
+    const custom = Object.assign(
+        Object.create({ runtimeHook: true }),
+        createBoard('custom-seal')[0]
+    )
+    const customModel = Object.freeze([custom])
+    assert.throws(
+        () =>
+            CircuitJsonReadOnlyDocument.freezeValidated(
+                {
+                    model: customModel,
+                    source: {},
+                    extensions: {},
+                    assets: []
+                },
+                customModel
+            ),
+        /unforgeable validation proof/u
+    )
+
+    let metadata = { leaf: true }
+    for (let index = 0; index < 12_000; index += 1) {
+        metadata = { child: metadata }
+    }
+    const deepModel = Object.freeze([
+        {
+            type: 'source_net',
+            source_net_id: 'deep-seal',
+            metadata
+        }
+    ])
+    assert.throws(
+        () =>
+            CircuitJsonReadOnlyDocument.freezeValidated(
+                {
+                    model: deepModel,
+                    source: {},
+                    extensions: {},
+                    assets: []
+                },
+                deepModel
+            ),
+        /unforgeable validation proof/u
+    )
 })
 
 test('context separates enumerable legacy array metadata from the pure model', () => {
@@ -192,7 +335,7 @@ test('reflected proof data cannot authorize an invalid frozen model', () => {
             CircuitJsonDocumentContext.prepare(forged, {
                 indexes: ['elements']
             }),
-        /pcb_board center is required/
+        /does not match the pinned upstream schema/
     )
 })
 
@@ -244,7 +387,7 @@ test('public validator monkey-patching cannot mint validation proofs', () => {
         CircuitJsonDocument.assertModel = () => {}
         assert.throws(
             () => CircuitJsonValidationProof.validateAndAttach(document),
-            /pcb_board center is required/
+            /does not match the pinned upstream schema/
         )
     } finally {
         CircuitJsonDocument.assertModel = originalAssertModel
@@ -272,11 +415,36 @@ test('public unit-parser monkey-patching cannot mint validation proofs', () => {
         CircuitJsonUnits.optionalLength = () => 0
         assert.throws(
             () => CircuitJsonValidationProof.validateAndAttach(document),
-            /pcb_board center is required/
+            /does not match the pinned upstream schema/
         )
     } finally {
         CircuitJsonUnits.optionalPoint = originalOptionalPoint
         CircuitJsonUnits.optionalLength = originalOptionalLength
+    }
+})
+
+test('array iteration monkey-patching cannot mint validation proofs', () => {
+    const document = DocumentResult.create({
+        fileName: 'invalid-array-iteration-proof.json',
+        model: [
+            {
+                type: 'pcb_board',
+                pcb_board_id: 'invalid-array-iteration-proof',
+                width: 1,
+                height: 1
+            }
+        ]
+    })
+    const originalFlatMap = Array.prototype.flatMap
+
+    try {
+        Array.prototype.flatMap = () => []
+        assert.throws(
+            () => CircuitJsonValidationProof.validateAndAttach(document),
+            /does not match the pinned upstream schema/
+        )
+    } finally {
+        Array.prototype.flatMap = originalFlatMap
     }
 })
 
@@ -308,7 +476,7 @@ test('unit-parser import order cannot poison proof validation', () => {
             })
             process.exit(1)
         } catch (error) {
-            if (!/pcb_board center is required/.test(String(error?.message))) {
+            if (!/does not match the pinned upstream schema/.test(String(error?.message))) {
                 console.error(error)
                 process.exit(2)
             }
@@ -490,6 +658,8 @@ test('ordinary Node validation freezes deeply nested models without recursion', 
             model: [{
                 type: 'source_net',
                 source_net_id: 'deep-model',
+                name: 'DEEP',
+                member_source_group_ids: [],
                 metadata
             }]
         })
@@ -610,6 +780,32 @@ test('named context indexes build only their requested work families', () => {
     }
 })
 
+test('identifier contexts omit duplicate element graphs', () => {
+    const document = DocumentResult.createValidated({
+        fileName: 'identifiers.json',
+        model: [
+            {
+                type: 'source_net',
+                source_net_id: 'identifier-net',
+                name: 'IDENTIFIER',
+                member_source_group_ids: []
+            }
+        ]
+    })
+    const context = CircuitJsonDocumentContext.prepare(document, {
+        indexes: ['identifiers']
+    })
+    const identifiers = context.getIndex('identifiers')
+
+    assert.equal(identifiers.elementsById instanceof Set, true)
+    assert.equal(
+        identifiers.elementsById.has('source_net:identifier-net'),
+        true
+    )
+    assert.equal(Object.hasOwn(identifiers, 'elements'), false)
+    assert.deepEqual(context.statistics.indexBuilds, { identifiers: 1 })
+})
+
 test('caller data cannot claim the indexer validated shortcut', () => {
     assert.throws(
         () =>
@@ -623,6 +819,6 @@ test('caller data cannot claim the indexer validated shortcut', () => {
                 ],
                 { validated: true }
             ),
-        /pcb_board center is required/
+        /does not match the pinned upstream schema/
     )
 })

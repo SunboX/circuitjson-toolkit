@@ -2,13 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { CircuitJsonManufacturingBuilder } from '../src/core/CircuitJsonManufacturingBuilder.mjs'
-import { CircuitJsonParser } from '../src/index.mjs'
+import { CircuitJsonParser } from '../src/extensions.mjs'
 
 /**
  * Counts full-array filter passes made by the manufacturing builder.
  */
 class FilterCountingArray extends Array {
     filterCalls = 0
+    mapCalls = 0
 
     /**
      * Counts and delegates one filter pass.
@@ -19,6 +20,17 @@ class FilterCountingArray extends Array {
     filter(callback, thisArg) {
         this.filterCalls += 1
         return super.filter(callback, thisArg)
+    }
+
+    /**
+     * Counts and delegates one map pass.
+     * @param {Function} callback Map callback.
+     * @param {unknown} [thisArg] Callback receiver.
+     * @returns {FilterCountingArray} Mapped array.
+     */
+    map(callback, thisArg) {
+        this.mapCalls += 1
+        return super.map(callback, thisArg)
     }
 }
 
@@ -179,7 +191,7 @@ test('CircuitJsonParser extracts fabrication notes for manufacturing export', ()
             pcbComponentId: 'pcb_u1',
             pcbGroupId: 'group_1',
             subcircuitId: '',
-            layer: 'top_fabrication',
+            layer: 'top',
             text: 'Inspect solder jumpers',
             anchor: { x: 1, y: 2 },
             rotation: 0,
@@ -193,7 +205,7 @@ test('CircuitJsonParser extracts fabrication notes for manufacturing export', ()
             pcbComponentId: 'pcb_u1',
             pcbGroupId: '',
             subcircuitId: '',
-            layer: 'top_fabrication',
+            layer: 'top',
             from: { x: 0, y: 0 },
             to: { x: 3, y: 0 },
             text: '3 mm',
@@ -236,6 +248,7 @@ test('CircuitJsonManufacturingBuilder groups routing features in bounded passes'
     })
 
     assert.equal(traces.filterCalls <= 1, true)
+    assert.equal(sourceNets.mapCalls, 1)
     assert.match(result.routingDsn, /\(net NET_0/u)
     assert.match(result.routingDsn, /\(net NET_63/u)
 })

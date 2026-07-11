@@ -1,11 +1,15 @@
 import { ArchiveEntryPath } from './ArchiveEntryPath.mjs'
 import { ArchiveLimits } from './ArchiveLimits.mjs'
+import { AsyncInputOwnership } from './AsyncInputOwnership.mjs'
+import { AttachedValueLimits } from './AttachedValueLimits.mjs'
 import { Parser } from './Parser.mjs'
 import { ParserOptions } from './ParserOptions.mjs'
+import { ProjectAsyncInputOwner } from './ProjectAsyncInputOwner.mjs'
 import { ProjectResult } from './contracts/ProjectResult.mjs'
 import { ToolkitDiagnostic } from './contracts/ToolkitDiagnostic.mjs'
 import { ToolkitError } from './contracts/ToolkitError.mjs'
 import { ToolkitProgress } from './contracts/ToolkitProgress.mjs'
+import { ToolkitAsset } from './contracts/ToolkitAsset.mjs'
 import { ParserWorkerClient } from './worker/ParserWorkerClient.mjs'
 
 const ABORTED_GETTER = Object.getOwnPropertyDescriptor(
@@ -35,32 +39,41 @@ export class ProjectLoader {
      * @returns {Record<string, any>} Canonical project result.
      */
     static load(entries, options = {}) {
-        const normalizedOptions = ProjectLoader.#normalizeOptions(options)
-        if (normalizedOptions.worker === true) {
-            throw ProjectLoader.#workerSyncError()
-        }
-        const classified = ProjectLoader.#classify(
-            entries,
-            normalizedOptions.archiveLimits
-        )
-        ProjectLoader.#assertCandidates(classified)
-
-        const documents = []
-        const diagnostics = []
-        for (const entry of classified.candidates) {
-            ProjectLoader.#parseEntry(
-                entry,
-                normalizedOptions,
-                documents,
-                diagnostics
+        try {
+            const normalizedOptions = ProjectLoader.#normalizeOptions(options)
+            if (normalizedOptions.worker === true) {
+                throw ProjectLoader.#workerSyncError()
+            }
+            const snapshot = ProjectLoader.#snapshotEntries(
+                entries,
+                normalizedOptions.archiveLimits.maxEntries
             )
+            const classified = ProjectLoader.#classify(
+                snapshot,
+                normalizedOptions.archiveLimits,
+                normalizedOptions.decodeAssets
+            )
+            ProjectLoader.#assertCandidates(classified)
+
+            const documents = []
+            const diagnostics = []
+            for (const entry of classified.candidates) {
+                ProjectLoader.#parseEntry(
+                    entry,
+                    normalizedOptions,
+                    documents,
+                    diagnostics
+                )
+            }
+            return ProjectLoader.#result(
+                classified,
+                documents,
+                diagnostics,
+                normalizedOptions
+            )
+        } catch (error) {
+            throw ProjectLoader.#errorFrom(error)
         }
-        return ProjectLoader.#result(
-            classified,
-            documents,
-            diagnostics,
-            normalizedOptions
-        )
     }
 
     /**
@@ -79,6 +92,16 @@ export class ProjectLoader {
                       ToolkitDiagnostic.create(diagnostic)
                   )
                 : []
+            if (!diagnostics.length) {
+                diagnostics.push(
+                    ToolkitDiagnostic.create({
+                        code: normalized.code,
+                        severity: 'error',
+                        message: normalized.message,
+                        source: normalized.source
+                    })
+                )
+            }
             return { ok: false, error: normalized, diagnostics }
         }
     }
@@ -90,8 +113,26 @@ export class ProjectLoader {
      * @returns {Promise<Record<string, any>>} Canonical project result.
      */
     static async loadAsync(entries, options = {}) {
-        const normalizedOptions = ProjectLoader.#normalizeOptions(options)
-        ProjectLoader.#assertNotCancelled(normalizedOptions.signal)
+        let normalizedOptions
+        let snapshot
+        let classified
+        const entriesOwned = AsyncInputOwnership.ownsProject(entries)
+        try {
+            normalizedOptions = ProjectLoader.#normalizeOptions(options)
+            ProjectLoader.#assertNotCancelled(normalizedOptions.signal)
+            snapshot = ProjectLoader.#snapshotEntries(
+                entries,
+                normalizedOptions.archiveLimits.maxEntries
+            )
+            classified = ProjectLoader.#classify(
+                snapshot,
+                normalizedOptions.archiveLimits,
+                normalizedOptions.decodeAssets
+            )
+            ProjectLoader.#assertCandidates(classified)
+        } catch (error) {
+            throw ProjectLoader.#errorFrom(error)
+        }
         const useWorker =
             normalizedOptions.worker === true ||
             (normalizedOptions.worker === 'auto' &&
@@ -99,7 +140,7 @@ export class ProjectLoader {
                 ParserWorkerClient.isDefaultAvailable())
         if (useWorker) {
             const attempt = await ParserWorkerClient.loadProjectDefault(
-                entries,
+                snapshot,
                 normalizedOptions
             )
             if (attempt.ok) return attempt.value
@@ -107,6 +148,17 @@ export class ProjectLoader {
                 throw attempt.error
             }
             ParserWorkerClient.disposeDefault()
+        }
+
+        try {
+            if (!entriesOwned) {
+                ProjectAsyncInputOwner.own(
+                    classified,
+                    normalizedOptions.decodeAssets
+                )
+            }
+        } catch (error) {
+            throw ProjectLoader.#errorFrom(error)
         }
 
         let progress = ProjectLoader.#progress(
@@ -117,11 +169,6 @@ export class ProjectLoader {
         await ProjectLoader.#yieldToHost(Boolean(normalizedOptions.signal))
         ProjectLoader.#assertNotCancelled(normalizedOptions.signal)
 
-        const classified = ProjectLoader.#classify(
-            entries,
-            normalizedOptions.archiveLimits
-        )
-        ProjectLoader.#assertCandidates(classified)
         progress = ProjectLoader.#progress(
             normalizedOptions,
             {
@@ -185,17 +232,16 @@ export class ProjectLoader {
      */
     static supports(entries) {
         try {
-            if (
-                !Array.isArray(entries) ||
-                !entries.length ||
-                entries.length > ArchiveLimits.defaults.maxEntries
-            ) {
+            const entryDescriptors = ProjectLoader.#entryArray(entries)
+            const length = entryDescriptors.length.value
+            if (!length || length > ArchiveLimits.defaults.maxEntries) {
                 return false
             }
 
             const names = []
             let supported = false
-            for (const entry of entries) {
+            for (let index = 0; index < length; index += 1) {
+                const entry = entryDescriptors[String(index)].value
                 const fields = ProjectLoader.#entryFields(entry)
                 const name = ArchiveEntryPath.normalize(fields.name)
                 names.push(name)
@@ -252,30 +298,31 @@ export class ProjectLoader {
      * Validates, measures, and classifies all entries before parsing.
      * @param {unknown} entries Named entry candidates.
      * @param {Record<string, number>} limits Normalized safety limits.
+     * @param {'none' | 'metadata' | 'full'} assetMode Asset decode mode.
      * @returns {{ entries: object[], candidates: object[], entryNames: string[], totalBytes: number }} Classified entries.
      */
-    static #classify(entries, limits) {
-        if (!Array.isArray(entries) || !entries.length) {
+    static #classify(entries, limits, assetMode) {
+        const entryDescriptors = ProjectLoader.#entryArray(entries)
+        const entryCount = entryDescriptors.length.value
+        if (!entryCount) {
             throw ProjectLoader.#inputError(
                 new TypeError('Project entries must be a non-empty array.')
             )
         }
-        ProjectLoader.#assertLimit(
-            'maxEntries',
-            limits.maxEntries,
-            entries.length
-        )
+        ProjectLoader.#assertLimit('maxEntries', limits.maxEntries, entryCount)
 
         const prepared = []
         let totalBytes = 0
-        for (const entry of entries) {
+        for (let index = 0; index < entryCount; index += 1) {
+            const entry = entryDescriptors[String(index)].value
             const fields = ProjectLoader.#entryFields(entry)
             const name = ArchiveEntryPath.normalize(fields.name)
             const byteLength = ProjectLoader.#byteLength(fields.data)
+            let entryBytes = byteLength
             ProjectLoader.#assertLimit(
                 'maxEntryBytes',
                 limits.maxEntryBytes,
-                byteLength,
+                entryBytes,
                 name
             )
             totalBytes += byteLength
@@ -304,7 +351,32 @@ export class ProjectLoader {
             )
 
             const input = { fileName: name, data: fields.data }
-            if (fields.assets !== undefined) input.assets = fields.assets
+            if (fields.assets !== undefined) {
+                try {
+                    input.assets = ToolkitAsset.prepareAll(fields.assets, {
+                        mode: assetMode,
+                        acceptPayload: (assetBytes) => {
+                            entryBytes += assetBytes
+                            ProjectLoader.#assertLimit(
+                                'maxEntryBytes',
+                                limits.maxEntryBytes,
+                                entryBytes,
+                                name
+                            )
+                            totalBytes += assetBytes
+                            ProjectLoader.#assertLimit(
+                                'maxTotalBytes',
+                                limits.maxTotalBytes,
+                                totalBytes,
+                                name
+                            )
+                        }
+                    })
+                } catch (error) {
+                    if (error instanceof ToolkitError) throw error
+                    throw ProjectLoader.#inputError(error)
+                }
+            }
             prepared.push({ name, byteLength, input })
         }
 
@@ -317,6 +389,94 @@ export class ProjectLoader {
                 left.name < right.name ? -1 : left.name > right.name ? 1 : 0
             )
         return { entries: prepared, candidates, entryNames, totalBytes }
+    }
+
+    /**
+     * Captures only public project fields before any callback, yield, or worker
+     * boundary. This isolates classification from later caller mutation and
+     * gives direct and worker paths the same descriptor policy.
+     * @param {unknown} entries Named entry candidates.
+     * @param {number} maximumEntries Configured project-entry ceiling.
+     * @returns {object[]} Dense stable request snapshot.
+     */
+    static #snapshotEntries(entries, maximumEntries) {
+        const descriptors = ProjectLoader.#entryArray(entries, maximumEntries)
+        const length = descriptors.length.value
+        let attachedValues = 0
+        const snapshot = new Array(length)
+        for (let index = 0; index < length; index += 1) {
+            const fields = ProjectLoader.#entryFields(
+                descriptors[String(index)].value
+            )
+            const captured = { name: fields.name, data: fields.data }
+            if (fields.assets !== undefined) {
+                attachedValues = AttachedValueLimits.add(
+                    fields.assets,
+                    attachedValues
+                )
+                captured.assets = ProjectLoader.#attachedValueSnapshot(
+                    fields.assets
+                )
+            }
+            if (fields.compressedByteLength !== undefined) {
+                captured.compressedByteLength = fields.compressedByteLength
+            }
+            if (fields.archiveDepth !== undefined) {
+                captured.archiveDepth = fields.archiveDepth
+            }
+            snapshot[index] = captured
+        }
+        return snapshot
+    }
+
+    /**
+     * Captures one dense attached-value array without reading item properties.
+     * @param {unknown} values Attached-value array candidate.
+     * @returns {unknown[]} Stable array of attached value identities.
+     */
+    static #attachedValueSnapshot(values) {
+        let prototype
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(values)
+            descriptors = Object.getOwnPropertyDescriptors(values)
+        } catch {
+            throw ProjectLoader.#inputError(
+                new TypeError(
+                    'Project entry assets must be a dense plain array.'
+                )
+            )
+        }
+        const length = descriptors.length?.value
+        if (
+            prototype !== Array.prototype ||
+            !Number.isSafeInteger(length) ||
+            length < 0 ||
+            Reflect.ownKeys(descriptors).length !== length + 1
+        ) {
+            throw ProjectLoader.#inputError(
+                new TypeError(
+                    'Project entry assets must be a dense plain array.'
+                )
+            )
+        }
+        const snapshot = new Array(length)
+        for (let index = 0; index < length; index += 1) {
+            const descriptor = descriptors[String(index)]
+            if (
+                !descriptor ||
+                !Object.hasOwn(descriptor, 'value') ||
+                descriptor.enumerable !== true
+            ) {
+                throw ProjectLoader.#inputError(
+                    new TypeError(
+                        'Project entry assets must contain enumerable data properties.'
+                    )
+                )
+            }
+            snapshot[index] = descriptor.value
+        }
+        return snapshot
     }
 
     /**
@@ -346,6 +506,74 @@ export class ProjectLoader {
             compressedByteLength: descriptors.compressedByteLength?.value,
             archiveDepth: descriptors.archiveDepth?.value
         }
+    }
+
+    /**
+     * Reads an exact dense project-entry array without caller iteration.
+     * @param {unknown} entries Entry array candidate.
+     * @param {number} [maximum] Maximum permitted entries.
+     * @returns {Record<string, PropertyDescriptor>} Array descriptors.
+     */
+    static #entryArray(entries, maximum = ArchiveLimits.defaults.maxEntries) {
+        if (!Array.isArray(entries)) {
+            throw ProjectLoader.#inputError(
+                new TypeError('Project entries must be a non-empty array.')
+            )
+        }
+        let prototype
+        let lengthDescriptor
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(entries)
+            lengthDescriptor = Object.getOwnPropertyDescriptor(
+                entries,
+                'length'
+            )
+        } catch {
+            throw ProjectLoader.#inputError(
+                new TypeError('Project entries must be a dense plain array.')
+            )
+        }
+        const length = lengthDescriptor?.value
+        if (
+            prototype !== Array.prototype ||
+            !lengthDescriptor ||
+            !Object.hasOwn(lengthDescriptor, 'value') ||
+            !Number.isSafeInteger(length) ||
+            length < 0
+        ) {
+            throw ProjectLoader.#inputError(
+                new TypeError('Project entries must be a dense plain array.')
+            )
+        }
+        ProjectLoader.#assertLimit('maxEntries', maximum, length)
+        try {
+            descriptors = Object.getOwnPropertyDescriptors(entries)
+        } catch {
+            throw ProjectLoader.#inputError(
+                new TypeError('Project entries must be a dense plain array.')
+            )
+        }
+        if (Reflect.ownKeys(descriptors).length !== length + 1) {
+            throw ProjectLoader.#inputError(
+                new TypeError('Project entries must be a dense plain array.')
+            )
+        }
+        for (let index = 0; index < length; index += 1) {
+            const descriptor = descriptors[String(index)]
+            if (
+                !descriptor ||
+                !Object.hasOwn(descriptor, 'value') ||
+                descriptor.enumerable !== true
+            ) {
+                throw ProjectLoader.#inputError(
+                    new TypeError(
+                        'Project entries must contain enumerable data properties.'
+                    )
+                )
+            }
+        }
+        return descriptors
     }
 
     /**
@@ -609,14 +837,21 @@ export class ProjectLoader {
         if (mode === 'none') return []
         return entries
             .filter((entry) => !entry.name.toLowerCase().endsWith('.json'))
-            .map((entry) => ({
-                kind: 'companion',
-                name: entry.name,
-                mediaType: 'application/octet-stream',
-                byteLength: entry.byteLength,
-                data: mode === 'full' ? entry.input.data : null,
-                source: { entryName: entry.name }
-            }))
+            .map(
+                (entry) =>
+                    entry.companionAsset ||
+                    ToolkitAsset.prepare(
+                        {
+                            kind: 'companion',
+                            name: entry.name,
+                            mediaType: 'application/octet-stream',
+                            byteLength: entry.byteLength,
+                            data: entry.input.data,
+                            source: { entryName: entry.name }
+                        },
+                        { mode }
+                    )
+            )
     }
 
     /**

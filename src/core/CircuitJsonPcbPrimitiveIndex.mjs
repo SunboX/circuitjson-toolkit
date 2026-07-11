@@ -1,4 +1,5 @@
 import { CircuitJsonIndexer } from './CircuitJsonIndexer.mjs'
+import { CircuitJsonLegacyNormalizer } from './context/CircuitJsonLegacyNormalizer.mjs'
 
 /**
  * Builds PCB primitive element indexes with a tolerant local fallback.
@@ -13,10 +14,25 @@ export class CircuitJsonPcbPrimitiveIndex {
         try {
             return CircuitJsonIndexer.index(elements)
         } catch (error) {
-            if (!CircuitJsonPcbPrimitiveIndex.#isUnknownTypeError(error)) {
+            const normalized = CircuitJsonLegacyNormalizer.normalize(elements)
+            if (normalized === elements) {
+                if (CircuitJsonPcbPrimitiveIndex.#isUnknownTypeError(error)) {
+                    return CircuitJsonPcbPrimitiveIndex.#localIndex(elements)
+                }
                 throw error
             }
-            return CircuitJsonPcbPrimitiveIndex.#localIndex(elements)
+            try {
+                return CircuitJsonIndexer.index(normalized)
+            } catch (normalizedError) {
+                if (
+                    CircuitJsonPcbPrimitiveIndex.#isUnknownTypeError(
+                        normalizedError
+                    )
+                ) {
+                    return CircuitJsonPcbPrimitiveIndex.#localIndex(normalized)
+                }
+                throw normalizedError
+            }
         }
     }
 

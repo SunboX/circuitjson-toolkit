@@ -4,6 +4,8 @@ import test from 'node:test'
 import { ArchiveEntryPath } from '../src/core/ArchiveEntryPath.mjs'
 import { ArchiveLimits } from '../src/core/ArchiveLimits.mjs'
 import { ProjectLoader } from '../src/core/ProjectLoader.mjs'
+import { ToolkitError } from '../src/core/contracts/ToolkitError.mjs'
+import { ToolkitAsset } from '../src/core/contracts/ToolkitAsset.mjs'
 
 test('ProjectLoader returns deterministic partial successes without duplicating document data', () => {
     const result = ProjectLoader.load([
@@ -72,6 +74,12 @@ test('ProjectLoader exposes exact tryLoad discriminants and typed zero-success f
     assert.equal(failed.diagnostics.length, 1)
     assert.equal(failed.diagnostics[0].source, 'bad.json')
 
+    const empty = ProjectLoader.tryLoad([])
+    assert.equal(empty.ok, false)
+    assert.equal(empty.diagnostics.length, 1)
+    assert.equal(empty.diagnostics[0].code, empty.error.code)
+    assert.equal(empty.diagnostics[0].severity, 'error')
+
     assert.throws(
         () => ProjectLoader.load([{ name: 'readme.txt', data: 'hello' }]),
         {
@@ -97,6 +105,32 @@ test('ProjectLoader exposes exact tryLoad discriminants and typed zero-success f
             category: 'unsupported'
         }
     )
+})
+
+test('ProjectLoader normalizes hostile proxy and coercion failures to ToolkitError', () => {
+    const hostileEntry = new Proxy(
+        {},
+        {
+            getPrototypeOf() {
+                throw new Error('hostile project entry')
+            }
+        }
+    )
+    const hostileName = {
+        toString() {
+            throw new Error('hostile entry name')
+        }
+    }
+
+    for (const [entries, code] of [
+        [[hostileEntry], 'ERR_PROJECT_LOAD'],
+        [[{ name: hostileName, data: '[]' }], 'ERR_ARCHIVE_PATH']
+    ]) {
+        assert.throws(
+            () => ProjectLoader.load(entries),
+            (error) => error instanceof ToolkitError && error.code === code
+        )
+    }
 })
 
 test('ProjectLoader exposes companion entries through common asset selection', () => {
@@ -408,6 +442,78 @@ test('ProjectLoader loadAsync yields, reports monotonic progress, and checks can
         }),
         (error) => error === callbackError
     )
+})
+
+test('ProjectLoader loadAsync owns exact-window entries and assets before progress', async () => {
+    const sourceBacking = new SharedArrayBuffer(6)
+    const source = new Uint8Array(sourceBacking, 2, 2)
+    source.set(new TextEncoder().encode('[]'))
+    const attachedBacking = new SharedArrayBuffer(5)
+    const attached = new Uint8Array(attachedBacking, 1, 3)
+    attached.set([1, 2, 3])
+    const companionBacking = new SharedArrayBuffer(4)
+    const companion = new Uint8Array(companionBacking, 1, 2)
+    companion.set([4, 5])
+    const entries = [
+        {
+            name: 'board.json',
+            data: source,
+            assets: [{ name: 'payload.bin', data: attached }]
+        },
+        { name: 'notes.bin', data: companion }
+    ]
+    let mutated = false
+    const result = await ProjectLoader.loadAsync(entries, {
+        decodeAssets: 'full',
+        worker: false,
+        onProgress: (row) => {
+            if (mutated || row.stage !== 'detect') return
+            mutated = true
+            source.set(new TextEncoder().encode('{}'))
+            attached.fill(8)
+            companion.fill(9)
+        }
+    })
+
+    assert.equal(mutated, true)
+    assert.deepEqual(result.documents[0].model, [])
+    assert.deepEqual([...result.documents[0].assets[0].data], [1, 2, 3])
+    assert.deepEqual([...result.assets[0].data], [4, 5])
+    assert.deepEqual([...source], [...new TextEncoder().encode('{}')])
+    assert.deepEqual([...attached], [8, 8, 8])
+    assert.deepEqual([...companion], [9, 9])
+})
+
+test('ProjectLoader loadAsync prepares direct companion payloads once', async () => {
+    const prepare = ToolkitAsset.prepare
+    let companionCaptures = 0
+    let preparedIdentity = null
+    ToolkitAsset.prepare = (...arguments_) => {
+        const candidate = arguments_[0]
+        const prepared = prepare.call(ToolkitAsset, ...arguments_)
+        if (candidate?.kind === 'companion') {
+            if (preparedIdentity === null || candidate !== preparedIdentity) {
+                companionCaptures += 1
+                preparedIdentity = prepared
+            }
+        }
+        return prepared
+    }
+
+    try {
+        const result = await ProjectLoader.loadAsync(
+            [
+                { name: 'board.json', data: '[]' },
+                { name: 'notes.bin', data: new Uint8Array([4, 5]) }
+            ],
+            { decodeAssets: 'full', worker: false }
+        )
+
+        assert.deepEqual([...result.assets[0].data], [4, 5])
+        assert.equal(companionCaptures, 1)
+    } finally {
+        ToolkitAsset.prepare = prepare
+    }
 })
 
 test('ProjectLoader keeps worker transport as the shared Task 11 boundary', async () => {

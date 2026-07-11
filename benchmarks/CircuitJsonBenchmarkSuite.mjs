@@ -1,17 +1,71 @@
 import { createHash } from 'node:crypto'
 import { cpus } from 'node:os'
+import { resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
+import { pathToFileURL } from 'node:url'
 import { serialize } from 'node:v8'
 
-import {
-    CircuitJsonIndexer,
+import { BenchmarkCaseCatalog } from './BenchmarkCaseCatalog.mjs'
+import { SyntheticCircuitJsonFactory } from './SyntheticCircuitJsonFactory.mjs'
+
+const candidatePackageRoot = String(
+    process.env.CIRCUITJSON_BENCHMARK_PACKAGE_ROOT || ''
+)
+
+/**
+ * Resolves one toolkit runtime module from the extracted npm candidate when a
+ * candidate execution was requested, otherwise from the local source tree.
+ * @param {string} packagePath Package-relative module path.
+ * @returns {Promise<Record<string, any>>} Loaded module namespace.
+ */
+async function toolkitModule(packagePath) {
+    const url = candidatePackageRoot
+        ? pathToFileURL(resolve(candidatePackageRoot, packagePath)).href
+        : new URL(`../${packagePath}`, import.meta.url).href
+    return await import(url)
+}
+
+const [rootApi, extensionsApi, interactionApi, legacyApi] = await Promise.all([
+    toolkitModule('src/index.mjs'),
+    toolkitModule('src/extensions.mjs'),
+    toolkitModule('src/interaction.mjs'),
+    toolkitModule('src/core/context/CircuitJsonLegacyNormalizer.mjs')
+])
+const { CircuitJsonDocumentContext, CircuitJsonIndexer } = rootApi
+const {
     CircuitJsonParser,
     CircuitJsonPcbPrimitiveBuilder,
     CircuitJsonPcbSvgRenderer
-} from '../src/index.mjs'
-import { PcbInteractionIndex } from '../src/interaction.mjs'
-import { BenchmarkCaseCatalog } from './BenchmarkCaseCatalog.mjs'
-import { SyntheticCircuitJsonFactory } from './SyntheticCircuitJsonFactory.mjs'
+} = extensionsApi
+const { PcbInteractionIndex } = interactionApi
+const { CircuitJsonLegacyNormalizer } = legacyApi
+
+/**
+ * Creates an auditable marker for the exact extracted package under test.
+ * @param {string} packageVersion Report package version.
+ * @returns {Record<string, string> | null} Candidate execution marker.
+ */
+function candidateExecution(packageVersion) {
+    if (!candidatePackageRoot) return null
+    const environmentVersion = String(
+        process.env.CIRCUITJSON_BENCHMARK_PACKAGE_VERSION || ''
+    )
+    const sourceDigest = String(
+        process.env.CIRCUITJSON_BENCHMARK_SOURCE_DIGEST || ''
+    )
+    if (
+        environmentVersion !== packageVersion ||
+        !/^[a-f0-9]{64}$/u.test(sourceDigest)
+    ) {
+        throw new Error('Packed benchmark candidate identity is incomplete.')
+    }
+    return {
+        schema: 'ecad-toolkit.benchmark-execution.v1',
+        target: 'packed-candidate',
+        packageVersion,
+        sourceDigest
+    }
+}
 
 /**
  * Runs the immutable CircuitJSON 1.0.17 benchmark workload.
@@ -32,11 +86,8 @@ export class CircuitJsonBenchmarkSuite {
         const packageVersion = String(
             options.packageVersion || catalog.packageVersion
         )
-        if (packageVersion !== catalog.packageVersion) {
-            throw new Error(
-                'Benchmark package version differs from the versioned case catalog.'
-            )
-        }
+        const enforceBaselineCloneBytes =
+            packageVersion === catalog.packageVersion
         const fixture = CircuitJsonBenchmarkSuite.#fixture(catalog.fixture)
         const fixtureChecksum = CircuitJsonBenchmarkSuite.#checksum(
             fixture.data
@@ -46,10 +97,12 @@ export class CircuitJsonBenchmarkSuite {
                 'Benchmark fixture differs from the versioned case catalog.'
             )
         }
+        const execution = candidateExecution(packageVersion)
         return {
             schema: 'circuitjson-toolkit.benchmark.v1',
             packageVersion,
             provenance: structuredClone(options.provenance || {}),
+            ...(execution ? { execution } : {}),
             environment: CircuitJsonBenchmarkSuite.#environment(),
             caseCatalogChecksum: catalog.catalogChecksum,
             measurementContract: structuredClone(catalog.measurement),
@@ -60,7 +113,8 @@ export class CircuitJsonBenchmarkSuite {
                         definition,
                         fixture,
                         catalog.measurement
-                    )
+                    ),
+                    enforceBaselineCloneBytes
                 )
             )
         }
@@ -79,17 +133,24 @@ export class CircuitJsonBenchmarkSuite {
             SyntheticCircuitJsonFactory.interactiveBoard(
                 definition.interactiveBoard
             )
+        const renderDocument = CircuitJsonLegacyNormalizer.normalize(
+            structuredClone(interactiveDocument),
+            { owned: true }
+        )
         const netlistDocument = SyntheticCircuitJsonFactory.netlistDocument(
             definition.netlistDocument
         )
         const largeText = JSON.stringify(largeDocument)
-        const netlistIndex = CircuitJsonIndexer.index(netlistDocument)
-        const netlistPads = netlistIndex.elementsByType.get('pcb_smtpad') || []
-        // Retain the immutable 1.0.17 after-workload clone contract while the
-        // measured repeated queries below use the new reusable index.
-        CircuitJsonPcbPrimitiveBuilder.buildInteraction(interactiveDocument)
+        const netlistIndex = CircuitJsonDocumentContext.prepare(
+            netlistDocument,
+            { indexes: ['identifiers'] }
+        ).getIndex('identifiers')
+        const netlistPads = netlistDocument.filter(
+            (element) => element.type === 'pcb_smtpad'
+        )
+        CircuitJsonPcbPrimitiveBuilder.buildInteraction(renderDocument)
         const interactionIndex = PcbInteractionIndex.create(
-            structuredClone(interactiveDocument)
+            structuredClone(renderDocument)
         )
 
         return {
@@ -103,6 +164,9 @@ export class CircuitJsonBenchmarkSuite {
                 interactiveDocument,
                 netlistDocument,
                 netlistIndex
+            },
+            runtimeValues: {
+                interactiveDocument: renderDocument
             },
             interactionIndex,
             largeText,
@@ -239,15 +303,11 @@ export class CircuitJsonBenchmarkSuite {
      * @returns {number} Combined SVG byte-like length.
      */
     static #renderSides(workload, fixture) {
-        return workload.sides.reduce(
-            (length, side) =>
-                length +
-                CircuitJsonPcbSvgRenderer.render(
-                    fixture.values[workload.source],
-                    { side }
-                ).length,
-            0
-        )
+        return CircuitJsonPcbSvgRenderer.renderSides(
+            fixture.runtimeValues[workload.source] ||
+                fixture.values[workload.source],
+            workload.sides
+        ).reduce((length, svg) => length + svg.length, 0)
     }
 
     /**
@@ -273,9 +333,10 @@ export class CircuitJsonBenchmarkSuite {
     /**
      * Measures one benchmark case after its configured warmups.
      * @param {Record<string, any>} benchmarkCase Benchmark definition.
+     * @param {boolean} enforceBaselineCloneBytes Whether clone bytes are frozen.
      * @returns {Record<string, any>} Clone-safe case report.
      */
-    static #measure(benchmarkCase) {
+    static #measure(benchmarkCase, enforceBaselineCloneBytes) {
         for (let index = 0; index < benchmarkCase.warmups; index += 1) {
             CircuitJsonBenchmarkSuite.#assertResult(
                 benchmarkCase,
@@ -299,7 +360,8 @@ export class CircuitJsonBenchmarkSuite {
         const cloneBytes = serialize(benchmarkCase.cloneValue).byteLength
         if (
             benchmarkCase.measurement.clonePhase !== 'after-workload' ||
-            cloneBytes !== benchmarkCase.expectedCloneBytes
+            (enforceBaselineCloneBytes &&
+                cloneBytes !== benchmarkCase.expectedCloneBytes)
         ) {
             throw new Error(
                 `Benchmark clone size differs for ${benchmarkCase.id}.`

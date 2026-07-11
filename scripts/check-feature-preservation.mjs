@@ -1,10 +1,14 @@
 import { execFile } from 'node:child_process'
-import { access, readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { readFile, realpath } from 'node:fs/promises'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { isDeepStrictEqual, promisify } from 'node:util'
+
+import { JavaScriptEvidenceAnalyzer } from './JavaScriptEvidenceAnalyzer.mjs'
+import { BaselineProvenance } from './BaselineArtifacts.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -25,6 +29,13 @@ const TOOLKIT_NAMES = [
     'gerber-toolkit',
     'kicad-toolkit'
 ]
+const EVIDENCE_MODES = new Set([
+    'packed-contract',
+    'runtime-reference',
+    'executable'
+])
+const REPLACEMENT_PATTERN =
+    /^(circuitjson-toolkit(?:\/(?:parser|project|renderers|interaction|query|manufacturing|simulation|scene3d|capabilities|extensions|testing|workers\/parser\.worker\.mjs))?)#([A-Za-z_$][\w$]*)(?:\.(prototype\.)?([A-Za-z_$][\w$]*)\(\))?$/u
 const MAPPING_FIELDS = [
     'feature',
     'kind',
@@ -34,10 +45,66 @@ const MAPPING_FIELDS = [
     'availability',
     'reason',
     'evidenceToken',
+    'evidenceMode',
     'sourceContract',
     'tests',
     'documentation'
 ]
+const HISTORICAL_FEATURE_COUNT = 1207
+const HISTORICAL_INVENTORY_CHECKSUM =
+    'f1f8243cc977089e2ede533d9c13866568d56f21739a7c8c71ddbbc3b25658f8'
+
+/**
+ * Selects the immutable source-contract portion of one historical baseline.
+ * Mapping decisions intentionally remain outside this pin so they can become
+ * more accurate without allowing source inventory deletion.
+ * @param {Record<string, any>} apiBaseline Historical API baseline.
+ * @returns {Record<string, any>} Canonical immutable inventory.
+ */
+function historicalInventory(apiBaseline) {
+    return {
+        entrypoints: apiBaseline.entrypoints,
+        features: (apiBaseline.features || []).map((row) => ({
+            feature: row.feature,
+            kind: row.kind,
+            entrypoint: row.entrypoint ?? null,
+            exportName: row.exportName ?? null,
+            methodName: row.methodName ?? null,
+            methodType: row.methodType ?? null,
+            sourceContract: row.sourceContract ?? null,
+            evidenceToken: row.kind === 'behavior' ? row.evidenceToken : null
+        }))
+    }
+}
+
+/**
+ * Verifies the exact historical inventory against a source-independent pin.
+ * @param {Record<string, any>} apiBaseline Historical API baseline.
+ * @param {string} repositoryRoot Git repository root.
+ * @returns {Promise<void>}
+ */
+async function validateHistoricalInventory(apiBaseline, repositoryRoot) {
+    if (
+        apiBaseline.package !== 'circuitjson-toolkit' ||
+        apiBaseline.packageVersion !== '1.0.17'
+    ) {
+        return
+    }
+    const provenance = await BaselineProvenance.capture(repositoryRoot)
+    const inventory = historicalInventory(apiBaseline)
+    const checksum = createHash('sha256')
+        .update(JSON.stringify(inventory))
+        .digest('hex')
+    if (
+        inventory.features.length !== HISTORICAL_FEATURE_COUNT ||
+        checksum !== HISTORICAL_INVENTORY_CHECKSUM ||
+        !isDeepStrictEqual(apiBaseline.provenance, provenance)
+    ) {
+        throw new Error(
+            'The immutable historical API inventory differs from the approved v1.0.17 source contract.'
+        )
+    }
+}
 
 /**
  * Packs and extracts a repository into a temporary package root.
@@ -90,14 +157,43 @@ async function importPackedEntrypoints(apiBaseline, packageRoot) {
         )
     }
 
+    let entrypoints = apiBaseline.entrypoints || []
+    try {
+        const pkg = JSON.parse(
+            await readFile(resolve(packageRoot, 'package.json'), 'utf8')
+        )
+        entrypoints = Object.entries(pkg.exports || {})
+            .map(([entrypoint, definition]) => ({
+                entrypoint,
+                target: packedExportTarget(definition)
+            }))
+            .filter((entrypoint) => /\.(?:c|m)?js$/u.test(entrypoint.target))
+    } catch (error) {
+        if (error?.code !== 'ENOENT') throw error
+    }
+
     const modules = new Map()
-    for (const entrypoint of apiBaseline.entrypoints || []) {
+    for (const entrypoint of entrypoints) {
         const moduleUrl = pathToFileURL(
             resolve(packageRoot, entrypoint.target)
         ).href
         modules.set(entrypoint.entrypoint, await import(moduleUrl))
     }
     return modules
+}
+
+/**
+ * Resolves one JavaScript target from a package export definition.
+ * @param {string | Record<string, string>} definition Package export definition.
+ * @returns {string} Relative package target.
+ */
+function packedExportTarget(definition) {
+    if (typeof definition === 'string') return definition
+    const target = definition?.import || definition?.default
+    if (!isNonEmptyString(target)) {
+        throw new Error('Packed package export has no import target.')
+    }
+    return target
 }
 
 /**
@@ -110,15 +206,22 @@ function packedFeatureExists(feature, modules) {
     if (!['export', 'method'].includes(feature.kind)) {
         return true
     }
-    const module = modules.get(feature.entrypoint)
-    const exported = module?.[feature.exportName]
-    if (feature.kind === 'export') {
-        return exported !== undefined
+    const candidates = []
+    const original = modules.get(feature.entrypoint)
+    if (original) candidates.push(original)
+    for (const module of modules.values()) {
+        if (module !== original) candidates.push(module)
     }
-    if (feature.methodType === 'instance') {
-        return typeof exported?.prototype?.[feature.methodName] === 'function'
-    }
-    return typeof exported?.[feature.methodName] === 'function'
+    return candidates.some((module) => {
+        const exported = module?.[feature.exportName]
+        if (feature.kind === 'export') return exported !== undefined
+        if (feature.methodType === 'instance') {
+            return (
+                typeof exported?.prototype?.[feature.methodName] === 'function'
+            )
+        }
+        return typeof exported?.[feature.methodName] === 'function'
+    })
 }
 
 /**
@@ -133,6 +236,42 @@ function validatePackedApi(apiBaseline, modules) {
         .map((feature) => feature.feature)
     if (stale.length > 0) {
         throw new Error(`Stale packed API features: ${stale.join(', ')}`)
+    }
+}
+
+/**
+ * Verifies exact replacement grammar and resolves every target in package modules.
+ * @param {Record<string, any>[]} ledger Preservation ledger.
+ * @param {Map<string, Record<string, any>>} modules Imported package entrypoints.
+ * @returns {void}
+ */
+export function validateReplacementTargets(ledger, modules) {
+    for (const row of ledger) {
+        const match = REPLACEMENT_PATTERN.exec(row.replacement)
+        if (!match) {
+            throw new Error(
+                `Invalid replacement target for ${row.feature}: ${row.replacement}`
+            )
+        }
+        const [, packageSpecifier, exportName, prototypeMarker, methodName] =
+            match
+        const entrypoint =
+            packageSpecifier === 'circuitjson-toolkit'
+                ? '.'
+                : `./${packageSpecifier.slice('circuitjson-toolkit/'.length)}`
+        const exported = modules.get(entrypoint)?.[exportName]
+        if (exported === undefined) {
+            throw new Error(
+                `Replacement export does not exist in the packed package: ${row.replacement}`
+            )
+        }
+        if (!methodName) continue
+        const owner = prototypeMarker ? exported?.prototype : exported
+        if (typeof owner?.[methodName] !== 'function') {
+            throw new Error(
+                `Replacement method does not exist in the packed package: ${row.replacement}`
+            )
+        }
     }
 }
 
@@ -193,18 +332,26 @@ function validateCapabilities(ledger, modules) {
  * Verifies every referenced test and documentation path exists.
  * @param {Record<string, any>[]} ledger Preservation ledger.
  * @param {string} repositoryRoot Repository root.
+ * @param {Record<string, any>} apiBaseline Captured API baseline.
  * @returns {Promise<void>}
  */
-async function validateEvidencePaths(ledger, repositoryRoot) {
+async function validateEvidencePaths(ledger, repositoryRoot, apiBaseline) {
     const paths = [
         ...new Set(
             ledger.flatMap((row) => [...row.tests, ...row.documentation])
         )
     ]
+    const absoluteRepositoryRoot = resolve(repositoryRoot)
+    const realRepositoryRoot = await realpath(absoluteRepositoryRoot)
+    const resolvedPaths = new Map()
     const missing = []
     for (const path of paths) {
+        const candidate = resolve(absoluteRepositoryRoot, path)
+        assertEvidencePathInside(absoluteRepositoryRoot, candidate, path)
         try {
-            await access(resolve(repositoryRoot, path))
+            const realCandidate = await realpath(candidate)
+            assertEvidencePathInside(realRepositoryRoot, realCandidate, path)
+            resolvedPaths.set(path, realCandidate)
         } catch {
             missing.push(path)
         }
@@ -213,25 +360,80 @@ async function validateEvidencePaths(ledger, repositoryRoot) {
         throw new Error(`Missing evidence paths: ${missing.join(', ')}`)
     }
 
-    const testContents = new Map()
+    const allowedTargets = await evidenceModuleTargets(
+        apiBaseline,
+        realRepositoryRoot
+    )
+    const testEvidence = new Map()
     for (const row of ledger) {
+        if (row.evidenceMode === 'packed-contract') continue
         const referencesSymbol = await Promise.all(
             row.tests.map(async (path) => {
-                if (!testContents.has(path)) {
-                    testContents.set(
+                if (!testEvidence.has(path)) {
+                    testEvidence.set(
                         path,
-                        await readFile(resolve(repositoryRoot, path), 'utf8')
+                        await JavaScriptEvidenceAnalyzer.analyze(
+                            await readFile(resolvedPaths.get(path), 'utf8'),
+                            {
+                                path: resolvedPaths.get(path),
+                                repositoryRoot: realRepositoryRoot,
+                                allowedTargets
+                            }
+                        )
                     )
                 }
-                return testContents.get(path).includes(row.evidenceToken)
+                const evidence = testEvidence.get(path)
+                const tokens =
+                    row.evidenceMode === 'executable'
+                        ? evidence.executable
+                        : evidence.references
+                return tokens.has(row.evidenceToken)
             })
         )
         if (!referencesSymbol.some(Boolean)) {
             throw new Error(
-                `Evidence tests do not reference ${row.evidenceToken} for ${row.feature}`
+                `Evidence tests do not bind ${row.evidenceToken} for ${row.feature}`
             )
         }
     }
+}
+
+/**
+ * Rejects lexical and real evidence paths outside the selected repository.
+ * @param {string} repositoryRoot Absolute repository root.
+ * @param {string} candidate Absolute candidate path.
+ * @param {string} evidencePath User-provided repository-relative path.
+ * @returns {void}
+ */
+function assertEvidencePathInside(repositoryRoot, candidate, evidencePath) {
+    const relationship = relative(repositoryRoot, candidate)
+    if (
+        relationship === '..' ||
+        relationship.startsWith(`..${sep}`) ||
+        isAbsolute(relationship)
+    ) {
+        throw new Error(`Evidence path escapes repository: ${evidencePath}`)
+    }
+}
+
+/**
+ * Resolves captured package entrypoint targets for semantic import evidence.
+ * @param {Record<string, any>} apiBaseline Captured API baseline.
+ * @param {string} repositoryRoot Canonical repository root.
+ * @returns {Promise<Set<string>>} Canonical allowed target paths.
+ */
+async function evidenceModuleTargets(apiBaseline, repositoryRoot) {
+    const targets = new Set()
+    for (const entrypoint of apiBaseline.entrypoints || []) {
+        try {
+            targets.add(
+                await realpath(resolve(repositoryRoot, entrypoint.target))
+            )
+        } catch (error) {
+            if (error?.code !== 'ENOENT') throw error
+        }
+    }
+    return targets
 }
 
 /**
@@ -289,9 +491,22 @@ function isCompleteMapping(row) {
         isValidAvailability(row.availability) &&
         isNonEmptyString(row.reason) &&
         isNonEmptyString(row.evidenceToken) &&
+        EVIDENCE_MODES.has(row.evidenceMode) &&
+        row.evidenceMode === expectedEvidenceMode(row.kind) &&
         isNonEmptyStringArray(row.tests) &&
         isNonEmptyStringArray(row.documentation)
     )
+}
+
+/**
+ * Returns the required evidence mode for one feature kind.
+ * @param {string} kind Feature kind.
+ * @returns {'packed-contract' | 'runtime-reference' | 'executable'} Evidence mode.
+ */
+function expectedEvidenceMode(kind) {
+    if (['export', 'method'].includes(kind)) return 'packed-contract'
+    if (kind === 'behavior') return 'executable'
+    return 'runtime-reference'
 }
 
 /**
@@ -419,10 +634,12 @@ export async function validateFeaturePreservation(options) {
             options.packageRoot
         )
         validatePackedApi(options.apiBaseline, modules)
+        validateReplacementTargets(ledger, modules)
         validateCapabilities(ledger, modules)
         await validateEvidencePaths(
             ledger,
-            resolve(options.repositoryRoot || process.cwd())
+            resolve(options.repositoryRoot || process.cwd()),
+            options.apiBaseline
         )
     }
     return { featureCount: baselineFeatures.length }
@@ -448,6 +665,7 @@ export async function checkFeaturePreservation(options = {}) {
             JSON.parse(await readFile(path, 'utf8'))
         )
     )
+    await validateHistoricalInventory(apiBaseline, repositoryRoot)
     const packed =
         options.strict && !options.packageRoot
             ? await packRepository(repositoryRoot)

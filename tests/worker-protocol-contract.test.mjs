@@ -164,6 +164,49 @@ function createHandlers(overrides = {}) {
     }
 }
 
+/**
+ * Builds parser input whose visible bytes are exact windows into shared memory.
+ * @returns {{ input: object, source: Uint8Array, asset: Uint8Array }} Mutable fixture.
+ */
+function createSharedParserInput() {
+    const source = new Uint8Array(new SharedArrayBuffer(6), 2, 2)
+    source.set(new TextEncoder().encode('[]'))
+    const asset = new Uint8Array(new SharedArrayBuffer(5), 1, 3)
+    asset.set([1, 2, 3])
+    return {
+        input: {
+            fileName: 'shared-owned.json',
+            data: source,
+            assets: [{ name: 'payload.bin', data: asset }]
+        },
+        source,
+        asset
+    }
+}
+
+/**
+ * Builds project entries with shared candidate, attached, and companion bytes.
+ * @returns {{ entries: object[], source: Uint8Array, attached: Uint8Array, companion: Uint8Array }} Mutable fixture.
+ */
+function createSharedProjectEntries() {
+    const parser = createSharedParserInput()
+    const companion = new Uint8Array(new SharedArrayBuffer(4), 1, 2)
+    companion.set([4, 5])
+    return {
+        entries: [
+            {
+                name: parser.input.fileName,
+                data: parser.source,
+                assets: parser.input.assets
+            },
+            { name: 'notes.bin', data: companion }
+        ],
+        source: parser.source,
+        attached: parser.asset,
+        companion
+    }
+}
+
 test('worker client matches direct parse without detaching input by default', async () => {
     const workers = []
     const client = new ParserWorkerClient({
@@ -199,6 +242,54 @@ test('worker client matches direct parse without detaching input by default', as
         false
     )
     assert.equal(Object.hasOwn(workers[0].requests[0].options, 'signal'), false)
+    client.dispose()
+})
+
+test('sync, direct async, and worker paths isolate shared input mutation equally', async () => {
+    const syncFixture = createSharedParserInput()
+    const sync = Parser.parse(syncFixture.input, { decodeAssets: 'full' })
+
+    const directFixture = createSharedParserInput()
+    const direct = await Parser.parseAsync(directFixture.input, {
+        decodeAssets: 'full',
+        worker: false,
+        onProgress: (row) => {
+            if (row.stage !== 'detect') return
+            directFixture.source.set(new TextEncoder().encode('{}'))
+            directFixture.asset.fill(8)
+        }
+    })
+
+    const client = new ParserWorkerClient({
+        createWorker: () => new FakeToolkitWorker(createHandlers())
+    })
+    const workerFixture = createSharedParserInput()
+    const worker = await client.parse(workerFixture.input, {
+        decodeAssets: 'full',
+        onProgress: (row) => {
+            if (row.stage !== 'detect') return
+            workerFixture.source.set(new TextEncoder().encode('{}'))
+            workerFixture.asset.fill(9)
+        }
+    })
+    const projectFixture = createSharedProjectEntries()
+    const project = await client.loadProject(projectFixture.entries, {
+        decodeAssets: 'full',
+        onProgress: (row) => {
+            if (row.stage !== 'detect') return
+            projectFixture.source.set(new TextEncoder().encode('{}'))
+            projectFixture.attached.fill(8)
+            projectFixture.companion.fill(9)
+        }
+    })
+
+    assert.deepEqual(direct.model, sync.model)
+    assert.deepEqual(worker.model, sync.model)
+    assert.deepEqual([...direct.assets[0].data], [1, 2, 3])
+    assert.deepEqual([...worker.assets[0].data], [1, 2, 3])
+    assert.deepEqual(project.documents[0].model, [])
+    assert.deepEqual([...project.documents[0].assets[0].data], [1, 2, 3])
+    assert.deepEqual([...project.assets[0].data], [4, 5])
     client.dispose()
 })
 

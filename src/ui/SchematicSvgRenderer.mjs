@@ -38,7 +38,9 @@ export class SchematicSvgRenderer {
                 ? SchematicSheetSelector.select(index, sheetId)
                 : index
             const entry = Object.freeze({
-                svg: CircuitJsonSchematicSvgRenderer.render(selected)
+                svg: CircuitJsonSchematicSvgRenderer.render(selected, {
+                    assets: context.assets
+                })
             })
             PREPARED_SCHEMATIC_SVGS.set(entry, { context, key })
             return entry

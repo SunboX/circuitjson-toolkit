@@ -1,10 +1,12 @@
 import { DocumentResult } from '../contracts/DocumentResult.mjs'
+import { CircuitJsonLegacyNormalizer } from './CircuitJsonLegacyNormalizer.mjs'
 import { CircuitJsonContextIndexes } from './CircuitJsonContextIndexes.mjs'
 import { CircuitJsonDerivedCache } from './CircuitJsonDerivedCache.mjs'
 import { CircuitJsonReadOnlyDocument } from './CircuitJsonReadOnlyDocument.mjs'
 import { CircuitJsonValidationProof } from './CircuitJsonValidationProof.mjs'
 
 const DOCUMENT_SCHEMA = 'ecad-toolkit.document.v1'
+const CONTEXT_CONSTRUCTION_AUTHORITY = Object.freeze({})
 
 /**
  * Owns one immutable CircuitJSON model and its request-scoped reusable data.
@@ -24,8 +26,14 @@ export class CircuitJsonDocumentContext {
      * @param {Record<string, any>} document Proven document envelope.
      * @param {object[]} model Proven CircuitJSON model.
      * @param {number} validationPasses Validation passes performed by prepare.
+     * @param {object} authority Module-private construction authority.
      */
-    constructor(document, model, validationPasses) {
+    constructor(document, model, validationPasses, authority) {
+        if (authority !== CONTEXT_CONSTRUCTION_AUTHORITY) {
+            throw new TypeError(
+                'Use CircuitJsonDocumentContext.prepare() to create a context.'
+            )
+        }
         this.#document = document
         this.#model = model
         this.#source = CircuitJsonReadOnlyDocument.copyReadonlyMetadataValue(
@@ -189,7 +197,8 @@ export class CircuitJsonDocumentContext {
         return new CircuitJsonDocumentContext(
             readonlyDocument,
             model,
-            validationPasses
+            validationPasses,
+            CONTEXT_CONSTRUCTION_AUTHORITY
         )
     }
 
@@ -221,7 +230,9 @@ export class CircuitJsonDocumentContext {
                         false
                     ) ??
                     CircuitJsonDocumentContext.#ownData(input, 'format', false),
-                model: CircuitJsonDocumentContext.#canonicalModel(input)
+                model: CircuitJsonLegacyNormalizer.normalize(
+                    CircuitJsonDocumentContext.#canonicalModel(input)
+                )
             })
         }
         if (!input || typeof input !== 'object') {

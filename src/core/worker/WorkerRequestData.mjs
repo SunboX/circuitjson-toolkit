@@ -1,5 +1,6 @@
 import { CircuitJsonValidationProof } from '../context/CircuitJsonValidationProof.mjs'
 import { CircuitJsonReadOnlyDocument } from '../context/CircuitJsonReadOnlyDocument.mjs'
+import { ProtectedExtensionBinaryBoundary } from '../context/ProtectedExtensionBinaryBoundary.mjs'
 import { RuntimeProxyBoundary } from '../contracts/RuntimeProxyBoundary.mjs'
 
 const ARRAY_BUFFER_BYTE_LENGTH_GETTER = Object.getOwnPropertyDescriptor(
@@ -375,6 +376,15 @@ export class WorkerRequestData {
             if (protectedData.trusted) {
                 return WorkerRequestData.#prepareValue(
                     protectedData.value,
+                    state,
+                    depth + 1
+                )
+            }
+            const protectedExtensionBinary =
+                ProtectedExtensionBinaryBoundary.read(descriptor)
+            if (protectedExtensionBinary.trusted) {
+                return WorkerRequestData.#prepareValue(
+                    protectedExtensionBinary.value,
                     state,
                     depth + 1
                 )

@@ -1,223 +1,548 @@
-# API
+<!--
+SPDX-FileCopyrightText: 2026 André Fiedler
+SPDX-License-Identifier: CC-BY-SA-4.0
+-->
 
-The package exports public APIs from `circuitjson-toolkit` and
-`circuitjson-toolkit/parser`.
+# Canonical API
+
+Version 1.1.0 exposes one common API contract for `circuitjson-toolkit`,
+`gerber-toolkit`, `altium-toolkit`, and `kicad-toolkit`. CircuitJSON is the
+shared immutable model. Every common service accepts a canonical
+`DocumentResult`, its `model` array, or a prepared `CircuitJsonDocumentContext`
+unless a narrower input is stated below.
+
+The 1.1.0 convergence is intentionally breaking. Use the canonical classes in
+this document for new code. Thirty-seven previous CircuitJSON-specific classes
+remain under `circuitjson-toolkit/extensions`; the three documented viewer
+compatibility classes remain on the root. See [migration.md](migration.md).
+
+## Common conventions
+
+### Document input
+
+Parser calls use an input record:
+
+```js
+{
+    fileName: 'board.json',
+    data: string | ArrayBuffer | Uint8Array,
+    assets?: object[]
+}
+```
+
+`Parser.parse()` and `Parser.parseAsync()` return the exact
+`ecad-toolkit.document.v1` envelope:
+
+```js
+{
+    schema: 'ecad-toolkit.document.v1',
+    id: 'document-...',
+    modelSchema: { name: 'circuit-json', version: '0.0.446' },
+    model: [],
+    source: { format: 'circuitjson', fileName: 'board.json', fileType: 'circuitjson' },
+    extensions: {},
+    assets: [],
+    diagnostics: [],
+    statistics: {}
+}
+```
+
+The shared fields have the same names and meanings in every source toolkit.
+Source-only facts belong in `extensions.<format>` and are never discarded to
+make the common shape smaller.
+
+Validated source documents own selected extension values as one deeply
+immutable, descriptor-safe snapshot. This uses a distinct 128 MiB payload and
+2,000,000-item ceiling so large native renderer graphs do not inherit the
+compact metadata limit. The shared worker protocol applies the same ownership
+boundary after structured cloning and retains its 250 MB whole-result ceiling.
+Binary values preserve their `ArrayBuffer`/typed-view shape behind defensive
+copy access, so payload bytes do not inflate into one JavaScript number per
+byte.
+
+### Errors
+
+Public failures are `ToolkitError` instances. The stable serialized fields are
+`name`, `message`, `code`, `category`, `format`, `source`, `details`, and
+`cause`. `error.toJSON()` produces a clone-safe record. `ToolkitError.from()`
+normalizes an unknown failure without invoking hostile accessors.
+
+### Progress, cancellation, and workers
+
+Asynchronous parser and project calls accept:
+
+- `signal`: an `AbortSignal`;
+- `onProgress(progress)`: ordered clone-safe progress rows;
+- `worker`: `false`, `true`, or `'auto'`;
+- `transferInput`: explicit permission to detach transferable caller input.
+
+`worker: 'auto'` falls back to direct work only when worker construction is
+unavailable. Protocol, post-message, parser, and runtime errors stay visible.
+Worker and direct results have the same serialized shape.
+
+`retainSource` is exactly `'none' | 'reference'` and defaults to `'none'`.
+`'reference'` is an in-process parser option: the returned document has a
+non-enumerable `sourceReference` property whose value is the exact caller input
+object. The toolkit neither freezes nor copies that caller object, and
+serialization or structured cloning intentionally omits the reference.
+`worker: true` rejects this mode because cross-thread caller identity cannot be
+preserved; `worker: 'auto'` selects the direct path instead.
+
+### Reusing work
+
+Prepare a context once when several operations use the same document:
+
+```js
+const context = CircuitJsonDocumentContext.prepare(document, {
+    indexes: ['elements', 'relations', 'connectivity', 'spatial']
+})
+```
+
+Validation, indexes, render primitives, and other derived values are cached by
+the context. Public outputs remain detached or immutable; a caller cannot
+mutate later results through a returned object.
+
+## Root entrypoint
+
+`circuitjson-toolkit` has an exact 17-class root. The 14 canonical classes are:
+
+- `Parser`
+- `ProjectLoader`
+- `CircuitJsonDocumentContext`
+- `PcbSvgRenderer`
+- `SchematicSvgRenderer`
+- `BomTableRenderer`
+- `PcbInteractionIndex`
+- `QueryService`
+- `ManufacturingService`
+- `SimulationService`
+- `PcbScene3dBuilder`
+- `PcbScene3dPreparator`
+- `ToolkitCapabilities`
+- `ToolkitError`
+
+`CircuitJsonDocument`, `CircuitJsonIndexer`, and `CircuitJsonUnits` remain
+temporarily on the root for viewer compatibility. All other former root
+exports are explicitly retained by `/extensions`.
+
+### `CircuitJsonDocument.normalizeModel(model, options?)`
+
+Projects supported pre-union aliases onto the canonical element union. The
+default copy-on-write call preserves the exact input and element identities
+when no projection is needed. `{ owned: true }` may update a toolkit-owned
+mutable model in place before its single validation/proof pass.
+
+The canonical union is the pinned upstream schema plus the source-neutral
+`schematic_image` and `schematic_sheet_symbol` contracts. Use
+`CircuitJsonElementValidator.knownElementTypes()` for the exact upstream
+snapshot, `canonicalElementTypes()` for all accepted types, and
+`extensionElementTypes()` for the toolkit-owned additions.
+
+The projection covers legacy schematic table row/column/span geometry, PCB
+artwork `points`/`width` paths, pad-clearance diagnostic relations, courtyard
+line/path/polygon forms, outer-layer aliases, and retained stroke dash fields.
+It derives geometry from the supplied data and does not recognize filenames,
+fixtures, vendors, or application state.
+
+### `CircuitJsonPcbHolePrimitiveModel.build(element, center)`
+
+Normalizes circular, rectangular, pill, and polygon-plated holes for shared
+rendering and interaction consumers. Polygon `pad_outline` points determine
+rotation-local outer width and height; pill drill width, height, diameter, and
+board-space rotation remain distinct from outer-pad rotation. Legal
+`outer_width`, `outer_height`, `rect_ccw_rotation`, and `hole_ccw_rotation`
+variants are preserved. Import this retained source-neutral helper from
+`circuitjson-toolkit/extensions`.
+
+Packed release checks reject any missing or additional root export.
 
 ## Parser
 
-### `CircuitJsonParser.parseText(text, options?)`
+Import from the root or `circuitjson-toolkit/parser`.
 
-Parses standalone CircuitJSON JSON text and returns a serialized element array.
+### `Parser.parse(input, options?)`
 
-Options:
+Synchronously detects, decodes, validates, and returns one canonical document.
+Synchronous calls reject `worker: true`.
 
-- `fileName`: optional source file name stored as non-structural metadata.
+### `Parser.parseAsync(input, options?)`
 
-Returned arrays receive metadata fields compatible with the parser packages:
+Asynchronous equivalent with progress, cancellation, and worker support.
+Direct execution snapshots binary input windows and selected assets before the
+first progress callback. A callback may mutate caller buffers without changing
+the in-flight result. Worker inputs rely on the already isolated protocol copy
+and are not copied again in the receiver.
 
-- `fileName`
-- `fileType: 'circuitjson'`
-- `kind`
-- `sourceFormat: 'circuitjson'`
+### `Parser.tryParse(input, options?)`
 
-Malformed JSON throws a `SyntaxError`. Valid JSON that is not a CircuitJSON
-element array throws a `TypeError`.
+Returns either `{ ok: true, value }` or
+`{ ok: false, error, diagnostics }` instead of throwing a public parse failure.
 
-### `CircuitJsonParser.parseBytes(bytes, options?)`
+### `Parser.supports(input)`
 
-Parses UTF-8 CircuitJSON bytes from an `ArrayBuffer` or `Uint8Array`.
+Performs bounded format detection and returns a boolean.
 
-## Document Validation
+The parser subpath additionally exports `ParserWorkerClient`,
+`ToolkitWorkerProtocol`, and the `TOOLKIT_WORKER_PROTOCOL` version constant for
+hosts that own a custom worker lifecycle.
 
-### `CircuitJsonDocument.isElement(value)`
+### `ToolkitAsset.measure(asset)`
 
-Returns true when `value` is an object with a known non-empty string `type`
-field and passes element-specific validation.
+Returns the exact resident payload byte length without copying. Binary lengths
+come from intrinsic platform slots and text uses a non-allocating UTF-8 scan.
 
-### `CircuitJsonDocument.isModel(value)`
+### `ToolkitAsset.prepare(asset, options?)`
 
-Returns true when `value` is an array and every item is a valid CircuitJSON
-element.
+Accepts `mode: 'none' | 'metadata' | 'full'`. `none` validates and measures but
+returns `null`; `metadata` returns canonical metadata with `data: null` and
+makes no payload copy; `full` creates exactly one protected payload snapshot.
+The optional `acceptPayload(byteLength, identity)` callback runs before payload
+allocation. Accessors, custom prototypes, and hidden fields are rejected
+without executing accessors. When `mediaType` is omitted, standard ECAD model,
+image, JSON, PDF, and ZIP suffixes are inferred from `name`; an explicit
+`mediaType` always wins. WRL and VRML resolve to `model/vrml`, while STEP and
+STP resolve to `model/step`.
 
-### `CircuitJsonDocument.validateModel(value)`
+### `ToolkitAsset.prepareAll(assets, options?)`
 
-Returns validation error messages for a candidate CircuitJSON element array.
+Applies the same contract to an exact dense asset array. Privately branded
+prepared assets are idempotent, so parser/project/result boundaries do not
+copy a full payload again.
 
-### `CircuitJsonDocument.assertModel(value)`
+### `ParserWorkerClient` instance attempts
 
-Throws unless `value` is a valid CircuitJSON element array.
+`client.parseAttempt(input, options?)` and
+`client.loadProjectAttempt(entries, options?)` return `{ ok: true, value }` on
+success or `{ ok: false, error, unavailable }` on failure. `unavailable` is true
+only when that exact request's locally injected worker factory or construction
+boundary fails. The authorization is consumed by that result and cannot be
+replayed by throwing the returned error from another request.
 
-### `CircuitJsonDocument.attachMetadata(circuitJson, metadata?)`
+Source toolkits can use these methods to implement `worker: 'auto'` without
+hiding failures: fall back to direct execution only for `unavailable: true`;
+input validation, post-message, remote parser, protocol, cancellation, queue,
+disposed-client, and worker runtime failures all return `unavailable: false`.
 
-Attaches parser-style metadata to a CircuitJSON array and returns the same
-array.
+## Projects
 
-## Indexing
+Import from the root or `circuitjson-toolkit/project`.
 
-### `CircuitJsonIndexer.index(circuitJson)`
+### `ProjectLoader.load(entries, options?)`
 
-Builds lookup maps for one CircuitJSON element array.
+Synchronously loads a bounded dense array of `{ name, data, assets? }` entries
+and returns an `ecad-toolkit.project.v1` envelope. Unsupported entries are
+classified consistently; archive limits and duplicate paths are validated
+before parsing.
 
-Returns:
+Attached `entry.assets` payload bytes are included in `maxEntryBytes` and
+`maxTotalBytes` before parsing in every decode mode. Direct and worker paths use
+the same `ToolkitAsset` preparation and accounting pass.
 
-- `elements`: the original element array.
-- `elementsByType`: `Map<string, object[]>` keyed by `type`.
-- `elementsById`: `Map<string, object>` keyed by `<type>:<id>`.
-- `sourceComponentById`: source component lookup.
-- `pcbComponentById`: PCB component lookup.
+The loader captures one bounded, known-field snapshot before callbacks, host
+yields, or worker dispatch. `maxEntries` is enforced from the array length
+before any entry record is inspected. Later caller mutation cannot change
+classification, accounting, or direct/worker behavior, and unknown hidden or
+symbol entry fields are ignored consistently.
 
-Known ID fields include board, component, hole, pad, trace, via, source
-component, source net, and source port identifiers.
+### `ProjectLoader.loadAsync(entries, options?)`
 
-## Units
+Asynchronous equivalent with common progress, cancellation, and worker
+behavior.
 
-### `CircuitJsonUnits.mmToMil(value, fallback?)`
+### `ProjectLoader.tryLoad(entries, options?)`
 
-Converts a millimeter value to mils with stable rounding. Non-finite values use
-the fallback, defaulting to `0`.
+Returns a discriminated success or failure record without throwing public load
+failures.
 
-### `CircuitJsonUnits.pointMmToMil(point)`
+### `ProjectLoader.supports(entries)`
 
-Converts `{ x, y }` millimeter points to `{ x, y }` mil points.
+Returns whether the bounded entry collection contains supported project input.
 
-## PCB Interaction
+### `ZipArchiveInspector.inspect(data, options?)`
+
+Preflights bounded ZIP central and local records before inflation, including
+exact local/central filename agreement. Entry rows
+include `crc32`, compressed/uncompressed sizes, `localOffset`, and
+`payloadOffset`; fixed local metadata must exactly match the central directory,
+while data-descriptor fields must be zero or matching.
+`maxCompressionRatio` compares total declared uncompressed member bytes with
+total compressed member bytes, independent of ZIP comments or container
+padding. Empty archives use ratio zero; a nonempty declared output with zero
+compressed bytes is rejected as an infinite ratio.
+
+### `ZipArchiveInspector.verifyExtractedBytes(entry, data)`
+
+Checks the exact extracted byte length and CRC32 against an entry returned by
+`inspect()`. It returns `true` or throws `ToolkitError` with
+`ERR_ARCHIVE_INVALID` and expected/actual integrity details.
+
+## Prepared document context
+
+### `CircuitJsonDocumentContext.prepare(document, options?)`
+
+Validates once and returns an immutable request-scoped context. `options.indexes`
+may request `elements`, `identifiers`, `relations`, `connectivity`, and
+`spatial` indexes. The compact `identifiers` index exposes an `elementsById`
+set without duplicating the element graph.
+
+The class constructor is not a public construction path. It throws before
+observing caller input; use `prepare()` so every context carries a
+validation-bound authority that downstream viewers and applications can trust.
+
+### `context.getIndex(name)` and `context.hasIndex(name)`
+
+Access a prepared index or check its presence.
+
+### `context.getOrCreateDerived(namespace, key, factory)`
+
+Creates a derived value once per context and stable namespace/key pair. This is
+the common extension point for services that need to share expensive work.
+
+### `context.statistics`
+
+Returns stable validation, index-build, and derived-build counters.
+
+## Renderers
+
+Import from the root or `circuitjson-toolkit/renderers`. Renderer output is
+deterministic, local, and independent of DOM APIs.
+
+### `PcbSvgRenderer.render(document, options?)`
+
+Returns one SVG string. Common options include `side`, selected/hidden layers,
+hidden object categories, viewport controls, and shared style controls.
+
+### `PcbSvgRenderer.renderLayers(document, options?)`
+
+Returns `{ schema, items, diagnostics, statistics }`. Every item contains
+`id`, `side`, `layerIds`, and `svg`. All layers share one primitive preparation.
+
+### `SchematicSvgRenderer.render(document, options?)`
+
+Returns one schematic SVG. Sheet selection and table/debug presentation use
+the same option names across toolkits. Canonical `schematic_image` rows resolve
+their exact `asset_id` from `document.assets`; full asset mode renders the
+payload, while metadata-only or unresolved assets are omitted without a
+placeholder. `schematic_sheet_symbol` renders a hierarchical child box and is
+never treated as a selectable `schematic_sheet` page.
+
+### `BomTableRenderer.render(document, options?)`
+
+Returns deterministic BOM HTML from standard source-component fields. Legacy
+prepared row input is retained only as a compatibility path.
+
+The optional stylesheet is available at
+`circuitjson-toolkit/styles/renderers.css`.
+
+## PCB interaction
+
+Import from the root or `circuitjson-toolkit/interaction`.
 
 ### `PcbInteractionIndex.create(document, options?)`
 
-Prepares one reusable exact PCB interaction service from a CircuitJSON element
-array, `DocumentResult`, or `CircuitJsonDocumentContext`. Preparation validates
-once, builds immutable interaction-only primitives once, and builds one packed
-spatial index. Clearance diagnostics, airwires, trace-length reports, and other
-render overlays remain lazy.
-
-Common `options` are:
-
-- `side`: `top`, `bottom`, or `null`;
-- `tolerance`: a finite number from `0` through `1000000` millimeters;
-- `hiddenLayers`: a bounded plain array of layer ids;
-- `hiddenObjects`: a bounded plain array of object-category ids.
+Creates a reusable exact interaction service. Common defaults are `side`,
+`tolerance`, `hiddenLayers`, and `hiddenObjects`.
 
 ### `index.hitTest(point, options?)`
 
-Returns exact, ordered, clone-safe hit rows after conservative spatial
-broad-phase filtering. `point` is `{ x, y }` in millimeters. Each hit contains
-`elementId`, `primitiveId`, `kind`, `side`, `layerId`, `bounds`, `distance`,
-`componentId`, `componentKey`, `netName`, `groupIds`, and a clone-safe `source`
-summary. Primitive ids do not need to be globally unique; every envelope stays
-bound to its stable source-record ordinal.
+Returns ordered exact hits after spatial broad-phase filtering. Every row uses
+the common fields `elementId`, `primitiveId`, `kind`, `side`, `layerId`,
+`bounds`, `distance`, `componentId`, `componentKey`, `netName`, `groupIds`, and
+`source`.
 
 ### `index.pick(point, options?)`
 
-Returns the first exact hit from `hitTest` or `null`.
+Returns the first exact hit or `null`.
 
 ### `index.selectBounds(bounds, options?)`
 
-Performs area selection for `{ minX, minY, maxX, maxY }`. It returns the
-normalized `bounds`, center `point`, legacy-compatible `candidates`,
-`selectedCandidate`, unique `componentKeys`, and unique `netNames`.
+Returns the normalized selection bounds, center point, candidates, selected
+candidate, component keys, and net names.
 
 ### `index.selectArea(bounds, options?)`
 
-Alias of `selectBounds` for source toolkits that call rectangle selection area
-selection.
+Returns the same normalized selection as `selectBounds`. `selectArea` is the
+shared alias used by source toolkits.
 
 ### `index.selectionAt(point, options?)`
 
-Returns `{ point, candidates, componentCandidate, netCandidate,
-selectedCandidate }`. Candidate ordering is identical to `hitTest`; selected
-state preserves the legacy component-first, then net-first, then first-hit
-policy.
+Returns point selection candidates and stable component-first/net-first
+selection state.
 
 ### `index.snap(point, options?)`
 
-Returns `{ snapped, point }` using the nearest prepared primitive anchor within
-`options.tolerance`. Like the legacy snapping helper, omitted per-call
-tolerance defaults to `0` (exact anchors only).
+Returns `{ snapped, point }` for the nearest prepared anchor inside tolerance.
 
 ### `index.resolveLayers()`
 
-Returns clone-safe `{ physicalLayers, virtualLayers }`. Complete overlay data
-is prepared lazily on the first layer or diagnostic request and then reused.
+Returns clone-safe `{ physicalLayers, virtualLayers }`.
 
 ### `index.resolveDiagnosticFocus(diagnosticId)`
 
-Returns the clone-safe legacy diagnostic focus shape `{ id, point, bounds,
-relatedPrimitiveIds }`, or `null` when the id is unknown.
+Returns `{ id, point, bounds, relatedPrimitiveIds }` or `null`.
 
-### `PcbSpatialIndex.create(records)`
+`PcbSpatialIndex` is also exported from the interaction subpath for bounded,
+immutable spatial record indexing.
 
-Accepts at most 100000 records in a dense plain array. Each record needs a
-trimmed, unique id of at most 1024 UTF-16 code units and ordered finite
-`bounds`. Records are inspected without invoking accessors, snapshotted, and
-deep-frozen. Each hostile source record is inspected exactly once, and the
-resulting snapshot is the sole source for both index bounds and returned data.
-Nested arrays are dense and limited to 100000 values; one construction is
-limited to 1000000 aggregate container/property slots. Shared source metadata
-is snapshotted once and may be reused only as the same deeply frozen value
-across otherwise independent record snapshots. `search(bounds)` and
-`candidates(point, tolerance?)` return those immutable clone-safe snapshots.
-Structural container failures throw `TypeError`. Invalid ids, limits, numeric
-bounds, or tolerances throw `ToolkitError` with
-`ERR_SPATIAL_INDEX_RECORD` or `ERR_SPATIAL_INDEX_QUERY`.
+## Queries
 
-## SPICE Simulation
+Import from the root or `circuitjson-toolkit/query`.
 
-### `SpiceCompatibilityPreprocessor.rewrite(spiceString)`
+### `QueryService.create(document, options?)`
 
-Rewrites narrow, supported SPICE compatibility syntax before simulation. The
-current preprocessor handles resistor `TC=` pairs and boolean caret operators
-inside compatible `VALUE` expression blocks.
+Returns a service bound to reusable element, relation, and connectivity
+indexes.
 
-### `SpiceSimulationService.simulate(spiceString)`
+### `service.query(request, options?)`
 
-Runs a local deterministic transient example and returns:
+`request.select` is `components` or `nets`; `request.where` accepts `field`,
+`pattern`, `match`, `flags`, and `caseSensitive`. The result is
+`{ schema: 'ecad-toolkit.query.v1', items, diagnostics, statistics }`.
 
-- `simulationResultCircuitJson`: CircuitJSON transient voltage/current graph
-  elements.
-- `simulationCircuitJson`: a complete CircuitJSON element set containing the
-  `simulation_experiment` element with `experiment_type:
-'spice_transient_analysis'` followed by its graph elements.
-- `graphSummary`: a deterministic summary of graph ids, names, point counts,
-  time bounds, and min/max values for renderer tests and UI previews.
-- `diagnostics`: non-fatal simulation diagnostics.
+### `service.findComponents(criteria?, options?)`
 
-The service also accepts an injected engine through `new
-SpiceSimulationService({ engine })`. The engine must provide a `simulate`
-method that accepts a preprocessed SPICE netlist string and returns real-valued
-rows with `time`, `voltage`, and `current` data. Returned rows are resampled to
-the `.tran` time grid when transient step and stop parameters are available.
-Probe metadata comments may use `circuitjson_voltage_probe`,
-`simulation_voltage_probe`, `circuitjson_current_probe`, or
-`simulation_current_probe` markers to preserve graph ids, names, source nodes,
-and source trace/component references.
-External `.lib` and `.include` directives, PWL REPEAT source syntax, selected
-PSPICE compatibility patterns, and requested `.PRINT TRAN` vectors that cannot
-be matched to simulator output are reported as warnings for callers that need a
-full simulator path.
-Malformed probe metadata comments are also reported as warnings. Invalid JSON
-uses `spice_probe_metadata_invalid_json`; parsed comments missing required
-string fields use `spice_probe_metadata_invalid_shape`.
+Returns matching common component records.
 
-## Entrypoints
+### `service.findNets(criteria?, options?)`
 
-The root entrypoint exports all utilities:
+Returns matching common net records.
 
-```js
-import {
-    CircuitJsonDocument,
-    CircuitJsonIndexer,
-    CircuitJsonParser,
-    CircuitJsonUnits,
-    SpiceCompatibilityPreprocessor,
-    SpiceSimulationService
-} from 'circuitjson-toolkit'
-```
+### `service.traceConnectivity(request, options?)`
 
-The parser subpath is available for parser-focused hosts:
+Returns ordered connectivity records from canonical source identifiers with
+bounded traversal controls.
 
-```js
-import {
-    CircuitJsonDocument,
-    CircuitJsonParser
-} from 'circuitjson-toolkit/parser'
+### `service.buildNetlist(options?)`
+
+Returns a detached canonical query netlist.
+
+### `service.statistics`
+
+Reports validation, index, and netlist build counts.
+
+## Manufacturing
+
+Import from the root or `circuitjson-toolkit/manufacturing`.
+
+### `ManufacturingService.inspect(document, options?)`
+
+Returns `{ schema, placements, fabricationNotes, exports, diagnostics,
+statistics }`.
+
+### `ManufacturingService.listExports(document, options?)`
+
+Returns availability rows for `fabrication-notes-json`, `pick-place-csv`, and
+`routing-dsn`. An unavailable export remains discoverable with a reason.
+
+### `ManufacturingService.export(document, request, options?)`
+
+Builds a requested available export and returns
+`{ fileName, mediaType, data: Uint8Array, diagnostics }`.
+
+## Simulation
+
+Import from the root or `circuitjson-toolkit/simulation`.
+
+### `SimulationService.build(document, options?)`
+
+Builds the common simulation description and capability status from canonical
+simulation elements.
+
+### `SimulationService.export(document, request, options?)`
+
+Runs an explicitly injected engine or export adapter. No simulator, process,
+filesystem, or network access is implicit. Unsupported analyses remain
+discoverable and fail with `ERR_CAPABILITY_UNAVAILABLE` when invoked.
+
+The previous `SpiceSimulationService` remains in `/extensions`.
+
+## PCB 3D scene data
+
+Import from the root or `circuitjson-toolkit/scene3d`.
+
+### `PcbScene3dBuilder.build(document, options?)`
+
+Synchronously returns a data-only `ecad-toolkit.scene3d.v1` scene in
+millimeters, using a right-handed Z-up coordinate system. It performs no asset
+I/O and has no Three.js dependency.
+
+### `PcbScene3dPreparator.prepare(document, options?)`
+
+Asynchronously builds the same canonical scene and resolves only explicitly
+requested assets through `options.resolveAsset(request, { signal })`.
+Prepared assets are immutable and safe to reuse. `signal` cancels outstanding
+work; resolution and concurrency limits are bounded.
+
+Runtime rendering belongs to `pcb-scene3d-viewer`, not this package.
+
+## Capabilities
+
+Import from the root or `circuitjson-toolkit/capabilities`.
+
+### `ToolkitCapabilities.inventory()`
+
+Returns fresh clone-safe rows in stable id order. Each row has `id`,
+`category`, `operation`, `status`, `entrypoint`, `summary`, `reason`, `tested`,
+and `documented`. See [capabilities.md](capabilities.md) for the full table.
+
+## Extension API
+
+`circuitjson-toolkit/extensions` exports exactly 37 retained noncanonical
+1.0.17 symbols. This includes `CircuitJsonParser`, specialized CircuitJSON renderers,
+manufacturing builders, archive utilities, selected-part export, and the SPICE
+compatibility service. The exact migration mapping is generated from the
+verified feature ledger in [migration.md](migration.md) and its split
+[appendix pages](migration/root.md).
+
+These helpers consume source-neutral CircuitJSON. Their ledger availability is
+therefore `shared` or `derived` for every toolkit, never falsely
+source-unavailable.
+
+`CircuitJsonPcbSvgRenderer.renderSides(model, sides?)` is an extension-only
+migration helper that renders several sides after one legacy primitive build.
+
+## Testing API
+
+`circuitjson-toolkit/testing` exports:
+
+- `ToolkitContractFixtures`: small synthetic, source-format-specific fixtures;
+- `ToolkitLoopbackWorker`: a real structured-clone/transfer loopback worker
+  constructor for cross-toolkit worker parity tests;
+- `runToolkitContract(adapter)`: the packed downstream conformance harness.
+
+A source toolkit adapter supplies its package name, parser, project loader,
+canonical services, capability inventory, and any native source fixture. The
+harness verifies observable parser/project shapes, direct/worker equivalence,
+context reuse, renderers, interaction, query, manufacturing, simulation, 3D
+scene data, errors, and capability identifiers. Optional operations are invoked
+according to their capability row: available statuses must return the
+canonical shape, while `unavailable` must throw
+`ERR_CAPABILITY_UNAVAILABLE`.
+
+## Worker module
+
+`circuitjson-toolkit/workers/parser.worker.mjs` implements
+`ecad-toolkit.worker.v1` for both parser and project operations. Hosts normally
+select it through `worker: true` or `worker: 'auto'`; importing the module
+directly is reserved for custom worker construction.
+
+## Package export map
+
+The complete supported subpath list is:
+
+```text
+circuitjson-toolkit
+circuitjson-toolkit/parser
+circuitjson-toolkit/project
+circuitjson-toolkit/renderers
+circuitjson-toolkit/interaction
+circuitjson-toolkit/query
+circuitjson-toolkit/manufacturing
+circuitjson-toolkit/simulation
+circuitjson-toolkit/scene3d
+circuitjson-toolkit/capabilities
+circuitjson-toolkit/extensions
+circuitjson-toolkit/testing
+circuitjson-toolkit/workers/parser.worker.mjs
+circuitjson-toolkit/styles/renderers.css
 ```

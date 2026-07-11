@@ -14,7 +14,16 @@ export class CircuitJsonPcbHolePrimitiveModel {
     static build(element, center) {
         const shape = CircuitJsonPcbHolePrimitiveModel.#outerShape(element)
         const points = CircuitJsonPcbHolePrimitiveModel.#outerPoints(element)
-        const size = CircuitJsonPcbHolePrimitiveModel.#outerSize(element, shape)
+        const rotation =
+            CircuitJsonPcbHolePrimitiveModel.#outerRotation(element)
+        const holeRotation =
+            CircuitJsonPcbHolePrimitiveModel.#holeRotation(element)
+        const size =
+            CircuitJsonPcbHolePrimitiveModel.#polygonOuterSize(
+                points,
+                center,
+                rotation
+            ) || CircuitJsonPcbHolePrimitiveModel.#outerSize(element, shape)
         const hole = CircuitJsonPcbHolePrimitiveModel.#holeSize(
             element,
             shape,
@@ -37,10 +46,8 @@ export class CircuitJsonPcbHolePrimitiveModel {
             holeDiameter: hole.diameter,
             holeWidth: hole.width,
             holeHeight: hole.height,
-            rotation: CircuitJsonUnits.angle(
-                element.ccw_rotation ?? element.rotation,
-                0
-            ),
+            holeRotation,
+            rotation,
             points,
             bounds
         }
@@ -53,10 +60,10 @@ export class CircuitJsonPcbHolePrimitiveModel {
      */
     static #outerShape(element) {
         const raw = CircuitJsonPcbHolePrimitiveModel.#shapeText(
-            element.shape || element.hole_shape
+            element.pad_shape || element.shape || element.hole_shape
         )
         if (raw.includes('polygon')) return 'polygon'
-        if (raw.includes('rect')) return 'rect'
+        if (raw.includes('rect') || raw.includes('square')) return 'rect'
         if (
             raw.includes('pill') ||
             raw.includes('slot') ||
@@ -73,16 +80,40 @@ export class CircuitJsonPcbHolePrimitiveModel {
      * @returns {{ width: number, height: number }}
      */
     static #outerSize(element, shape) {
+        if (element.type === 'pcb_hole') {
+            const holeDiameter = CircuitJsonUnits.length(
+                element.hole_diameter,
+                0.6
+            )
+            const holeWidth = CircuitJsonUnits.length(
+                element.hole_width,
+                holeDiameter
+            )
+            const holeHeight = CircuitJsonUnits.length(
+                element.hole_height,
+                shape === 'circle' ? holeWidth : holeDiameter
+            )
+            return {
+                width: holeWidth,
+                height: shape === 'circle' ? holeWidth : holeHeight
+            }
+        }
         const diameter = CircuitJsonUnits.length(
             element.diameter ?? element.outer_diameter,
             0.6
         )
         const width = CircuitJsonUnits.length(
-            element.rect_pad_width ?? element.pad_width ?? element.width,
+            element.outer_width ??
+                element.rect_pad_width ??
+                element.pad_width ??
+                element.width,
             diameter
         )
         const height = CircuitJsonUnits.length(
-            element.rect_pad_height ?? element.pad_height ?? element.height,
+            element.outer_height ??
+                element.rect_pad_height ??
+                element.pad_height ??
+                element.height,
             shape === 'circle' ? width : diameter
         )
 
@@ -101,6 +132,41 @@ export class CircuitJsonPcbHolePrimitiveModel {
         return (Array.isArray(element?.pad_outline) ? element.pad_outline : [])
             .map((point) => CircuitJsonUnits.optionalPoint(point))
             .filter(Boolean)
+    }
+
+    /**
+     * Resolves polygon extents in the pad's rotation-local coordinate system.
+     * @param {{ x: number, y: number }[]} points Polygon points.
+     * @param {{ x: number, y: number }} center Pad center.
+     * @param {number} rotation Rotation in degrees.
+     * @returns {{ width: number, height: number } | null} Local polygon size.
+     */
+    static #polygonOuterSize(points, center, rotation) {
+        if (points.length < 3) return null
+        const centerX = Number(center?.x)
+        const centerY = Number(center?.y)
+        if (!Number.isFinite(centerX) || !Number.isFinite(centerY)) return null
+
+        const angle = (-Number(rotation || 0) * Math.PI) / 180
+        const cosine = Math.cos(angle)
+        const sine = Math.sin(angle)
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const point of points) {
+            const deltaX = point.x - centerX
+            const deltaY = point.y - centerY
+            const x = deltaX * cosine - deltaY * sine
+            const y = deltaX * sine + deltaY * cosine
+            minX = Math.min(minX, x)
+            minY = Math.min(minY, y)
+            maxX = Math.max(maxX, x)
+            maxY = Math.max(maxY, y)
+        }
+        const width = maxX - minX
+        const height = maxY - minY
+        return width > 0 && height > 0 ? { width, height } : null
     }
 
     /**
@@ -148,7 +214,11 @@ export class CircuitJsonPcbHolePrimitiveModel {
             element.hole_shape || element.shape
         )
         if (raw === 'round') return 'circle'
-        if (raw.includes('rect') && !raw.includes('rect_pad')) return 'rect'
+        if (
+            raw.includes('square') ||
+            (raw.includes('rect') && !raw.includes('rect_pad'))
+        )
+            return 'rect'
         if (
             raw.includes('pill') ||
             raw.includes('slot') ||
@@ -157,6 +227,34 @@ export class CircuitJsonPcbHolePrimitiveModel {
             return 'pill'
         if (raw.includes('circular') || raw.includes('circle')) return 'circle'
         return element.type === 'pcb_hole' ? outerShape : 'circle'
+    }
+
+    /**
+     * Resolves the board-space outer pad rotation independently from its drill.
+     * @param {object} element Drilled PCB element.
+     * @returns {number}
+     */
+    static #outerRotation(element) {
+        return CircuitJsonUnits.angle(
+            element.rect_ccw_rotation ??
+                element.ccw_rotation ??
+                element.rotation,
+            0
+        )
+    }
+
+    /**
+     * Resolves the board-space drill rotation independently from its outer pad.
+     * @param {object} element Drilled PCB element.
+     * @returns {number}
+     */
+    static #holeRotation(element) {
+        return CircuitJsonUnits.angle(
+            element.hole_ccw_rotation ??
+                element.ccw_rotation ??
+                element.rotation,
+            0
+        )
     }
 
     /**

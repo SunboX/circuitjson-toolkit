@@ -325,12 +325,13 @@ export class CircuitJsonPcbZonePrimitiveBuilder {
      * @returns {object[]}
      */
     static #brepShapes(element) {
-        return [
-            ...(Array.isArray(element?.brep_shapes) ? element.brep_shapes : []),
-            ...(Array.isArray(element?.brepShapes) ? element.brepShapes : []),
-            element?.brep_shape,
-            element?.brepShape
-        ].filter(Boolean)
+        if (Array.isArray(element?.brep_shapes) && element.brep_shapes.length) {
+            return element.brep_shapes
+        }
+        if (Array.isArray(element?.brepShapes) && element.brepShapes.length) {
+            return element.brepShapes
+        }
+        return [element?.brep_shape, element?.brepShape].filter(Boolean)
     }
 
     /**

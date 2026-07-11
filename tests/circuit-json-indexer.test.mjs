@@ -47,31 +47,35 @@ test('CircuitJsonIndexer groups PCB elements by type and id', () => {
 test('CircuitJsonIndexer indexes courtyard artwork variant ids', () => {
     const model = [
         {
-            type: 'pcb_courtyard_path',
-            pcb_courtyard_path_id: 'courtyard_path_1',
-            route: [
+            type: 'pcb_courtyard_outline',
+            pcb_courtyard_outline_id: 'courtyard_path_1',
+            pcb_component_id: 'pcb_1',
+            outline: [
                 { x: 0, y: 0 },
                 { x: 1, y: 0 }
             ],
-            layer: 'top_courtyard'
+            layer: 'top'
         },
         {
-            type: 'pcb_courtyard_line',
-            pcb_courtyard_line_id: 'courtyard_line_1',
-            start: { x: 2, y: 0 },
-            end: { x: 3, y: 0 },
-            layer: 'top_courtyard'
+            type: 'pcb_courtyard_outline',
+            pcb_courtyard_outline_id: 'courtyard_line_1',
+            pcb_component_id: 'pcb_1',
+            outline: [
+                { x: 2, y: 0 },
+                { x: 3, y: 0 }
+            ],
+            layer: 'top'
         }
     ]
 
     const index = CircuitJsonIndexer.index(model)
 
     assert.equal(
-        index.elementsById.get('pcb_courtyard_path:courtyard_path_1'),
+        index.elementsById.get('pcb_courtyard_outline:courtyard_path_1'),
         model[0]
     )
     assert.equal(
-        index.elementsById.get('pcb_courtyard_line:courtyard_line_1'),
+        index.elementsById.get('pcb_courtyard_outline:courtyard_line_1'),
         model[1]
     )
 })
@@ -113,6 +117,7 @@ test('CircuitJsonIndexer exposes relationships and diagnostics', () => {
             source_pin_missing_trace_warning_id: 'warning_1',
             warning_type: 'source_pin_missing_trace_warning',
             message: 'Pin is not connected',
+            source_component_id: 'source_u1',
             source_port_id: 'source_u1_port_1'
         }
     ]
@@ -122,7 +127,7 @@ test('CircuitJsonIndexer exposes relationships and diagnostics', () => {
     assert.equal(
         index.relationsByField.get('source_component_id').get('source_u1')
             .length,
-        3
+        4
     )
     assert.deepEqual(index.componentsBySourceId.get('source_u1'), {
         sourceComponent: model[0],
@@ -138,6 +143,7 @@ test('CircuitJsonIndexer exposes relationships and diagnostics', () => {
             category: 'connectivity',
             message: 'Pin is not connected',
             elementId: 'warning_1',
+            sourceComponentId: 'source_u1',
             sourcePortId: 'source_u1_port_1'
         }
     ])
@@ -148,7 +154,8 @@ test('CircuitJsonIndexer exposes source trace connectivity and reference diagnos
         {
             type: 'source_net',
             source_net_id: 'source_net_sig',
-            name: 'SIG'
+            name: 'SIG',
+            member_source_group_ids: []
         },
         {
             type: 'source_port',
@@ -167,8 +174,8 @@ test('CircuitJsonIndexer exposes source trace connectivity and reference diagnos
             pcb_trace_id: 'pcb_trace_sig',
             source_trace_id: 'source_trace_sig',
             route: [
-                { route_type: 'wire', x: 0, y: 0, layer: 'top' },
-                { route_type: 'wire', x: 1, y: 0, layer: 'top' }
+                { route_type: 'wire', x: 0, y: 0, width: 0.2, layer: 'top' },
+                { route_type: 'wire', x: 1, y: 0, width: 0.2, layer: 'top' }
             ]
         },
         {
@@ -176,8 +183,8 @@ test('CircuitJsonIndexer exposes source trace connectivity and reference diagnos
             pcb_trace_id: 'pcb_trace_orphan',
             source_trace_id: 'source_trace_missing',
             route: [
-                { route_type: 'wire', x: 0, y: 1, layer: 'top' },
-                { route_type: 'wire', x: 1, y: 1, layer: 'top' }
+                { route_type: 'wire', x: 0, y: 1, width: 0.2, layer: 'top' },
+                { route_type: 'wire', x: 1, y: 1, width: 0.2, layer: 'top' }
             ]
         }
     ]
@@ -263,8 +270,10 @@ test('CircuitJsonIndexer generates schematic relationship diagnostics', () => {
             schematic_line_id: 'line_1',
             schematic_symbol_id: 'symbol_missing_line',
             schematic_component_id: 'schematic_missing_line',
-            start: { x: 0, y: 0 },
-            end: { x: 1, y: 0 }
+            x1: 0,
+            y1: 0,
+            x2: 1,
+            y2: 0
         }
     ]
 
@@ -347,13 +356,19 @@ test('CircuitJsonIndexer categorizes diagnostics by subsystem', () => {
             type: 'pcb_pad_trace_clearance_error',
             pcb_pad_trace_clearance_error_id: 'clearance_1',
             error_type: 'pcb_pad_trace_clearance_error',
-            message: 'Copper spacing failed'
+            message: 'Copper spacing failed',
+            pcb_pad_id: 'pad_1',
+            pcb_trace_id: 'trace_1'
         },
         {
             type: 'pcb_component_outside_board_error',
             pcb_component_outside_board_error_id: 'placement_1',
             error_type: 'pcb_component_outside_board_error',
-            message: 'Component is outside the board'
+            message: 'Component is outside the board',
+            pcb_board_id: 'board_1',
+            pcb_component_id: 'pcb_1',
+            component_center: { x: 0, y: 0 },
+            component_bounds: { min_x: -1, min_y: -1, max_x: 1, max_y: 1 }
         },
         {
             type: 'simulation_unknown_experiment_error',
@@ -365,13 +380,17 @@ test('CircuitJsonIndexer categorizes diagnostics by subsystem', () => {
             type: 'source_no_power_pin_defined_warning',
             source_no_power_pin_defined_warning_id: 'pin_1',
             warning_type: 'source_no_power_pin_defined_warning',
-            message: 'Power pin role is missing'
+            message: 'Power pin role is missing',
+            source_component_id: 'source_1',
+            source_port_ids: []
         },
         {
             type: 'source_missing_manufacturer_part_number_warning',
             source_missing_manufacturer_part_number_warning_id: 'metadata_1',
             warning_type: 'source_missing_manufacturer_part_number_warning',
-            message: 'Manufacturer part number is missing'
+            message: 'Manufacturer part number is missing',
+            source_component_id: 'source_1',
+            standard: 'generic'
         },
         {
             type: 'pcb_autorouting_error',
@@ -404,12 +423,20 @@ test('CircuitJsonIndexer exposes group and subcircuit memberships', () => {
         {
             type: 'pcb_group',
             pcb_group_id: 'pcb_group_regulator',
-            name: 'Regulator'
+            source_group_id: 'source_group_power',
+            name: 'Regulator',
+            center: { x: 0, y: 0 },
+            pcb_component_ids: []
         },
         {
             type: 'schematic_group',
             schematic_group_id: 'schematic_group_regulator',
-            name: 'Regulator schematic'
+            source_group_id: 'source_group_power',
+            name: 'Regulator schematic',
+            center: { x: 0, y: 0 },
+            width: 1,
+            height: 1,
+            schematic_component_ids: []
         },
         {
             type: 'source_component',
@@ -432,7 +459,10 @@ test('CircuitJsonIndexer exposes group and subcircuit memberships', () => {
             pcb_group_id: 'pcb_group_regulator',
             subcircuit_id: 'subcircuit_regulator',
             center: { x: 0, y: 0 },
-            layer: 'top'
+            layer: 'top',
+            rotation: 0,
+            width: 1,
+            height: 1
         },
         {
             type: 'schematic_component',

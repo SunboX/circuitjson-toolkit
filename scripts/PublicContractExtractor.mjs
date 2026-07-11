@@ -22,6 +22,7 @@ export class PublicContractExtractor {
             ([left], [right]) => left.localeCompare(right)
         )) {
             const target = PublicContractExtractor.#exportTarget(definition)
+            if (!PublicContractExtractor.#isJavaScriptTarget(target)) continue
             const api = await import(new URL(target, root))
             for (const exportName of Object.keys(api).sort()) {
                 contracts.push(
@@ -64,6 +65,15 @@ export class PublicContractExtractor {
             throw new Error('Package export does not define an import target.')
         }
         return target
+    }
+
+    /**
+     * Returns whether a package target is an importable JavaScript module.
+     * @param {string} target Package export target.
+     * @returns {boolean} Whether source contracts can be reflected from it.
+     */
+    static #isJavaScriptTarget(target) {
+        return /\.(?:c|m)?js$/u.test(target)
     }
 
     /**

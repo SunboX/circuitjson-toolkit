@@ -1,7 +1,7 @@
 {
     "name": "circuitjson-toolkit",
-    "version": "1.0.17",
-    "description": "Dependency-free CircuitJSON parsing, validation, indexing, and utility helpers",
+    "version": "1.1.0",
+    "description": "Canonical CircuitJSON parsing, project, rendering, query, manufacturing, simulation, and scene contracts",
     "keywords": [
         "circuitjson",
         "circuit-json",
@@ -30,12 +30,27 @@
         ".": "./src/index.mjs",
         "./parser": "./src/parser.mjs",
         "./project": "./src/project.mjs",
-        "./renderers": "./src/renderers.mjs"
+        "./renderers": "./src/renderers.mjs",
+        "./interaction": "./src/interaction.mjs",
+        "./query": "./src/query.mjs",
+        "./manufacturing": "./src/manufacturing.mjs",
+        "./simulation": "./src/simulation.mjs",
+        "./scene3d": "./src/scene3d.mjs",
+        "./capabilities": "./src/capabilities.mjs",
+        "./extensions": "./src/extensions.mjs",
+        "./testing": "./src/testing.mjs",
+        "./workers/parser.worker.mjs": "./src/workers/parser.worker.mjs",
+        "./styles/renderers.css": "./src/styles/renderers.css"
     },
     "files": [
         "src",
         "docs/api.md",
+        "docs/capabilities.md",
+        "docs/migration.md",
+        "docs/migration",
         "docs/model-format.md",
+        "docs/provenance.md",
+        "docs/release-notes-v1.1.0.md",
         "docs/testing.md",
         "spec",
         "LICENSE",
@@ -52,13 +67,18 @@
         "format": "prettier --write .",
         "check:format": "prettier --check .",
         "sync:schema": "node scripts/sync-circuit-json-schema.mjs",
+        "sync:migration": "node scripts/generate-migration-doc.mjs",
         "capture:api": "node scripts/capture-api-baseline.mjs",
         "check:features": "node scripts/check-feature-preservation.mjs",
-        "benchmark": "node --expose-gc scripts/run-benchmarks.mjs"
+        "check:packed-entrypoints": "node scripts/check-packed-entrypoints.mjs",
+        "check:browser-dependencies": "node scripts/check-browser-dependency-graph.mjs",
+        "benchmark": "node --expose-gc scripts/run-benchmarks.mjs --compare benchmarks/baseline-v1.0.17.json"
     },
     "devDependencies": {
         "circuit-json": "0.0.446",
-        "prettier": "^3.4.2"
+        "format-si-unit": "0.0.7",
+        "prettier": "^3.4.2",
+        "zod": "3.25.76"
     },
     "engines": {
         "node": ">=20"

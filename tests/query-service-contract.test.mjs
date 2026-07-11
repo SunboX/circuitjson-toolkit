@@ -63,17 +63,20 @@ function createConnectedDocument() {
         {
             type: 'source_net',
             source_net_id: 'source_net_aux',
-            name: 'AUX'
+            name: 'AUX',
+            member_source_group_ids: []
         },
         {
             type: 'source_net',
             source_net_id: 'source_net_sig',
-            name: 'SIG'
+            name: 'SIG',
+            member_source_group_ids: []
         },
         {
             type: 'source_net',
             source_net_id: 'source_net_gnd',
-            name: 'GND'
+            name: 'GND',
+            member_source_group_ids: []
         },
         {
             type: 'source_trace',

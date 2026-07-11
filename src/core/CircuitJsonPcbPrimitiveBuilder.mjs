@@ -147,12 +147,72 @@ export class CircuitJsonPcbPrimitiveBuilder {
      * @returns {object[]}
      */
     static elements(documentModel) {
-        if (Array.isArray(documentModel)) return documentModel
-        if (Array.isArray(documentModel?.elements))
-            return documentModel.elements
-        if (Array.isArray(documentModel?.circuitJson))
-            return documentModel.circuitJson
+        if (Array.isArray(documentModel)) {
+            return CircuitJsonPcbPrimitiveBuilder.#elementSlots(documentModel)
+        }
+        if (!documentModel || typeof documentModel !== 'object') return []
+        let descriptors
+        try {
+            descriptors = Object.getOwnPropertyDescriptors(documentModel)
+        } catch {
+            return []
+        }
+        for (const field of ['elements', 'circuitJson']) {
+            const descriptor = descriptors[field]
+            if (
+                descriptor &&
+                Object.hasOwn(descriptor, 'value') &&
+                Array.isArray(descriptor.value)
+            ) {
+                return CircuitJsonPcbPrimitiveBuilder.#elementSlots(
+                    descriptor.value
+                )
+            }
+        }
         return []
+    }
+
+    /**
+     * Returns an exact dense element array, dropping only legacy root metadata.
+     * @param {object[]} model Element-array or legacy hybrid-array candidate.
+     * @returns {object[]} Original exact array or intrinsic dense slot copy.
+     */
+    static #elementSlots(model) {
+        let prototype
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(model)
+            descriptors = Object.getOwnPropertyDescriptors(model)
+        } catch {
+            return model
+        }
+        const lengthDescriptor = descriptors.length
+        const length =
+            lengthDescriptor && Object.hasOwn(lengthDescriptor, 'value')
+                ? lengthDescriptor.value
+                : null
+        if (
+            prototype !== Array.prototype ||
+            !Number.isSafeInteger(length) ||
+            length < 0
+        ) {
+            return model
+        }
+        const slots = new Array(length)
+        for (let index = 0; index < length; index += 1) {
+            const descriptor = descriptors[String(index)]
+            if (
+                !descriptor ||
+                !Object.hasOwn(descriptor, 'value') ||
+                descriptor.enumerable !== true
+            ) {
+                return model
+            }
+            slots[index] = descriptor.value
+        }
+        return Reflect.ownKeys(descriptors).length === length + 1
+            ? model
+            : slots
     }
 
     /**
@@ -719,7 +779,10 @@ export class CircuitJsonPcbPrimitiveBuilder {
                         element.isKnockout === true,
                     rotation: CircuitJsonUnits.angle(element.ccw_rotation, 0),
                     bounds,
-                    layer: CircuitJsonPcbPrimitiveFields.layer(element.layer),
+                    layer: CircuitJsonPcbPrimitiveBuilder.#detailLayer(
+                        element,
+                        CircuitJsonPcbPrimitiveBuilder.#textKind(element)
+                    ),
                     component,
                     netName: CircuitJsonPcbPrimitiveFields.netName(
                         element,
@@ -856,13 +919,27 @@ export class CircuitJsonPcbPrimitiveBuilder {
      * @returns {string}
      */
     static #lineLayer(element) {
-        if (element.layer) {
+        return CircuitJsonPcbPrimitiveBuilder.#detailLayer(
+            element,
+            CircuitJsonPcbPrimitiveBuilder.#lineKind(element)
+        )
+    }
+
+    /**
+     * Resolves a standards-side layer into its drawing-specific virtual layer.
+     * @param {object} element Source drawing element.
+     * @param {string} kind Primitive kind.
+     * @returns {string}
+     */
+    static #detailLayer(element, kind) {
+        if (kind === 'copper-text') {
             return CircuitJsonPcbPrimitiveFields.layer(element.layer)
         }
-        return CircuitJsonPcbPrimitiveBuilder.#lineKind(element) ===
-            'fabrication'
-            ? 'top_fabrication'
-            : 'top_silkscreen'
+        const side =
+            CircuitJsonPcbPrimitiveFields.side(
+                CircuitJsonPcbPrimitiveFields.layer(element.layer)
+            ) || 'top'
+        return side + (kind === 'fabrication' ? '_fabrication' : '_silkscreen')
     }
 
     /**

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { CircuitJsonDocument } from '../src/index.mjs'
 import {
-    CircuitJsonDocument,
     SpiceCompatibilityPreprocessor,
     SpiceSimulationService
-} from '../src/index.mjs'
+} from '../src/extensions.mjs'
 
 test('SpiceCompatibilityPreprocessor rewrites supported compatibility syntax', () => {
     const source = [

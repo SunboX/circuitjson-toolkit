@@ -1,15 +1,9 @@
-import { CircuitJsonElementValidator } from '../CircuitJsonElementValidator.mjs'
-import { CircuitJsonModelFreezeTraversal } from './CircuitJsonModelFreezeTraversal.mjs'
 import { CircuitJsonReadOnlyDocument } from './CircuitJsonReadOnlyDocument.mjs'
+import { CircuitJsonValidationAuthority } from './CircuitJsonValidationAuthority.mjs'
 
 const VALIDATION_PROOF = Symbol('CircuitJsonValidationProof')
 const VALIDATED_INDEX_ACCESS = Symbol('CircuitJsonValidatedIndexAccess')
 const VALIDATION_TOKEN_SECRET = Object.freeze({})
-/** Immutable reference to the schema element validator loaded with this module. */
-const validateCircuitJsonElement =
-    CircuitJsonElementValidator.validateElement.bind(
-        CircuitJsonElementValidator
-    )
 
 /**
  * Holds an unforgeable runtime binding to one validated model.
@@ -64,7 +58,8 @@ export class CircuitJsonValidationProof {
     static validateAndAttach(document) {
         const model = CircuitJsonValidationProof.#requireModelData(document)
         if (!CircuitJsonValidationProof.#matches(document, model)) {
-            const errors = CircuitJsonValidationProof.#validateAndFreeze(model)
+            const errors =
+                CircuitJsonValidationAuthority.validateAndFreeze(model)
             if (errors.length) throw new TypeError(errors[0])
             if (
                 CircuitJsonValidationProof.#requireModelData(document) !== model
@@ -83,7 +78,10 @@ export class CircuitJsonValidationProof {
                 writable: false
             })
         }
-        const readonlyDocument = CircuitJsonReadOnlyDocument.freeze(document)
+        const readonlyDocument = CircuitJsonReadOnlyDocument.freezeValidated(
+            document,
+            model
+        )
         if (
             CircuitJsonValidationProof.#requireModelData(readonlyDocument) !==
                 model ||
@@ -212,25 +210,6 @@ export class CircuitJsonValidationProof {
             )
         }
         return descriptor.value
-    }
-
-    /**
-     * Validates and freezes one model through immutable internal references.
-     * @param {unknown} model CircuitJSON model candidate.
-     * @returns {string[]} Validation errors.
-     */
-    static #validateAndFreeze(model) {
-        if (!Array.isArray(model)) {
-            return ['Expected a CircuitJSON element array.']
-        }
-        const traversal = new CircuitJsonModelFreezeTraversal(model, true)
-        const errors = model.flatMap((element, index) => {
-            traversal.visit(element)
-            return validateCircuitJsonElement(element, index)
-        })
-        errors.push(...traversal.errors())
-        traversal.commit(errors.length === 0)
-        return errors
     }
 }
 

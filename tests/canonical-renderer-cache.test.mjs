@@ -290,7 +290,7 @@ test('direct source-port labels never inspect unused hint fallbacks', () => {
             source_port_id: 'source_port_lazy_hints',
             source_component_id: 'source_component_lazy_hints',
             name: 'CLK',
-            port_hints: [Object.create(null)]
+            port_hints: ['FALLBACK']
         },
         {
             type: 'schematic_port',

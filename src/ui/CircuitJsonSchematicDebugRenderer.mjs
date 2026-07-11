@@ -11,7 +11,10 @@ export class CircuitJsonSchematicDebugRenderer {
      * @returns {string} Debug SVG group.
      */
     static render(element) {
-        if (element.shape === undefined) {
+        if (
+            element.shape === undefined ||
+            element.legacy_shape_omitted === true
+        ) {
             return CircuitJsonSchematicDebugRenderer.#legacyRect(element)
         }
         const shape = String(element.shape || 'rect')

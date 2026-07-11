@@ -1,5 +1,7 @@
 import { BinaryDataSnapshot } from './BinaryDataSnapshot.mjs'
 import { CircuitJsonMetadataBoundary } from './CircuitJsonMetadataBoundary.mjs'
+import { CircuitJsonValidationAuthority } from './CircuitJsonValidationAuthority.mjs'
+import { ProtectedExtensionBinaryBoundary } from './ProtectedExtensionBinaryBoundary.mjs'
 import { StructuredDataSnapshot } from './StructuredDataSnapshot.mjs'
 
 const PROTECTED_ASSET_BYTES = new WeakMap()
@@ -8,6 +10,12 @@ const SEALED_ASSETS = new WeakSet()
 const ASSET_PAYLOAD_LENGTHS = new WeakMap()
 const OWNED_METADATA_ROOTS = new WeakSet()
 const METADATA_BUDGETS = new WeakMap()
+const EXTENSION_METADATA_LIMITS = Object.freeze({
+    label: 'Canonical extension data',
+    maxBytes: 128 * 1024 * 1024,
+    maxItems: 2_000_000,
+    preserveBinary: true
+})
 const ASSET_SCALAR_FIELDS = new Set([
     'id',
     'kind',
@@ -26,16 +34,74 @@ export class CircuitJsonReadOnlyDocument {
      * @returns {Record<string, any>} The same read-only envelope.
      */
     static freeze(document) {
+        return CircuitJsonReadOnlyDocument.#freezeDocument(document, new Set())
+    }
+
+    /**
+     * Seals an envelope whose exact model was already deeply frozen by validation.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @param {object[]} model Exact deeply frozen model owned by the proof.
+     * @returns {Record<string, any>} The same read-only envelope.
+     */
+    static freezeValidated(document, model) {
+        if (!CircuitJsonValidationAuthority.permitsSeal(model)) {
+            throw new TypeError(
+                'Validated document sealing requires an unforgeable validation proof.'
+            )
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(document, 'model')
+        if (
+            !descriptor ||
+            !Object.hasOwn(descriptor, 'value') ||
+            descriptor.value !== model ||
+            !Array.isArray(model) ||
+            !Object.isFrozen(model)
+        ) {
+            throw new TypeError(
+                'Validated document sealing requires its exact frozen model.'
+            )
+        }
+        const frozenRoots = new Set([model])
+        const sourceReference = Object.getOwnPropertyDescriptor(
+            document,
+            'sourceReference'
+        )
+        if (
+            sourceReference &&
+            Object.hasOwn(sourceReference, 'value') &&
+            sourceReference.value &&
+            typeof sourceReference.value === 'object'
+        ) {
+            frozenRoots.add(sourceReference.value)
+        }
+        return CircuitJsonReadOnlyDocument.#freezeDocument(
+            document,
+            frozenRoots
+        )
+    }
+
+    /**
+     * Captures owned boundaries and freezes an envelope with known frozen roots.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @param {Set<object>} frozenRoots Deeply frozen roots that need no revisit.
+     * @returns {Record<string, any>} The same read-only envelope.
+     */
+    static #freezeDocument(document, frozenRoots) {
         const assets = CircuitJsonReadOnlyDocument.#documentAssets(document)
         const metadataState = StructuredDataSnapshot.createState()
         CircuitJsonReadOnlyDocument.#captureAssetData(assets, metadataState)
+        const extensions =
+            CircuitJsonReadOnlyDocument.#captureDocumentExtensions(document)
+        if (extensions && typeof extensions === 'object') {
+            frozenRoots.add(extensions)
+        }
         CircuitJsonMetadataBoundary.normalize(document, assets, (value) =>
             CircuitJsonReadOnlyDocument.#captureMetadataRoot(
                 value,
                 metadataState
             )
         )
-        CircuitJsonReadOnlyDocument.#freezeValue(document, new Set())
+        CircuitJsonReadOnlyDocument.#freezeValue(document, frozenRoots)
         return document
     }
 
@@ -105,9 +171,10 @@ export class CircuitJsonReadOnlyDocument {
     /**
      * Creates a deeply frozen plain-data snapshot of clone-safe metadata.
      * @param {unknown} value Metadata candidate.
+     * @param {object | null} [metadataBudget] Shared metadata budget token.
      * @returns {unknown} Deeply immutable owned metadata.
      */
-    static copyReadonlyMetadataValue(value) {
+    static copyReadonlyMetadataValue(value, metadataBudget = null) {
         if (
             value &&
             typeof value === 'object' &&
@@ -116,12 +183,51 @@ export class CircuitJsonReadOnlyDocument {
         ) {
             return value
         }
-        const snapshot = CircuitJsonReadOnlyDocument.copyMetadataValue(value)
+        const snapshot = StructuredDataSnapshot.capture(
+            value,
+            CircuitJsonReadOnlyDocument.#metadataState(metadataBudget)
+        )
         CircuitJsonReadOnlyDocument.#freezeValue(snapshot, new Set())
         if (snapshot && typeof snapshot === 'object') {
             OWNED_METADATA_ROOTS.add(snapshot)
         }
         return snapshot
+    }
+
+    /**
+     * Creates one deeply frozen source-extension snapshot under its separate
+     * transfer-sized item and byte ceilings.
+     * @param {unknown} value Extension candidate.
+     * @param {((snapshot: unknown) => unknown) | null} [normalize] Optional normalization over the owned mutable snapshot.
+     * @returns {unknown} Deeply immutable owned extension metadata.
+     */
+    static copyReadonlyExtensionValue(value, normalize = null) {
+        if (
+            value &&
+            typeof value === 'object' &&
+            OWNED_METADATA_ROOTS.has(value) &&
+            Object.isFrozen(value) &&
+            normalize === null
+        ) {
+            return value
+        }
+        if (normalize !== null && typeof normalize !== 'function') {
+            throw new TypeError('Extension normalizer must be a function.')
+        }
+        const snapshot = StructuredDataSnapshot.capture(
+            value,
+            StructuredDataSnapshot.createState(EXTENSION_METADATA_LIMITS)
+        )
+        ProtectedExtensionBinaryBoundary.protect(snapshot)
+        const normalized = normalize ? normalize(snapshot) : snapshot
+        if (normalized !== snapshot) {
+            ProtectedExtensionBinaryBoundary.protect(normalized)
+        }
+        CircuitJsonReadOnlyDocument.#freezeValue(normalized, new Set())
+        if (normalized && typeof normalized === 'object') {
+            OWNED_METADATA_ROOTS.add(normalized)
+        }
+        return normalized
     }
 
     /**
@@ -218,6 +324,38 @@ export class CircuitJsonReadOnlyDocument {
     }
 
     /**
+     * Captures an unowned worker or caller extension root with extension-sized
+     * bounds before the generic source metadata pass begins.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @returns {unknown} Owned extension root or undefined.
+     */
+    static #captureDocumentExtensions(document) {
+        let descriptor
+        try {
+            descriptor = Object.getOwnPropertyDescriptor(document, 'extensions')
+        } catch {
+            throw new TypeError(
+                'Canonical document extensions could not be inspected safely.'
+            )
+        }
+        if (!descriptor) return undefined
+        if (!Object.hasOwn(descriptor, 'value')) {
+            throw new TypeError(
+                'Canonical document extensions must be an own data property.'
+            )
+        }
+        const captured = CircuitJsonReadOnlyDocument.copyReadonlyExtensionValue(
+            descriptor.value
+        )
+        if (captured === descriptor.value) return captured
+        Object.defineProperty(document, 'extensions', {
+            ...descriptor,
+            value: captured
+        })
+        return captured
+    }
+
+    /**
      * Captures one asset with a single caller-owned descriptor traversal.
      * @param {unknown} asset Canonical asset candidate.
      * @param {{ seen: Map<object, unknown>, items: number }} metadataState Shared metadata state.
@@ -231,7 +369,14 @@ export class CircuitJsonReadOnlyDocument {
         rejectFrozenBytes = false,
         acceptPayload = null
     ) {
-        if (SEALED_ASSETS.has(asset)) return asset
+        if (SEALED_ASSETS.has(asset)) {
+            CircuitJsonReadOnlyDocument.#accountSealedAsset(
+                asset,
+                metadataState,
+                acceptPayload
+            )
+            return asset
+        }
         if (!asset || typeof asset !== 'object' || Array.isArray(asset)) {
             throw new TypeError('Canonical asset must be a plain object.')
         }
@@ -367,7 +512,43 @@ export class CircuitJsonReadOnlyDocument {
         }
         SEALED_ASSETS.add(result)
         ASSET_PAYLOAD_LENGTHS.set(result, payloadLength)
+        metadataState.seen.set(result, result)
         return result
+    }
+
+    /**
+     * Accounts one pre-owned asset in a new request without cloning metadata.
+     * @param {Record<string, any>} asset Owned sealed asset.
+     * @param {{ seen: Map<object, unknown>, accounted: Set<object>, items: number }} metadataState Shared metadata state.
+     * @param {Function | null} acceptPayload Optional payload-limit callback.
+     * @returns {void}
+     */
+    static #accountSealedAsset(asset, metadataState, acceptPayload) {
+        if (acceptPayload !== null && typeof acceptPayload !== 'function') {
+            throw new TypeError('Asset payload check must be a function.')
+        }
+        if (metadataState.seen.get(asset) !== asset) {
+            const source = Object.getOwnPropertyDescriptor(asset, 'source')
+            if (source && !Object.hasOwn(source, 'value')) {
+                throw new TypeError(
+                    'Canonical asset source must be an own data property.'
+                )
+            }
+            StructuredDataSnapshot.account(
+                source ? source.value : null,
+                metadataState
+            )
+            metadataState.seen.set(asset, asset)
+        }
+        if (!acceptPayload) return
+        const identity = { id: undefined, name: undefined }
+        for (const field of ['id', 'name']) {
+            const descriptor = Object.getOwnPropertyDescriptor(asset, field)
+            if (descriptor && Object.hasOwn(descriptor, 'value')) {
+                identity[field] = descriptor.value
+            }
+        }
+        acceptPayload(ASSET_PAYLOAD_LENGTHS.get(asset), identity)
     }
 
     /**
@@ -685,7 +866,9 @@ export class CircuitJsonReadOnlyDocument {
                 if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
                     const protectedData =
                         key === 'data' && PROTECTED_ASSET_BYTES.has(current)
-                    if (protectedData) continue
+                    const protectedExtensionBinary =
+                        ProtectedExtensionBinaryBoundary.isProtected(descriptor)
+                    if (protectedData || protectedExtensionBinary) continue
                     throw new TypeError(
                         'Canonical document may contain only data properties.'
                     )
@@ -707,7 +890,6 @@ export class CircuitJsonReadOnlyDocument {
     static #container(value) {
         if (!value || typeof value !== 'object') return false
         try {
-            if (BinaryDataSnapshot.byteLength(value) !== null) return false
             if (Array.isArray(value)) {
                 if (Object.getPrototypeOf(value) !== Array.prototype) {
                     throw new TypeError(
@@ -717,7 +899,15 @@ export class CircuitJsonReadOnlyDocument {
                 return true
             }
             const prototype = Object.getPrototypeOf(value)
-            return prototype === Object.prototype || prototype === null
+            if (prototype === Object.prototype || prototype === null) {
+                return true
+            }
+
+            // Binary values and other platform objects are deliberately not
+            // frozen here. Their payload-specific protection happens before
+            // this traversal; canonical arrays and records are the only
+            // containers whose children need recursive sealing.
+            return false
         } catch {
             throw new TypeError(
                 'Canonical document values could not be inspected safely.'

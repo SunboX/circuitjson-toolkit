@@ -5,7 +5,7 @@ import {
     CircuitJsonBomBuilder,
     CircuitJsonManufacturingBuilder,
     CircuitJsonSupportMatrixBuilder
-} from '../src/index.mjs'
+} from '../src/extensions.mjs'
 import {
     CircuitJsonPcbClearanceDiagnostics,
     CircuitJsonPcbCopperGeometry,
@@ -28,9 +28,9 @@ import {
     PcbBoundsSelectionModel,
     PcbCandidateSelectionModel,
     SelectedPartCircuitJsonExportAdapter
-} from '../src/renderers.mjs'
+} from '../src/extensions.mjs'
 
-test('legacy low-level public contracts remain importable callables', () => {
+test('legacy extension contracts remain importable callables', () => {
     const publicContracts = [
         CircuitJsonBomBuilder,
         CircuitJsonManufacturingBuilder,

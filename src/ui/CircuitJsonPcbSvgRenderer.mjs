@@ -22,6 +22,23 @@ export class CircuitJsonPcbSvgRenderer {
     }
 
     /**
+     * Renders multiple board sides from one prepared primitive model.
+     * @param {object | object[]} documentModel Parsed document model.
+     * @param {unknown[]} [sides] Requested board sides.
+     * @returns {string[]} SVG markup in requested order.
+     */
+    static renderSides(documentModel, sides = ['top', 'bottom']) {
+        const model = PcbInteractionPrimitiveModel.build(documentModel)
+        const requested = Array.isArray(sides) ? sides : [sides]
+        return requested.map((side) =>
+            CircuitJsonPcbSvgRenderer.#renderModel(
+                model,
+                side === 'bottom' ? 'bottom' : 'top'
+            )
+        )
+    }
+
+    /**
      * Renders one prepared PCB plan without rebuilding primitives.
      * @param {Record<string, any>} plan Prepared PCB render plan.
      * @param {{ layerIds?: string[] | null }} [options] Prepared-plan options.
@@ -755,9 +772,16 @@ export class CircuitJsonPcbSvgRenderer {
         if (primitiveSide) return primitiveSide === side
 
         const layer = String(primitive.layer || '').toLowerCase()
-        if (side === 'bottom') return layer === 'bottom'
+        if (side === 'bottom') {
+            return layer === 'bottom' || layer.startsWith('bottom_')
+        }
 
-        return layer === 'top' || !layer || layer === 'board'
+        return (
+            layer === 'top' ||
+            layer.startsWith('top_') ||
+            !layer ||
+            layer === 'board'
+        )
     }
 
     /**

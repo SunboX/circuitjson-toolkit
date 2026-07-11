@@ -140,6 +140,8 @@ test('synchronous scene generation caps generated model requests', () => {
         ...Array.from({ length: 10_001 }, (_entry, index) => ({
             type: 'cad_component',
             cad_component_id: `cad-${index}`,
+            pcb_component_id: `pcb-${index}`,
+            source_component_id: `source-${index}`,
             position: { x: 0, y: 0, z: 0 },
             rotation: { x: 0, y: 0, z: 0 },
             size: { x: 1, y: 1, z: 1 },

@@ -1,7 +1,143 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PcbInteractionPrimitiveModel } from '../src/renderers.mjs'
-import { CircuitJsonPcbSvgRenderer } from '../src/renderers.mjs'
+import {
+    CircuitJsonPcbHolePrimitiveModel,
+    CircuitJsonPcbSvgRenderer,
+    PcbInteractionPrimitiveModel
+} from '../src/extensions.mjs'
+
+test('shared hole geometry derives rotation-local polygon pad and pill dimensions', () => {
+    const geometry = CircuitJsonPcbHolePrimitiveModel.build(
+        {
+            type: 'pcb_plated_hole',
+            shape: 'hole_with_polygon_pad',
+            hole_shape: 'pill',
+            x: 4,
+            y: 5,
+            hole_width: 2.6,
+            hole_height: 0.6,
+            ccw_rotation: 90,
+            pad_outline: [
+                { x: 4.3, y: 3.7 },
+                { x: 4.3, y: 6.3 },
+                { x: 3.7, y: 6.3 },
+                { x: 3.7, y: 3.7 }
+            ]
+        },
+        { x: 4, y: 5 }
+    )
+
+    assert.equal(geometry.shape, 'polygon')
+    assert.ok(Math.abs(geometry.width - 2.6) < 1e-9)
+    assert.ok(Math.abs(geometry.height - 0.6) < 1e-9)
+    assert.equal(geometry.holeShape, 'pill')
+    assert.ok(Math.abs(geometry.holeDiameter - 0.6) < 1e-9)
+    assert.ok(Math.abs(geometry.holeWidth - 2.6) < 1e-9)
+    assert.ok(Math.abs(geometry.holeHeight - 0.6) < 1e-9)
+    assert.ok(Math.abs(geometry.bounds.width - 0.6) < 1e-9)
+    assert.ok(Math.abs(geometry.bounds.height - 2.6) < 1e-9)
+})
+
+test('shared hole geometry preserves independent outer and drill variants', () => {
+    const pill = CircuitJsonPcbHolePrimitiveModel.build(
+        {
+            type: 'pcb_plated_hole',
+            shape: 'pill',
+            x: 1,
+            y: 2,
+            outer_width: 3.2,
+            outer_height: 1.4,
+            hole_width: 2.4,
+            hole_height: 0.6,
+            ccw_rotation: 35
+        },
+        { x: 1, y: 2 }
+    )
+    const rotatedRect = CircuitJsonPcbHolePrimitiveModel.build(
+        {
+            type: 'pcb_plated_hole',
+            shape: 'rotated_pill_hole_with_rect_pad',
+            pad_shape: 'rect',
+            x: 4,
+            y: 5,
+            rect_pad_width: 4.5,
+            rect_pad_height: 2.5,
+            rect_ccw_rotation: 20,
+            hole_shape: 'rotated_pill',
+            hole_width: 2.8,
+            hole_height: 0.8,
+            hole_ccw_rotation: 70
+        },
+        { x: 4, y: 5 }
+    )
+    const square = CircuitJsonPcbHolePrimitiveModel.build(
+        {
+            type: 'pcb_hole',
+            hole_shape: 'square',
+            hole_diameter: 1.1,
+            x: 7,
+            y: 8
+        },
+        { x: 7, y: 8 }
+    )
+
+    assert.deepEqual(
+        {
+            shape: pill.shape,
+            width: pill.width,
+            height: pill.height,
+            rotation: pill.rotation,
+            holeRotation: pill.holeRotation
+        },
+        {
+            shape: 'pill',
+            width: 3.2,
+            height: 1.4,
+            rotation: 35,
+            holeRotation: 35
+        }
+    )
+    assert.deepEqual(
+        {
+            shape: square.shape,
+            width: square.width,
+            height: square.height,
+            holeShape: square.holeShape,
+            holeWidth: square.holeWidth,
+            holeHeight: square.holeHeight
+        },
+        {
+            shape: 'rect',
+            width: 1.1,
+            height: 1.1,
+            holeShape: 'rect',
+            holeWidth: 1.1,
+            holeHeight: 1.1
+        }
+    )
+    assert.deepEqual(
+        {
+            shape: rotatedRect.shape,
+            width: rotatedRect.width,
+            height: rotatedRect.height,
+            rotation: rotatedRect.rotation,
+            holeShape: rotatedRect.holeShape,
+            holeWidth: rotatedRect.holeWidth,
+            holeHeight: rotatedRect.holeHeight,
+            holeRotation: rotatedRect.holeRotation
+        },
+        {
+            shape: 'rect',
+            width: 4.5,
+            height: 2.5,
+            rotation: 20,
+            holeShape: 'pill',
+            holeWidth: 2.8,
+            holeHeight: 0.8,
+            holeRotation: 70
+        }
+    )
+})
 
 /**
  * Builds a synthetic board with schema variant geometry rows.
@@ -58,10 +194,10 @@ function createVariantGeometryDocument() {
         {
             type: 'pcb_hole',
             pcb_hole_id: 'hole_round_1',
-            hole_shape: 'round',
+            hole_shape: 'circle',
             x: -3,
             y: 0,
-            diameter: 0.7,
+            hole_diameter: 0.7,
             layer: 'board'
         },
         {

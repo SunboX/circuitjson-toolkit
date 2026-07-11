@@ -830,7 +830,7 @@ test('worker responses reject cyclic and hidden nested fields', async (t) => {
         const document = structuredClone(
             Parser.parse({
                 fileName: 'cycle.json',
-                data: '[{"type":"source_net","source_net_id":"n1","name":"N1"}]'
+                data: '[{"type":"source_net","source_net_id":"n1","name":"N1","member_source_group_ids":[]}]'
             })
         )
         document.model[0].extra = document.model[0]

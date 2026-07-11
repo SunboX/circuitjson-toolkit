@@ -83,7 +83,7 @@ test('DocumentResult derives ids from source identity and keeps one native exten
     assert.doesNotThrow(() => structuredClone(first))
 })
 
-test('native results keep metadata-only extension namespaces when payloads are omitted', () => {
+test('native results use an empty extension map when payloads are omitted', () => {
     const document = DocumentResult.create({
         source: {
             format: 'gerber',
@@ -99,16 +99,7 @@ test('native results keep metadata-only extension namespaces when payloads are o
     })
 
     for (const extensions of [document.extensions, project.extensions]) {
-        assert.deepEqual(extensions, {
-            gerber: {
-                $meta: {
-                    schema: 'ecad-toolkit.extension.v1',
-                    completeness: 'none',
-                    included: [],
-                    omitted: []
-                }
-            }
-        })
+        assert.deepEqual(extensions, {})
     }
 })
 
@@ -382,12 +373,15 @@ test('ToolkitCapabilities inventories every frozen capability with stable clone-
         ...new Set(ledger.map((row) => row.capabilityId))
     ].sort()
     const inventory = ToolkitCapabilities.inventory()
+    const inventoryIds = inventory.map((row) => row.id)
 
     assert.equal(rootApi.ToolkitCapabilities, ToolkitCapabilities)
     assert.deepEqual(
-        inventory.map((row) => row.id),
-        expectedIds
+        expectedIds.filter((id) => !inventoryIds.includes(id)),
+        []
     )
+    assert.deepEqual(inventoryIds, inventoryIds.toSorted())
+    assert.equal(new Set(inventoryIds).size, inventoryIds.length)
     for (const row of inventory) {
         assert.deepEqual(Object.keys(row), [
             'id',

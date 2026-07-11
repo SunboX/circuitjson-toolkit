@@ -1,28 +1,35 @@
-# Library Scope
+# Library scope
 
-`circuitjson-toolkit` owns reusable browser and Node utilities for serialized
-CircuitJSON element arrays.
+`circuitjson-toolkit` owns browser- and Node-compatible common operations over
+immutable CircuitJSON.
 
 ## Included
 
-- CircuitJSON element-array validation
-- Standalone JSON text and byte parsing
-- Parser-style metadata attachment
-- Lookup indexes by element type and stable IDs
-- Source and PCB component lookup maps
-- Millimeter-to-mil conversion helpers
-- Local SPICE transient graph helpers that produce complete CircuitJSON
-  simulation experiment element sets
-- Deterministic SPICE graph summaries and non-fatal local syntax diagnostics
-- Small documentation and tests for toolkit behavior
+- Canonical parser and project result envelopes
+- CircuitJSON validation proofs and request-scoped prepared contexts
+- Element, relation, connectivity, and PCB spatial indexes
+- Deterministic PCB, schematic, and BOM rendering
+- PCB hit testing, picking, selection, snapping, layers, and diagnostics
+- Repeated component/net queries and connectivity traversal
+- Manufacturing inspection and explicit data exports
+- Simulation definition/export and explicitly injected engine execution
+- Data-only PCB 3D scene building and explicit asset preparation
+- Typed errors, diagnostics, progress, capabilities, and worker protocol
+- Packed downstream conformance fixtures and checks
+- Exactly 37 source-neutral compatibility extensions for previous CircuitJSON
+  APIs, classified as shared or derived across the toolkit family
+- Descriptor-safe asset measurement/preparation and project-wide payload limit
+  accounting
 
 ## Excluded
 
-- Three.js or browser DOM rendering
-- PCB 3D runtime behavior
-- ECAD source parser logic
-- Native ECAD source-format compatibility adapters
-- Network fetching or remote asset loading
+- Gerber, Altium, KiCad, or other native ECAD decoders
+- Source-format-specific fidelity predicates and native report generation
+- Three.js or other runtime scene rendering
+- Browser UI state, controls, downloads, or event orchestration
+- Implicit filesystem, process, network, or asset-store access
+- Customer/vendor fixtures or example-specific parsing behavior
 
-Renderer fixes belong in renderer packages. Source-format fixes belong in the
-source toolkit that parses that format.
+Native parser behavior belongs in its source toolkit. Runtime visualization
+belongs in `pcb-scene3d-viewer` or another host. Common behavior meaningful for
+CircuitJSON belongs here and is exposed consistently by every source toolkit.

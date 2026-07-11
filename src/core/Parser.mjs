@@ -1,7 +1,11 @@
 import { DocumentResult } from './contracts/DocumentResult.mjs'
+import { ToolkitDiagnostic } from './contracts/ToolkitDiagnostic.mjs'
 import { ToolkitError } from './contracts/ToolkitError.mjs'
 import { ToolkitProgress } from './contracts/ToolkitProgress.mjs'
+import { AsyncInputOwnership } from './AsyncInputOwnership.mjs'
+import { BinaryDataSnapshot } from './context/BinaryDataSnapshot.mjs'
 import { ParserOptions } from './ParserOptions.mjs'
+import { CircuitJsonLegacyNormalizer } from './context/CircuitJsonLegacyNormalizer.mjs'
 import { ParserWorkerClient } from './worker/ParserWorkerClient.mjs'
 
 const PROGRESS_MESSAGES = {
@@ -43,10 +47,18 @@ export class Parser {
         try {
             return { ok: true, value: Parser.parse(input, options) }
         } catch (error) {
+            const normalized = Parser.#parseError(error, input)
             return {
                 ok: false,
-                error: Parser.#parseError(error, input),
-                diagnostics: []
+                error: normalized,
+                diagnostics: [
+                    ToolkitDiagnostic.create({
+                        code: normalized.code,
+                        severity: 'error',
+                        message: normalized.message,
+                        source: normalized.source
+                    })
+                ]
             }
         }
     }
@@ -59,6 +71,7 @@ export class Parser {
      */
     static async parseAsync(input, options = {}) {
         let normalized
+        const inputOwned = AsyncInputOwnership.ownsParser(input)
         try {
             normalized = ParserOptions.normalize(input, options)
             if (Parser.#isAborted(normalized.options.signal)) {
@@ -87,6 +100,14 @@ export class Parser {
                 throw attempt.error
             }
             ParserWorkerClient.disposeDefault()
+        }
+
+        try {
+            if (!inputOwned) {
+                normalized = Parser.#ownAsyncInput(normalized)
+            }
+        } catch (error) {
+            throw Parser.#parseError(error, input)
         }
 
         let progress = Parser.#progress(normalized, 'detect')
@@ -139,14 +160,42 @@ export class Parser {
     }
 
     /**
+     * Captures parser bytes and selected assets before the first host callback.
+     * @param {{ input: { fileName: string, data: string | ArrayBuffer | Uint8Array, assets: object[] }, options: { decodeAssets: string } }} normalized Normalized request.
+     * @returns {Record<string, any>} Request with one owned input boundary.
+     */
+    static #ownAsyncInput(normalized) {
+        const data = normalized.input.data
+        return {
+            ...normalized,
+            input: {
+                ...normalized.input,
+                data:
+                    typeof data === 'string'
+                        ? data
+                        : BinaryDataSnapshot.clone(data),
+                assets: ParserOptions.assets(
+                    normalized.input.assets,
+                    normalized.options.decodeAssets
+                )
+            }
+        }
+    }
+
+    /**
      * Decodes one normalized payload and enforces the model-array boundary.
      * @param {{ input: { data: string | ArrayBuffer | Uint8Array } }} normalized Normalized request.
      * @returns {object[]} Decoded CircuitJSON model.
      */
     static #decode(normalized) {
-        const model = JSON.parse(ParserOptions.text(normalized.input.data))
+        let model = JSON.parse(ParserOptions.text(normalized.input.data))
         if (!Array.isArray(model)) {
             throw new TypeError('Expected a CircuitJSON element array.')
+        }
+        if (normalized.options.extensions === 'full') {
+            model = CircuitJsonLegacyNormalizer.normalize(model, {
+                owned: true
+            })
         }
         return model
     }

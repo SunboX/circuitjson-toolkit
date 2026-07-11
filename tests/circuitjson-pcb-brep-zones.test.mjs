@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PcbInteractionPrimitiveModel } from '../src/renderers.mjs'
+import { PcbInteractionPrimitiveModel } from '../src/extensions.mjs'
 
 /**
  * Builds a compact board with solved copper area geometry.

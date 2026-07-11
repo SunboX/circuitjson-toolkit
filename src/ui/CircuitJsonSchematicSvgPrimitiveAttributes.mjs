@@ -23,6 +23,8 @@ export class CircuitJsonSchematicSvgPrimitiveAttributes {
         )
         const dashArray =
             CircuitJsonSchematicSvgPrimitiveAttributes.#dashArray(element)
+        const lineCap =
+            CircuitJsonSchematicSvgPrimitiveAttributes.#lineCap(element)
 
         if (strokeWidth !== null) {
             attributes.push(
@@ -62,6 +64,9 @@ export class CircuitJsonSchematicSvgPrimitiveAttributes {
                     '"'
             )
         }
+        if (lineCap) {
+            attributes.push('stroke-linecap="' + lineCap + '"')
+        }
 
         return attributes.length ? ' ' + attributes.join(' ') : ''
     }
@@ -91,6 +96,22 @@ export class CircuitJsonSchematicSvgPrimitiveAttributes {
      * @returns {string}
      */
     static #dashArray(element) {
+        const dashLength = CircuitJsonSchematicSvgPrimitiveAttributes.#number(
+            element?.dash_length ?? element?.dashLength
+        )
+        const dashGap = CircuitJsonSchematicSvgPrimitiveAttributes.#number(
+            element?.dash_gap ?? element?.dashGap
+        )
+        if (element?.is_dashed && dashLength !== null) {
+            return [dashLength, dashGap ?? dashLength]
+                .map((entry) =>
+                    CircuitJsonSchematicSvgPrimitiveAttributes.#formatNumber(
+                        entry
+                    )
+                )
+                .join(' ')
+        }
+
         const value =
             element?.stroke_dasharray ??
             element?.strokeDasharray ??
@@ -108,6 +129,20 @@ export class CircuitJsonSchematicSvgPrimitiveAttributes {
 
         if (parts.length) return parts.join(' ')
         return element?.is_dashed ? '0.4 0.25' : ''
+    }
+
+    /**
+     * Resolves one safe SVG stroke line-cap value.
+     * @param {object} element CircuitJSON element row.
+     * @returns {'butt' | 'round' | 'square' | ''}
+     */
+    static #lineCap(element) {
+        const value = String(
+            element?.stroke_linecap ?? element?.strokeLinecap ?? ''
+        )
+            .trim()
+            .toLowerCase()
+        return ['butt', 'round', 'square'].includes(value) ? value : ''
     }
 
     /**

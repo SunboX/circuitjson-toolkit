@@ -123,10 +123,11 @@ export class BinaryDataSnapshot {
     /**
      * Copies one binary metadata value while retaining its common view type.
      * @param {unknown} value Binary metadata.
+     * @param {{ buffer: ArrayBuffer | SharedArrayBuffer, byteOffset: number, byteLength: number, kind: 'buffer' | 'typed-array' | 'data-view' } | null} [capturedRange] Previously captured intrinsic range.
      * @returns {ArrayBuffer | Uint8Array | DataView} Isolated binary value.
      */
-    static clone(value) {
-        const range = BinaryDataSnapshot.describe(value)
+    static clone(value, capturedRange = null) {
+        const range = capturedRange || BinaryDataSnapshot.describe(value)
         if (!range) throw new TypeError('Expected binary data.')
         const bytes = BinaryDataSnapshot.copyBytes(value, range)
         if (range.kind === 'buffer') return bytes.buffer

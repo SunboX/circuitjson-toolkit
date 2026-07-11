@@ -10,7 +10,7 @@ export class CircuitJsonPcbPadPrimitiveModel {
      * @returns {string}
      */
     static shape(element) {
-        return String(element.shape || 'rect')
+        return String(element.legacy_shape || element.shape || 'rect')
             .trim()
             .toLowerCase()
     }

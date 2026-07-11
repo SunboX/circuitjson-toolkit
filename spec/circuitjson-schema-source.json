@@ -2,6 +2,27 @@
     "package": "circuit-json",
     "version": "0.0.446",
     "integrity": "sha512-QH4nzxdUXe3T4znluJZSCgFZM/CEswOTCPetAaJ1tPpbiF2mDVuG92qJ94YRyT6dyWH1bwTAO3JzwMEoHcXdaA==",
+    "distributionFile": "dist/index.mjs",
+    "distributionSha256": "00ec8b9ba71608252d7baa336b1c6380682b4272363b6e8d9d8483e4262b182f",
+    "contractSha256": "8c5086e8764497218d267ef0af310cbc749493723623cadfa654607d15930b07",
+    "compilerDependencies": [
+        {
+            "package": "format-si-unit",
+            "version": "0.0.7",
+            "integrity": "sha512-wTi2TqGqPG9LvUwhshiMlaert+1kWtxMEzIpKIkVbmOz4bopcDtqpDKV06JT6xpGIquOSFbkV1fQoMHq6UJZ1g==",
+            "distributionFile": "dist/index.js",
+            "distributionSha256": "bd60fe70a3885208c4e1108d38d3de92c636655ae6508d4400d952be2f37b729",
+            "license": ""
+        },
+        {
+            "package": "zod",
+            "version": "3.25.76",
+            "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==",
+            "distributionFile": "index.js",
+            "distributionSha256": "6419c4ac0e637ff08463083e31886d10354f74cbcc4e584400b2b837e39ac881",
+            "license": "MIT"
+        }
+    ],
     "sourceUrl": "https://www.npmjs.com/package/circuit-json/v/0.0.446",
     "license": "ISC"
 }

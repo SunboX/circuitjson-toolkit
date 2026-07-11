@@ -2,6 +2,7 @@ import { BinaryDataSnapshot } from './BinaryDataSnapshot.mjs'
 
 const METADATA_MAX_DEPTH = 64
 const METADATA_MAX_ITEMS = 100_000
+const UNBOUNDED_METADATA_BYTES = Number.MAX_SAFE_INTEGER
 const DATE_GET_TIME = Date.prototype.getTime
 const DATE_TO_ISO = Date.prototype.toISOString
 const MAP_ENTRIES = Map.prototype.entries
@@ -25,10 +26,34 @@ const SET_VALUES = Set.prototype.values
 export class StructuredDataSnapshot {
     /**
      * Creates state shared by multiple metadata roots in one request.
-     * @returns {{ seen: Map<object, unknown>, items: number }} Capture state.
+     * @param {{ label?: string, maxBytes?: number, maxItems?: number, preserveBinary?: boolean }} [limits] Capture limits.
+     * @returns {{ seen: Map<object, unknown>, accounted: Set<object>, bytes: number, items: number, label: string, maxBytes: number, maxItems: number, preserveBinary: boolean }} Capture state.
      */
-    static createState() {
-        return { seen: new Map(), items: 0 }
+    static createState(limits = {}) {
+        const maxBytes =
+            limits.maxBytes === undefined
+                ? UNBOUNDED_METADATA_BYTES
+                : limits.maxBytes
+        const maxItems =
+            limits.maxItems === undefined ? METADATA_MAX_ITEMS : limits.maxItems
+        if (
+            !Number.isSafeInteger(maxBytes) ||
+            maxBytes < 0 ||
+            !Number.isSafeInteger(maxItems) ||
+            maxItems < 0
+        ) {
+            throw new TypeError('Invalid source-metadata capture limits.')
+        }
+        return {
+            seen: new Map(),
+            accounted: new Set(),
+            bytes: 0,
+            items: 0,
+            label: String(limits.label || 'Canonical asset source'),
+            maxBytes,
+            maxItems,
+            preserveBinary: limits.preserveBinary === true
+        }
     }
 
     /**
@@ -40,7 +65,13 @@ export class StructuredDataSnapshot {
     static capture(value, state = StructuredDataSnapshot.createState()) {
         if (
             !(state?.seen instanceof Map) ||
-            !Number.isSafeInteger(state.items)
+            !(state?.accounted instanceof Set) ||
+            !Number.isSafeInteger(state.bytes) ||
+            !Number.isSafeInteger(state.items) ||
+            !Number.isSafeInteger(state.maxBytes) ||
+            !Number.isSafeInteger(state.maxItems) ||
+            typeof state.label !== 'string' ||
+            typeof state.preserveBinary !== 'boolean'
         ) {
             throw new TypeError('Invalid source-metadata capture state.')
         }
@@ -48,19 +79,137 @@ export class StructuredDataSnapshot {
     }
 
     /**
+     * Accounts an already normalized metadata snapshot without cloning it.
+     * @param {unknown} value Owned metadata snapshot.
+     * @param {{ seen: Map<object, unknown>, accounted: Set<object>, bytes: number, items: number, label: string, maxBytes: number, maxItems: number }} state Shared capture state.
+     * @returns {void}
+     */
+    static account(value, state) {
+        if (
+            !(state?.seen instanceof Map) ||
+            !(state?.accounted instanceof Set) ||
+            !Number.isSafeInteger(state.bytes) ||
+            !Number.isSafeInteger(state.items) ||
+            !Number.isSafeInteger(state.maxBytes) ||
+            !Number.isSafeInteger(state.maxItems) ||
+            typeof state.label !== 'string' ||
+            typeof state.preserveBinary !== 'boolean'
+        ) {
+            throw new TypeError('Invalid source-metadata capture state.')
+        }
+        const stack = [{ depth: 0, value }]
+        while (stack.length) {
+            const frame = stack.pop()
+            const current = frame.value
+            const type = typeof current
+            if (type === 'string') {
+                StructuredDataSnapshot.#reserveText(state, current)
+                continue
+            }
+            if (
+                current === null ||
+                ['undefined', 'boolean', 'number', 'bigint'].includes(type)
+            ) {
+                continue
+            }
+            if (type !== 'object') {
+                throw new TypeError(
+                    'Canonical asset source must contain clone-safe data.'
+                )
+            }
+            if (frame.depth > METADATA_MAX_DEPTH) {
+                throw new TypeError(
+                    'Canonical asset source is nested too deeply.'
+                )
+            }
+            if (state.accounted.has(current)) continue
+            let prototype
+            let keys
+            try {
+                prototype = Object.getPrototypeOf(current)
+                keys = Reflect.ownKeys(current)
+            } catch {
+                throw new TypeError(
+                    'Canonical asset source could not be inspected safely.'
+                )
+            }
+            if (
+                prototype !== Object.prototype &&
+                prototype !== null &&
+                !(Array.isArray(current) && prototype === Array.prototype)
+            ) {
+                throw new TypeError(
+                    'Canonical asset source must contain plain data objects.'
+                )
+            }
+            state.accounted.add(current)
+            StructuredDataSnapshot.#reserve(state, 1)
+            const children = []
+            if (Array.isArray(current)) {
+                const lengthDescriptor = StructuredDataSnapshot.#descriptor(
+                    current,
+                    'length',
+                    'Canonical asset source array could not be inspected.'
+                )
+                const length = lengthDescriptor.value
+                if (
+                    !Object.hasOwn(lengthDescriptor, 'value') ||
+                    !Number.isSafeInteger(length) ||
+                    length < 0 ||
+                    keys.length !== length + 1
+                ) {
+                    throw new TypeError(
+                        'Canonical asset source arrays must be dense and plain.'
+                    )
+                }
+                StructuredDataSnapshot.#reserve(state, length)
+                for (let index = 0; index < length; index += 1) {
+                    children.push(
+                        StructuredDataSnapshot.#dataDescriptor(
+                            current,
+                            String(index)
+                        ).value
+                    )
+                }
+            } else {
+                StructuredDataSnapshot.#reserve(state, keys.length)
+                for (const key of keys) {
+                    if (typeof key !== 'string') {
+                        throw new TypeError(
+                            'Canonical asset source keys must be strings.'
+                        )
+                    }
+                    children.push(
+                        StructuredDataSnapshot.#dataDescriptor(current, key)
+                            .value
+                    )
+                }
+            }
+            for (let index = children.length - 1; index >= 0; index -= 1) {
+                stack.push({
+                    depth: frame.depth + 1,
+                    value: children[index]
+                })
+            }
+        }
+    }
+
+    /**
      * Captures one graph node without revisiting caller-owned containers.
      * @param {unknown} value Metadata candidate.
-     * @param {{ seen: Map<object, unknown>, items: number }} state Capture state.
+     * @param {{ seen: Map<object, unknown>, bytes: number, items: number, label: string, maxBytes: number, maxItems: number }} state Capture state.
      * @param {number} depth Current container depth.
      * @returns {unknown} Isolated normalized value.
      */
     static #capture(value, state, depth) {
         const type = typeof value
+        if (type === 'string') {
+            StructuredDataSnapshot.#reserveText(state, value)
+            return value
+        }
         if (
             value === null ||
-            ['undefined', 'string', 'boolean', 'number', 'bigint'].includes(
-                type
-            )
+            ['undefined', 'boolean', 'number', 'bigint'].includes(type)
         ) {
             return value
         }
@@ -129,10 +278,16 @@ export class StructuredDataSnapshot {
      * Copies genuine binary data after validating its single captured key set.
      * @param {ArrayBuffer | SharedArrayBuffer | ArrayBufferView} value Binary value.
      * @param {{ byteLength: number }} range Captured intrinsic binary range.
-     * @param {{ seen: Map<object, unknown>, items: number }} state Capture state.
-     * @returns {number[]} Plain isolated bytes.
+     * @param {{ seen: Map<object, unknown>, items: number, preserveBinary: boolean }} state Capture state.
+     * @returns {number[] | ArrayBuffer | ArrayBufferView} Plain isolated bytes or preserved byte-backed data.
      */
     static #binary(value, range, state) {
+        StructuredDataSnapshot.#reserveBytes(state, range.byteLength)
+        if (state.preserveBinary) {
+            const result = BinaryDataSnapshot.clone(value, range)
+            state.seen.set(value, result)
+            return result
+        }
         // The normalized result contains one numeric item per byte. Reserve that
         // output before enumerating keys or allocating/copying the payload.
         StructuredDataSnapshot.#reserve(state, range.byteLength)
@@ -195,6 +350,7 @@ export class StructuredDataSnapshot {
                 'Canonical asset source contains an invalid built-in value.'
             )
         }
+        StructuredDataSnapshot.#reserveText(state, result)
         state.seen.set(value, result)
         return result
     }
@@ -236,6 +392,8 @@ export class StructuredDataSnapshot {
                 'Canonical asset source contains an invalid regular expression.'
             )
         }
+        StructuredDataSnapshot.#reserveText(state, result.source)
+        StructuredDataSnapshot.#reserveText(state, result.flags)
         state.seen.set(value, result)
         return result
     }
@@ -461,7 +619,7 @@ export class StructuredDataSnapshot {
 
     /**
      * Reserves bounded graph work before child traversal begins.
-     * @param {{ items: number }} state Capture state.
+     * @param {{ items: number, label: string, maxItems: number }} state Capture state.
      * @param {number} count Additional items.
      * @returns {void}
      */
@@ -469,11 +627,55 @@ export class StructuredDataSnapshot {
         if (
             !Number.isSafeInteger(count) ||
             count < 0 ||
-            state.items + count > METADATA_MAX_ITEMS
+            state.items + count > state.maxItems
         ) {
-            throw new TypeError('Canonical asset source is too large.')
+            throw new TypeError(`${state.label} is too large.`)
         }
         state.items += count
+    }
+
+    /**
+     * Reserves bounded payload bytes before a metadata copy is allocated.
+     * @param {{ bytes: number, label: string, maxBytes: number }} state Capture state.
+     * @param {number} count Additional bytes.
+     * @returns {void}
+     */
+    static #reserveBytes(state, count) {
+        if (state.maxBytes === UNBOUNDED_METADATA_BYTES) return
+        if (
+            !Number.isSafeInteger(count) ||
+            count < 0 ||
+            state.bytes + count > state.maxBytes
+        ) {
+            throw new TypeError(`${state.label} is too large.`)
+        }
+        state.bytes += count
+    }
+
+    /**
+     * Measures and reserves UTF-8 text without allocating encoded bytes.
+     * @param {{ bytes: number, label: string, maxBytes: number }} state Capture state.
+     * @param {string} value Text value.
+     * @returns {void}
+     */
+    static #reserveText(state, value) {
+        if (state.maxBytes === UNBOUNDED_METADATA_BYTES) return
+        let length = 0
+        for (const character of value) {
+            const codePoint = character.codePointAt(0)
+            length +=
+                codePoint <= 0x7f
+                    ? 1
+                    : codePoint <= 0x7ff
+                      ? 2
+                      : codePoint <= 0xffff
+                        ? 3
+                        : 4
+            if (state.bytes + length > state.maxBytes) {
+                throw new TypeError(`${state.label} is too large.`)
+            }
+        }
+        StructuredDataSnapshot.#reserveBytes(state, length)
     }
 }
 

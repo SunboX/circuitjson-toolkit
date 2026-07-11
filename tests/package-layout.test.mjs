@@ -37,8 +37,19 @@ test('required project files exist', async () => {
         'docs/testing.md',
         'spec/library-scope.md',
         'src/index.mjs',
+        'src/capabilities.mjs',
+        'src/extensions.mjs',
+        'src/interaction.mjs',
+        'src/manufacturing.mjs',
         'src/parser.mjs',
-        'src/renderers.mjs'
+        'src/project.mjs',
+        'src/query.mjs',
+        'src/renderers.mjs',
+        'src/scene3d.mjs',
+        'src/simulation.mjs',
+        'src/testing.mjs',
+        'src/workers/parser.worker.mjs',
+        'src/styles/renderers.css'
     ]
 
     for (const relativePath of required) {
@@ -56,10 +67,42 @@ test('package exports public entrypoints', async () => {
 
     assert.equal(pkg.name, 'circuitjson-toolkit')
     assert.equal(pkg.type, 'module')
+    assert.deepEqual(Object.keys(pkg.exports).sort(), [
+        '.',
+        './capabilities',
+        './extensions',
+        './interaction',
+        './manufacturing',
+        './parser',
+        './project',
+        './query',
+        './renderers',
+        './scene3d',
+        './simulation',
+        './styles/renderers.css',
+        './testing',
+        './workers/parser.worker.mjs'
+    ])
     assert.equal(pkg.exports['.'], './src/index.mjs')
     assert.equal(pkg.exports['./parser'], './src/parser.mjs')
     assert.equal(pkg.exports['./project'], './src/project.mjs')
     assert.equal(pkg.exports['./renderers'], './src/renderers.mjs')
+    assert.equal(pkg.exports['./interaction'], './src/interaction.mjs')
+    assert.equal(pkg.exports['./query'], './src/query.mjs')
+    assert.equal(pkg.exports['./manufacturing'], './src/manufacturing.mjs')
+    assert.equal(pkg.exports['./simulation'], './src/simulation.mjs')
+    assert.equal(pkg.exports['./scene3d'], './src/scene3d.mjs')
+    assert.equal(pkg.exports['./capabilities'], './src/capabilities.mjs')
+    assert.equal(pkg.exports['./extensions'], './src/extensions.mjs')
+    assert.equal(pkg.exports['./testing'], './src/testing.mjs')
+    assert.equal(
+        pkg.exports['./workers/parser.worker.mjs'],
+        './src/workers/parser.worker.mjs'
+    )
+    assert.equal(
+        pkg.exports['./styles/renderers.css'],
+        './src/styles/renderers.css'
+    )
     assert.equal(
         pkg.repository.url,
         'git+https://github.com/SunboX/circuitjson-toolkit.git'

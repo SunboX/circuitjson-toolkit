@@ -36,6 +36,12 @@ const CAPABILITIES = [
         'Parse one CircuitJSON document into the canonical envelope.'
     ],
     [
+        'project.load',
+        'shared',
+        'ProjectLoader',
+        'Load bounded ECAD project entries into the canonical project envelope.'
+    ],
+    [
         'query.document',
         'shared',
         'QueryService',
@@ -54,6 +60,18 @@ const CAPABILITIES = [
         'Render schematic views from standard CircuitJSON.'
     ],
     [
+        'scene3d.build',
+        'shared',
+        'PcbScene3dBuilder',
+        'Build a data-only right-handed Z-up PCB scene.'
+    ],
+    [
+        'scene3d.prepare',
+        'shared',
+        'PcbScene3dPreparator',
+        'Resolve explicitly supplied scene assets into a canonical PCB scene.'
+    ],
+    [
         'simulation.spice',
         'shared',
         'SimulationService',
@@ -70,6 +88,18 @@ const CAPABILITIES = [
         'shared',
         'DocumentResult',
         'Validate and prepare CircuitJSON document envelopes.'
+    ],
+    [
+        'worker.load-project',
+        'shared',
+        'circuitjson-toolkit/parser',
+        'Load canonical project results through the shared versioned worker protocol.'
+    ],
+    [
+        'worker.parse',
+        'shared',
+        'circuitjson-toolkit/parser',
+        'Parse canonical document results through the shared versioned worker protocol.'
     ]
 ].map(([id, status, entrypoint, summary]) => {
     const [category, operation] = id.split('.')

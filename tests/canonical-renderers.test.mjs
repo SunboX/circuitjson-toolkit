@@ -4,6 +4,7 @@ import test from 'node:test'
 import { CircuitJsonDocumentContext } from '../src/core/context/CircuitJsonDocumentContext.mjs'
 import { CircuitJsonBomBuilder } from '../src/core/CircuitJsonBomBuilder.mjs'
 import { CircuitJsonIndexer } from '../src/core/CircuitJsonIndexer.mjs'
+import { PcbInteractionPrimitiveModel } from '../src/core/PcbInteractionPrimitiveModel.mjs'
 import { CanonicalRenderOptions } from '../src/core/rendering/CanonicalRenderOptions.mjs'
 import { PcbRenderPlan } from '../src/core/rendering/PcbRenderPlan.mjs'
 import { SchematicSheetSelector } from '../src/core/rendering/SchematicSheetSelector.mjs'
@@ -100,6 +101,30 @@ test('canonical PCB render preserves legacy full-document SVG', () => {
     })
 
     assert.equal(PcbSvgRenderer.render(document, { side: 'bottom' }), legacy)
+})
+
+test('legacy multi-side rendering prepares primitives once', () => {
+    const document = createRichCircuitJsonDocument()
+    const original = PcbInteractionPrimitiveModel.build
+    let builds = 0
+    PcbInteractionPrimitiveModel.build = (...args) => {
+        builds += 1
+        return original.call(PcbInteractionPrimitiveModel, ...args)
+    }
+
+    try {
+        const rendered = CircuitJsonPcbSvgRenderer.renderSides(document, [
+            'top',
+            'bottom'
+        ])
+        assert.equal(builds, 1)
+        assert.deepEqual(rendered, [
+            CircuitJsonPcbSvgRenderer.render(document, { side: 'top' }),
+            CircuitJsonPcbSvgRenderer.render(document, { side: 'bottom' })
+        ])
+    } finally {
+        PcbInteractionPrimitiveModel.build = original
+    }
 })
 
 test('prepared PCB rendering rejects forged plans before serialization', () => {
@@ -228,7 +253,7 @@ test('canonical PCB physical layer discovery stays bounded', () => {
                 num_layers: 999
             }
         ],
-        'inner999',
+        'inner6',
         'trace_oversized_inner'
     )
     const physical = PcbRenderPlan.prepare(document).model.layers

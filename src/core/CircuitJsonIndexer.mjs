@@ -1,4 +1,6 @@
 import { CircuitJsonDocument } from './CircuitJsonDocument.mjs'
+import { CircuitJsonDiagnosticIndexer } from './CircuitJsonDiagnosticIndexer.mjs'
+import { CircuitJsonLegacyModel } from './context/CircuitJsonLegacyModel.mjs'
 import { CircuitJsonValidationProof } from './context/CircuitJsonValidationProof.mjs'
 
 const ID_FIELDS_BY_TYPE = {
@@ -20,14 +22,31 @@ const ID_FIELDS_BY_TYPE = {
 }
 
 const GROUP_TYPES = new Set(['source_group', 'pcb_group', 'schematic_group'])
+const GROUP_RELATION_FIELDS = [
+    'source_group_id',
+    'pcb_group_id',
+    'schematic_group_id',
+    'group_id',
+    'member_source_group_id',
+    'member_pcb_group_id',
+    'member_schematic_group_id',
+    'member_group_id',
+    'group_ids',
+    'member_source_group_ids',
+    'member_pcb_group_ids',
+    'member_schematic_group_ids',
+    'member_group_ids'
+]
 const SCHEMATIC_PRIMITIVE_TYPES = new Set([
     'schematic_arc',
     'schematic_box',
     'schematic_circle',
+    'schematic_image',
     'schematic_line',
     'schematic_net_label',
     'schematic_path',
     'schematic_rect',
+    'schematic_sheet_symbol',
     'schematic_table',
     'schematic_table_cell',
     'schematic_text',
@@ -46,12 +65,19 @@ export class CircuitJsonIndexer {
      * @returns {Record<string, any>} Full legacy index or requested index families.
      */
     static index(circuitJson, options = {}) {
+        const prepared = CircuitJsonLegacyModel.takePreparedIndex(circuitJson)
+        if (prepared) return prepared
         const trusted = CircuitJsonValidationProof.permitsIndex(
             circuitJson,
             options
         )
-        if (!trusted) {
-            CircuitJsonDocument.assertModel(circuitJson)
+        const elementSlots = trusted
+            ? circuitJson
+            : CircuitJsonIndexer.#captureElementSlots(circuitJson)
+        const trustedLegacy =
+            !trusted && CircuitJsonLegacyModel.permitsIndex(circuitJson)
+        if (!trusted && !trustedLegacy) {
+            CircuitJsonDocument.assertModel(elementSlots)
         }
         const families = trusted
             ? CircuitJsonValidationProof.indexFamilies(circuitJson, options)
@@ -59,18 +85,27 @@ export class CircuitJsonIndexer {
         const requested = new Set(families || [])
         const full = families === null
         const buildElements = full || requested.has('elements')
+        const buildIdentifiers = !full && requested.has('identifiers')
         const buildRelations = full || requested.has('relations')
         const buildConnectivity = full || requested.has('connectivity')
         const buildSpatial = full || requested.has('spatial')
         const elementsByType = new Map()
         const elementsById = new Map()
+        const elementIds = new Set()
         const relationsByField = new Map()
         const sourceComponentById = new Map()
         const pcbComponentById = new Map()
         const sourceTraceById = new Map()
+        const groupElements = []
 
-        if (buildElements || buildRelations || buildConnectivity) {
-            circuitJson.forEach((element) => {
+        if (
+            buildElements ||
+            buildIdentifiers ||
+            buildRelations ||
+            buildConnectivity
+        ) {
+            for (let slot = 0; slot < elementSlots.length; slot += 1) {
+                const element = elementSlots[slot]
                 const type = String(element?.type || '')
                 const id = CircuitJsonIndexer.getElementId(element)
                 if (buildElements || buildConnectivity) {
@@ -81,6 +116,9 @@ export class CircuitJsonIndexer {
                 }
                 if (buildElements && id) {
                     elementsById.set(`${type}:${id}`, element)
+                }
+                if (buildIdentifiers && id) {
+                    elementIds.add(`${type}:${id}`)
                 }
                 if ((buildElements || buildRelations) && id) {
                     if (type === 'source_component') {
@@ -96,12 +134,13 @@ export class CircuitJsonIndexer {
                     }
                 }
                 if (buildRelations) {
+                    if (GROUP_TYPES.has(type)) groupElements.push(element)
                     CircuitJsonIndexer.#indexRelations(
                         element,
                         relationsByField
                     )
                 }
-            })
+            }
         }
 
         const result = {}
@@ -117,18 +156,29 @@ export class CircuitJsonIndexer {
                 sourceTraceById
             })
         }
+        if (buildIdentifiers) {
+            result.elementsById = elementIds
+        }
         if (buildRelations) {
+            const hasGroupRelations = GROUP_RELATION_FIELDS.some((field) =>
+                relationsByField.has(field)
+            )
+            const elementsByGroupId = hasGroupRelations
+                ? CircuitJsonIndexer.#elementsByGroupId(elementSlots)
+                : new Map()
             Object.assign(result, {
                 relationsByField,
                 componentsBySourceId: CircuitJsonIndexer.#componentsBySourceId(
                     sourceComponentById,
                     relationsByField
                 ),
-                groupsById: CircuitJsonIndexer.#groupsById(circuitJson),
-                elementsByGroupId:
-                    CircuitJsonIndexer.#elementsByGroupId(circuitJson),
+                groupsById: CircuitJsonIndexer.#groupsById(
+                    groupElements,
+                    elementsByGroupId
+                ),
+                elementsByGroupId,
                 elementsBySubcircuitId:
-                    CircuitJsonIndexer.#elementsBySubcircuitId(circuitJson)
+                    relationsByField.get('subcircuit_id') || new Map()
             })
         }
         if (buildConnectivity) {
@@ -138,7 +188,9 @@ export class CircuitJsonIndexer {
                 sourceTraceById,
                 sourceTraceConnectivity,
                 diagnostics: [
-                    ...CircuitJsonIndexer.#collectDiagnostics(circuitJson),
+                    ...CircuitJsonIndexer.#collectIndexedDiagnostics(
+                        elementsByType
+                    ),
                     ...CircuitJsonIndexer.#referenceDiagnostics(
                         elementsByType,
                         sourceTraceById,
@@ -167,8 +219,67 @@ export class CircuitJsonIndexer {
      * @returns {object[]}
      */
     static collectDiagnostics(circuitJson) {
-        CircuitJsonDocument.assertModel(circuitJson)
-        return CircuitJsonIndexer.#collectDiagnostics(circuitJson)
+        const elementSlots =
+            CircuitJsonIndexer.#captureElementSlots(circuitJson)
+        CircuitJsonDocument.assertModel(elementSlots)
+        return CircuitJsonIndexer.#collectDiagnostics(elementSlots)
+    }
+
+    /**
+     * Captures dense element data slots without caller-dispatchable iteration.
+     * @param {unknown} circuitJson CircuitJSON array candidate.
+     * @returns {object[]} Plain intrinsic array containing the captured slots.
+     */
+    static #captureElementSlots(circuitJson) {
+        if (!Array.isArray(circuitJson)) return circuitJson
+        let prototype
+        let lengthDescriptor
+        try {
+            prototype = Object.getPrototypeOf(circuitJson)
+            lengthDescriptor = Object.getOwnPropertyDescriptor(
+                circuitJson,
+                'length'
+            )
+        } catch {
+            throw new TypeError(
+                'CircuitJSON arrays must expose dense own data properties.'
+            )
+        }
+        const length = lengthDescriptor?.value
+        if (
+            prototype !== Array.prototype ||
+            !Number.isSafeInteger(length) ||
+            length < 0
+        ) {
+            throw new TypeError(
+                'CircuitJSON arrays must expose dense own data properties.'
+            )
+        }
+        const elements = new Array(length)
+        for (let index = 0; index < length; index += 1) {
+            let descriptor
+            try {
+                descriptor = Object.getOwnPropertyDescriptor(
+                    circuitJson,
+                    String(index)
+                )
+            } catch {
+                throw new TypeError(
+                    'CircuitJSON arrays must expose dense own data properties.'
+                )
+            }
+            if (
+                !descriptor ||
+                !Object.hasOwn(descriptor, 'value') ||
+                descriptor.enumerable !== true
+            ) {
+                throw new TypeError(
+                    'CircuitJSON arrays must expose dense own data properties.'
+                )
+            }
+            elements[index] = descriptor.value
+        }
+        return elements
     }
 
     /**
@@ -178,8 +289,37 @@ export class CircuitJsonIndexer {
      */
     static #collectDiagnostics(circuitJson) {
         return circuitJson
-            .filter((element) => CircuitJsonIndexer.#isDiagnostic(element))
-            .map((element) => CircuitJsonIndexer.#diagnostic(element))
+            .filter((element) =>
+                CircuitJsonDiagnosticIndexer.isElement(element)
+            )
+            .map((element) =>
+                CircuitJsonDiagnosticIndexer.fromElement(
+                    element,
+                    CircuitJsonIndexer.getElementId(element)
+                )
+            )
+    }
+
+    /**
+     * Collects diagnostics from validated type buckets without rescanning every
+     * non-diagnostic row in large models.
+     * @param {Map<string, object[]>} elementsByType Element rows by type.
+     * @returns {object[]}
+     */
+    static #collectIndexedDiagnostics(elementsByType) {
+        const diagnostics = []
+        for (const [type, elements] of elementsByType) {
+            if (!CircuitJsonDiagnosticIndexer.isType(type)) continue
+            for (const element of elements) {
+                diagnostics.push(
+                    CircuitJsonDiagnosticIndexer.fromElement(
+                        element,
+                        CircuitJsonIndexer.getElementId(element)
+                    )
+                )
+            }
+        }
+        return diagnostics
     }
 
     /**
@@ -192,17 +332,21 @@ export class CircuitJsonIndexer {
         const primaryIdField =
             ID_FIELDS_BY_TYPE[String(element?.type || '')] ||
             String(element?.type || '') + '_id'
-        for (const [field, value] of Object.entries(element || {})) {
+        for (const field in element || {}) {
+            if (!Object.hasOwn(element, field)) continue
             if (!field.endsWith('_id') && !field.endsWith('_ids')) continue
             if (field === primaryIdField) continue
-
-            if (!relationsByField.has(field)) {
-                relationsByField.set(field, new Map())
+            const value = element[field]
+            if (value == null || value === '') continue
+            if (Array.isArray(value) && value.length === 0) continue
+            const relationValues = CircuitJsonIndexer.#relationValues(value)
+            if (relationValues.length === 0) continue
+            let byValue = relationsByField.get(field)
+            if (!byValue) {
+                byValue = new Map()
+                relationsByField.set(field, byValue)
             }
-            const byValue = relationsByField.get(field)
-            for (const relationValue of CircuitJsonIndexer.#relationValues(
-                value
-            )) {
+            for (const relationValue of relationValues) {
                 if (!byValue.has(relationValue)) {
                     byValue.set(relationValue, [])
                 }
@@ -292,6 +436,17 @@ export class CircuitJsonIndexer {
         sourceTraceById,
         sourceTraceConnectivity
     ) {
+        if (
+            sourceTraceConnectivity.size === 0 &&
+            !elementsByType.has('pcb_trace') &&
+            !elementsByType.has('schematic_component') &&
+            !elementsByType.has('schematic_port') &&
+            ![...SCHEMATIC_PRIMITIVE_TYPES].some((type) =>
+                elementsByType.has(type)
+            )
+        ) {
+            return []
+        }
         const sourcePortIds = new Set(
             CircuitJsonIndexer.#all(elementsByType, 'source_port')
                 .map((port) => String(port.source_port_id || '').trim())
@@ -662,15 +817,13 @@ export class CircuitJsonIndexer {
 
     /**
      * Builds group rows keyed by group id.
-     * @param {object[]} elements Element rows.
+     * @param {object[]} groupElements Group element rows.
+     * @param {Map<string, object[]>} elementsByGroupId Element membership.
      * @returns {Map<string, object>}
      */
-    static #groupsById(elements) {
-        const elementsByGroupId =
-            CircuitJsonIndexer.#elementsByGroupId(elements)
+    static #groupsById(groupElements, elementsByGroupId) {
         const groups = new Map()
-        for (const element of elements) {
-            if (!GROUP_TYPES.has(String(element?.type || ''))) continue
+        for (const element of groupElements) {
             const id = CircuitJsonIndexer.getElementId(element)
             if (!id) continue
             groups.set(id, {
@@ -699,22 +852,6 @@ export class CircuitJsonIndexer {
             }
         }
         return byGroupId
-    }
-
-    /**
-     * Builds elements by subcircuit id.
-     * @param {object[]} elements Element rows.
-     * @returns {Map<string, object[]>}
-     */
-    static #elementsBySubcircuitId(elements) {
-        const bySubcircuitId = new Map()
-        for (const element of elements) {
-            const id = String(element?.subcircuit_id || '').trim()
-            if (!id) continue
-            if (!bySubcircuitId.has(id)) bySubcircuitId.set(id, [])
-            bySubcircuitId.get(id).push(element)
-        }
-        return bySubcircuitId
     }
 
     /**
@@ -770,115 +907,5 @@ export class CircuitJsonIndexer {
      */
     static #all(elementsByType, type) {
         return elementsByType.get(type) || []
-    }
-
-    /**
-     * Returns true when an element is a warning or error row.
-     * @param {object} element Element.
-     * @returns {boolean}
-     */
-    static #isDiagnostic(element) {
-        const type = String(element?.type || '')
-        return (
-            type.endsWith('_error') ||
-            type.endsWith('_warning') ||
-            Boolean(element?.error_type || element?.warning_type)
-        )
-    }
-
-    /**
-     * Builds one normalized diagnostic.
-     * @param {object} element Diagnostic element.
-     * @returns {object}
-     */
-    static #diagnostic(element) {
-        const type = String(
-            element?.error_type || element?.warning_type || element?.type || ''
-        )
-        return {
-            severity: element?.warning_type ? 'warning' : 'error',
-            sourceFormat: 'circuitjson',
-            type,
-            category: CircuitJsonIndexer.#diagnosticCategory(type),
-            message: String(element?.message || type || 'CircuitJSON issue'),
-            elementId: CircuitJsonIndexer.getElementId(element),
-            ...CircuitJsonIndexer.#diagnosticRelations(element)
-        }
-    }
-
-    /**
-     * Extracts optional relation ids from one diagnostic element.
-     * @param {object} element Diagnostic element.
-     * @returns {object}
-     */
-    static #diagnosticRelations(element) {
-        return Object.fromEntries(
-            [
-                ['sourceComponentId', element?.source_component_id],
-                ['sourcePortId', element?.source_port_id],
-                ['sourceNetId', element?.source_net_id],
-                ['sourceTraceId', element?.source_trace_id],
-                ['pcbComponentId', element?.pcb_component_id],
-                ['pcbPortId', element?.pcb_port_id],
-                ['pcbTraceId', element?.pcb_trace_id],
-                ['pcbSmtpadId', element?.pcb_smtpad_id],
-                ['pcbViaId', element?.pcb_via_id],
-                ['pcbPlatedHoleId', element?.pcb_plated_hole_id],
-                ['pcbHoleId', element?.pcb_hole_id],
-                ['schematicComponentId', element?.schematic_component_id],
-                ['schematicSymbolId', element?.schematic_symbol_id],
-                ['schematicPortId', element?.schematic_port_id]
-            ]
-                .map(([key, value]) => [key, String(value || '').trim()])
-                .filter(([_key, value]) => value)
-        )
-    }
-
-    /**
-     * Resolves a broad diagnostic category.
-     * @param {string} type Diagnostic type or code.
-     * @returns {string}
-     */
-    static #diagnosticCategory(type) {
-        const text = String(type || '').toLowerCase()
-        if (text.includes('clearance')) return 'clearance'
-        if (text.includes('autorouting') || text.includes('trace_error')) {
-            return 'routing'
-        }
-        if (text.includes('placement') || text.includes('outside_board')) {
-            return 'placement'
-        }
-        if (
-            text.includes('trace_missing') ||
-            text.includes('not_connected') ||
-            text.includes('missing_trace') ||
-            text.includes('pin_missing_trace') ||
-            text.includes('pin_must_be_connected')
-        ) {
-            return 'connectivity'
-        }
-        if (text.includes('layout')) return 'layout'
-        if (text.includes('simulation')) return 'simulation'
-        if (text.includes('footprint')) return 'footprint'
-        if (
-            text.includes('pin_defined') ||
-            text.includes('pins_underspecified') ||
-            text.includes('ground_pin') ||
-            text.includes('power_pin')
-        ) {
-            return 'pin-definition'
-        }
-        if (
-            text.includes('manufacturer_part') ||
-            text.includes('missing_property') ||
-            text.includes('property_ignored')
-        ) {
-            return 'metadata'
-        }
-        if (text.includes('manual_edit_conflict')) return 'edit-conflict'
-        if (text.includes('property') || text.includes('misconfigured')) {
-            return 'configuration'
-        }
-        return 'general'
     }
 }

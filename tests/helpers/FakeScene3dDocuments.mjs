@@ -17,7 +17,8 @@ export function createAssemblyModel() {
         {
             type: 'source_component',
             source_component_id: 'source_u1',
-            name: 'U1'
+            name: 'U1',
+            ftype: 'simple_chip'
         },
         {
             type: 'pcb_component',
@@ -88,11 +89,12 @@ export function createAssemblyModel() {
         {
             type: 'pcb_silkscreen_text',
             pcb_silkscreen_text_id: 'text_1',
+            pcb_component_id: 'pcb_u1',
             text: 'U1',
             x: 2,
             y: 2.5,
             font_size: 1,
-            layer: 'top_silkscreen'
+            layer: 'top'
         },
         {
             type: 'pcb_hole',
@@ -100,7 +102,7 @@ export function createAssemblyModel() {
             hole_shape: 'circle',
             x: -7,
             y: 0,
-            diameter: 2,
+            hole_diameter: 2,
             layer: 'board'
         },
         {

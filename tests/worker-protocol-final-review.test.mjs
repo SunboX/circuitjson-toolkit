@@ -381,7 +381,7 @@ test('worker protocol transfers isolated result buffers without draining protect
 test('result transfer reuses only proven models and rejects unproven accessors', () => {
     const proven = Parser.parse({
         fileName: 'proven.json',
-        data: '[{"type":"source_net","source_net_id":"n1","name":"N1"}]'
+        data: '[{"type":"source_net","source_net_id":"n1","name":"N1","member_source_group_ids":[]}]'
     })
     const prepared = WorkerRequestData.prepareResult(proven)
     assert.equal(prepared.value.model, proven.model)

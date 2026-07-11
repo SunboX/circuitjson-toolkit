@@ -185,7 +185,11 @@ export class CircuitJsonSourceMetadata {
      */
     static #supplierPartNumbers(component) {
         const numbers = {}
-        for (const field of ['supplier_part_numbers', 'supplierPartNumbers']) {
+        for (const field of [
+            'supplier_part_numbers',
+            'supplierPartNumbers',
+            'legacy_supplier_part_numbers'
+        ]) {
             const value = component?.[field]
             if (!value || typeof value !== 'object' || Array.isArray(value)) {
                 continue

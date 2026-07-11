@@ -1,5 +1,6 @@
 import { CircuitJsonValidationProof } from '../context/CircuitJsonValidationProof.mjs'
 import { CircuitJsonReadOnlyDocument } from '../context/CircuitJsonReadOnlyDocument.mjs'
+import { CircuitJsonSerializedInputAudit } from '../CircuitJsonSerializedInputAudit.mjs'
 import { ToolkitAsset } from './ToolkitAsset.mjs'
 import { ToolkitDiagnostic, cloneSafeValue } from './ToolkitDiagnostic.mjs'
 
@@ -16,7 +17,21 @@ export class DocumentResult {
      * @returns {Record<string, any>} Canonical document result.
      */
     static create(fields = {}) {
+        return DocumentResult.#create(fields, false)
+    }
+
+    /**
+     * Creates the common envelope with the requested extension ownership mode.
+     * @param {Record<string, any>} fields Document fields.
+     * @param {boolean} readonlyExtensions Whether to capture immutable extensions now.
+     * @returns {Record<string, any>} Canonical document result.
+     */
+    static #create(fields, readonlyExtensions) {
         const source = DocumentResult.#source(fields)
+        const audit = CircuitJsonSerializedInputAudit.inspect(
+            fields.model,
+            source.fileName
+        )
         return {
             schema: DOCUMENT_SCHEMA,
             id: String(
@@ -30,7 +45,8 @@ export class DocumentResult {
             source,
             extensions: DocumentResult.extensionForSource(
                 source.format,
-                fields.extensions
+                fields.extensions,
+                { readonly: readonlyExtensions }
             ),
             assets: Array.isArray(fields.assets)
                 ? fields.assets.map((asset) =>
@@ -39,12 +55,16 @@ export class DocumentResult {
                       )
                   )
                 : [],
-            diagnostics: Array.isArray(fields.diagnostics)
-                ? fields.diagnostics.map((diagnostic) =>
-                      ToolkitDiagnostic.create(diagnostic)
-                  )
-                : [],
-            statistics: cloneSafeValue(fields.statistics, {})
+            diagnostics: [
+                ...(Array.isArray(fields.diagnostics)
+                    ? fields.diagnostics
+                    : []),
+                ...audit.diagnostics
+            ].map((diagnostic) => ToolkitDiagnostic.create(diagnostic)),
+            statistics: {
+                ...cloneSafeValue(fields.statistics, {}),
+                ...audit.statistics
+            }
         }
     }
 
@@ -55,7 +75,7 @@ export class DocumentResult {
      * @returns {Record<string, any>} Proven canonical document result.
      */
     static createValidated(fields = {}, runtime = {}) {
-        const document = DocumentResult.create(fields)
+        const document = DocumentResult.#create(fields, true)
         if (Object.hasOwn(runtime || {}, 'sourceReference')) {
             Object.defineProperty(document, 'sourceReference', {
                 configurable: false,
@@ -93,23 +113,40 @@ export class DocumentResult {
      * Selects and normalizes the extension namespace owned by a source.
      * @param {string} format Source format.
      * @param {unknown} extensions Extension candidates.
+     * @param {{ readonly?: boolean }} [options] Extension ownership options.
      * @returns {Record<string, any>} Normalized extension map.
      */
-    static extensionForSource(format, extensions) {
+    static extensionForSource(format, extensions, options = {}) {
         if (format === 'circuitjson') return {}
         const candidate = extensions?.[format]
         const hasCandidate = candidate && typeof candidate === 'object'
+        if (!hasCandidate) return {}
+        if (options.readonly === true && hasCandidate) {
+            return CircuitJsonReadOnlyDocument.copyReadonlyExtensionValue(
+                candidate,
+                (snapshot) =>
+                    DocumentResult.#normalizedExtension(format, snapshot)
+            )
+        }
         const cloned = hasCandidate ? cloneSafeValue(candidate, {}) : {}
-        const metadata = cloned.$meta || {}
-        delete cloned.$meta
+        return DocumentResult.#normalizedExtension(format, cloned)
+    }
+
+    /**
+     * Normalizes one already-owned source namespace without another deep copy.
+     * @param {string} format Source format.
+     * @param {Record<string, any>} namespace Owned mutable namespace.
+     * @returns {Record<string, any>} Normalized extension map.
+     */
+    static #normalizedExtension(format, namespace) {
+        const metadata = namespace.$meta || {}
+        const fields = { ...namespace }
+        delete fields.$meta
         return {
             [format]: {
                 $meta: {
                     schema: String(metadata.schema || EXTENSION_SCHEMA),
-                    completeness: String(
-                        metadata.completeness ||
-                            (hasCandidate ? 'canonical' : 'none')
-                    ),
+                    completeness: String(metadata.completeness || 'canonical'),
                     included: Array.isArray(metadata.included)
                         ? metadata.included.map(String)
                         : [],
@@ -117,7 +154,7 @@ export class DocumentResult {
                         ? metadata.omitted.map(String)
                         : []
                 },
-                ...cloned
+                ...fields
             }
         }
     }

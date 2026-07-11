@@ -29,6 +29,22 @@ include a reasonable reference to this project and its original author there.
 
 Package-manager dependencies retain their own licenses.
 
+## Canonical ECAD toolkit convergence
+
+Version 1.1.0 defines the common parser, project, renderer, interaction, query,
+manufacturing, simulation, data-only 3D scene, capability, error, and worker
+contracts used by CircuitJSON Toolkit, Gerber Toolkit, Altium Toolkit, and
+KiCad Toolkit.
+
+Source-format packages retain their own native decoders, fidelity engines,
+assets, reports, and license terms. Shared behavior generalized here operates
+on standards-only CircuitJSON and does not copy source-format parser models or
+renderer graphs. `docs/provenance.md` records consulted behavior and adapted
+ownership boundaries.
+
+The `circuit-json` schema package is used only for development-time schema
+verification. It is not a runtime dependency or bundled production edge.
+
 ## Query behavior references
 
 The shared CircuitJSON query contract was independently implemented after

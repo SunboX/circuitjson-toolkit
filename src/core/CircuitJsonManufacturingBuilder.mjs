@@ -14,14 +14,19 @@ export class CircuitJsonManufacturingBuilder {
     static build(circuitJson, index = CircuitJsonIndexer.index(circuitJson)) {
         const pickAndPlaceRows =
             CircuitJsonManufacturingBuilder.#pickAndPlaceRows(index)
+        const sourceNetNames =
+            CircuitJsonManufacturingBuilder.#sourceNetNames(index)
         return {
             pickAndPlaceRows,
             routingDsn: CircuitJsonManufacturingBuilder.#routingDsn(
                 index,
-                pickAndPlaceRows
+                pickAndPlaceRows,
+                sourceNetNames
             ),
-            routingGuides:
-                CircuitJsonManufacturingBuilder.#routingGuides(index),
+            routingGuides: CircuitJsonManufacturingBuilder.#routingGuides(
+                index,
+                sourceNetNames
+            ),
             fabricationNotes:
                 CircuitJsonManufacturingBuilder.#fabricationNotes(index)
         }
@@ -90,9 +95,10 @@ export class CircuitJsonManufacturingBuilder {
      * Builds a compact routing exchange text payload.
      * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
      * @param {object[]} placements Prepared placement rows.
+     * @param {Map<string, string>} sourceNetNames Shared source-net lookup.
      * @returns {string}
      */
-    static #routingDsn(index, placements) {
+    static #routingDsn(index, placements, sourceNetNames) {
         const lines = ['(pcb assembly)', '  (unit mm)']
         for (const line of CircuitJsonManufacturingBuilder.#boardLines(index)) {
             lines.push(line)
@@ -103,7 +109,8 @@ export class CircuitJsonManufacturingBuilder {
             lines.push(line)
         }
         for (const line of CircuitJsonManufacturingBuilder.#networkLines(
-            index
+            index,
+            sourceNetNames
         )) {
             lines.push(line)
         }
@@ -180,10 +187,14 @@ export class CircuitJsonManufacturingBuilder {
     /**
      * Builds network lines for nets, pads, vias, and wires.
      * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
+     * @param {Map<string, string>} sourceNetNames Shared source-net lookup.
      * @returns {string[]}
      */
-    static #networkLines(index) {
-        const model = CircuitJsonManufacturingBuilder.#networkModel(index)
+    static #networkLines(index, sourceNetNames) {
+        const model = CircuitJsonManufacturingBuilder.#networkModel(
+            index,
+            sourceNetNames
+        )
         const lines = ['  (network']
         for (const netName of model.names) {
             lines.push(
@@ -201,11 +212,10 @@ export class CircuitJsonManufacturingBuilder {
     /**
      * Groups routing features by net with one pass per element family.
      * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
+     * @param {Map<string, string>} sourceNetNames Shared source-net lookup.
      * @returns {{ names: string[], pins: Map<string, string[]>, drills: Map<string, string[]>, wires: Map<string, string[]> }} Grouped network model.
      */
-    static #networkModel(index) {
-        const sourceNetNames =
-            CircuitJsonManufacturingBuilder.#sourceNetNames(index)
+    static #networkModel(index, sourceNetNames) {
         const names = new Set([...sourceNetNames.values()].filter(Boolean))
         const pins = new Map()
         const drills = new Map()
@@ -399,11 +409,10 @@ export class CircuitJsonManufacturingBuilder {
     /**
      * Builds route guide metadata from hints and breakout points.
      * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
+     * @param {Map<string, string>} sourceNetNames Shared source-net lookup.
      * @returns {object[]}
      */
-    static #routingGuides(index) {
-        const sourceNetNames =
-            CircuitJsonManufacturingBuilder.#sourceNetNames(index)
+    static #routingGuides(index, sourceNetNames) {
         return [
             ...CircuitJsonManufacturingBuilder.#all(index, 'pcb_trace_hint')
                 .map((hint) =>

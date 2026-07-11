@@ -31,13 +31,12 @@ export class CircuitJsonModelFreezeTraversal {
      * @returns {void}
      */
     visit(value) {
-        if (!this.#enabled) return
         const stack = [{ exit: false, value }]
         while (stack.length) {
             const frame = stack.pop()
             if (frame.exit) {
                 this.#visiting.delete(frame.value)
-                this.#targets.push(frame.value)
+                if (this.#enabled) this.#targets.push(frame.value)
                 continue
             }
             const current = frame.value
@@ -58,10 +57,9 @@ export class CircuitJsonModelFreezeTraversal {
             this.#seen.add(current)
             this.#visiting.add(current)
 
-            const descriptors = Object.getOwnPropertyDescriptors(current)
             const children = Array.isArray(current)
-                ? this.#arrayChildren(current, descriptors)
-                : this.#recordChildren(descriptors)
+                ? this.#arrayChildren(current)
+                : this.#recordChildren(current)
             stack.push({ exit: true, value: current })
             for (let index = children.length - 1; index >= 0; index -= 1) {
                 stack.push({ exit: false, value: children[index] })
@@ -72,12 +70,11 @@ export class CircuitJsonModelFreezeTraversal {
     /**
      * Visits one dense array through enumerable index data descriptors.
      * @param {any[]} value Array value.
-     * @param {Record<string, PropertyDescriptor>} descriptors Descriptors.
      * @returns {unknown[]} Child values.
      */
-    #arrayChildren(value, descriptors) {
-        const keys = Reflect.ownKeys(descriptors)
-        const length = descriptors.length?.value
+    #arrayChildren(value) {
+        const keys = Reflect.ownKeys(value)
+        const length = Object.getOwnPropertyDescriptor(value, 'length')?.value
         if (
             !Number.isSafeInteger(length) ||
             length < 0 ||
@@ -88,7 +85,10 @@ export class CircuitJsonModelFreezeTraversal {
         }
         const children = []
         for (let index = 0; index < length; index += 1) {
-            const descriptor = descriptors[String(index)]
+            const descriptor = Object.getOwnPropertyDescriptor(
+                value,
+                String(index)
+            )
             if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
                 this.#unsupportedAccessor = true
                 continue
@@ -104,13 +104,13 @@ export class CircuitJsonModelFreezeTraversal {
 
     /**
      * Visits one record through enumerable string-keyed data descriptors.
-     * @param {Record<string, PropertyDescriptor>} descriptors Descriptors.
+     * @param {Record<string, unknown>} value Plain record value.
      * @returns {unknown[]} Child values.
      */
-    #recordChildren(descriptors) {
+    #recordChildren(value) {
         const children = []
-        for (const key of Reflect.ownKeys(descriptors)) {
-            const descriptor = descriptors[key]
+        for (const key of Reflect.ownKeys(value)) {
+            const descriptor = Object.getOwnPropertyDescriptor(value, key)
             if (!Object.hasOwn(descriptor, 'value')) {
                 this.#unsupportedAccessor = true
                 continue
@@ -159,7 +159,6 @@ export class CircuitJsonModelFreezeTraversal {
     commit(valid) {
         if (!this.#enabled || !valid) return
         for (const target of this.#targets) Object.freeze(target)
-        Object.freeze(this.#model)
     }
 
     /**

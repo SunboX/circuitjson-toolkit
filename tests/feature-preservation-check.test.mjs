@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -23,7 +23,7 @@ function baselineFeature(feature) {
         kind: 'behavior',
         capabilityId: 'parse.document',
         disposition: 'shared',
-        replacement: 'Parser.parse()',
+        replacement: 'circuitjson-toolkit#ToolkitCapabilities.inventory()',
         availability: {
             'circuitjson-toolkit': 'shared',
             'gerber-toolkit': 'derived',
@@ -32,6 +32,7 @@ function baselineFeature(feature) {
         },
         reason: 'CircuitJSON parsing is a source-neutral shared operation.',
         evidenceToken: 'ToolkitCapabilities',
+        evidenceMode: 'executable',
         tests: ['tests/api-entrypoints.test.mjs'],
         documentation: ['docs/api.md']
     }
@@ -76,6 +77,55 @@ async function packedFixture(context, inventory) {
     )
     context.after(() => rm(root, { recursive: true, force: true }))
     return root
+}
+
+/**
+ * Runs strict validation against one isolated semantic evidence source.
+ * @param {import('node:test').TestContext} context Node test context.
+ * @param {string} source Evidence module source.
+ * @param {'runtime-reference' | 'executable'} evidenceMode Evidence requirement.
+ * @returns {Promise<{ featureCount: number }>} Validation result.
+ */
+async function validateSemanticEvidence(
+    context,
+    source,
+    evidenceMode = 'executable'
+) {
+    const root = await mkdtemp(join(tmpdir(), 'circuitjson-evidence-binding-'))
+    const subjectSource =
+        `export function ExpectedPublicSymbol() { return true }\n` +
+        `export class ToolkitCapabilities { static inventory() { return ${JSON.stringify([capabilityRow('parse.document')])} } }\n`
+    await Promise.all([
+        writeFile(join(root, 'subject.mjs'), subjectSource),
+        writeFile(join(root, 'evidence.mjs'), source)
+    ])
+    context.after(() => rm(root, { recursive: true, force: true }))
+    const feature = {
+        ...baselineFeature('semantic-evidence'),
+        evidenceToken: 'ExpectedPublicSymbol',
+        evidenceMode,
+        tests: ['evidence.mjs'],
+        documentation: ['evidence.mjs']
+    }
+    return validateFeaturePreservation({
+        apiBaseline: {
+            entrypoints: [
+                { entrypoint: '.', target: './subject.mjs', exports: [] }
+            ],
+            features: [feature]
+        },
+        ledger: [
+            ledgerRow('semantic-evidence', {
+                evidenceToken: 'ExpectedPublicSymbol',
+                evidenceMode,
+                tests: ['evidence.mjs'],
+                documentation: ['evidence.mjs']
+            })
+        ],
+        strict: true,
+        packageRoot: root,
+        repositoryRoot: root
+    })
 }
 
 test('feature checker rejects missing baseline mappings', async () => {
@@ -217,8 +267,110 @@ test('strict feature checker rejects evidence files without the mapped symbol', 
                 packageRoot,
                 repositoryRoot: packageRoot
             }),
-        /Evidence tests do not reference ExpectedPublicSymbol for mapped/
+        /Evidence tests do not (?:reference|bind) ExpectedPublicSymbol for mapped/
     )
+})
+
+test('strict feature checker rejects evidence outside the repository', async (context) => {
+    const packageRoot = await packedFixture(context, [
+        capabilityRow('parse.document')
+    ])
+    const repositoryRoot = join(packageRoot, 'repository')
+    await mkdir(repositoryRoot)
+    const apiBaseline = {
+        entrypoints: [{ entrypoint: '.', target: './index.mjs', exports: [] }],
+        features: [baselineFeature('mapped')]
+    }
+    const row = ledgerRow('mapped', {
+        tests: ['../index.mjs'],
+        documentation: ['../index.mjs']
+    })
+    apiBaseline.features[0] = {
+        ...apiBaseline.features[0],
+        tests: row.tests,
+        documentation: row.documentation
+    }
+
+    await assert.rejects(
+        () =>
+            validateFeaturePreservation({
+                apiBaseline,
+                ledger: [row],
+                strict: true,
+                packageRoot,
+                repositoryRoot
+            }),
+        /Evidence path escapes repository: \.\.\/index\.mjs/
+    )
+})
+
+test('strict feature checker ignores evidence tokens in comments and strings', async (context) => {
+    const packageRoot = await packedFixture(context, [
+        capabilityRow('parse.document')
+    ])
+    await writeFile(
+        join(packageRoot, 'evidence.mjs'),
+        `// ExpectedPublicSymbol\nconst description = 'ExpectedPublicSymbol'\nvoid description\n`
+    )
+    const feature = {
+        ...baselineFeature('mapped'),
+        evidenceToken: 'ExpectedPublicSymbol',
+        tests: ['evidence.mjs'],
+        documentation: ['evidence.mjs']
+    }
+
+    await assert.rejects(
+        () =>
+            validateFeaturePreservation({
+                apiBaseline: {
+                    entrypoints: [
+                        { entrypoint: '.', target: './index.mjs', exports: [] }
+                    ],
+                    features: [feature]
+                },
+                ledger: [
+                    ledgerRow('mapped', {
+                        evidenceToken: 'ExpectedPublicSymbol',
+                        tests: ['evidence.mjs'],
+                        documentation: ['evidence.mjs']
+                    })
+                ],
+                strict: true,
+                packageRoot,
+                repositoryRoot: packageRoot
+            }),
+        /Evidence tests do not (?:reference|bind) ExpectedPublicSymbol for mapped/
+    )
+})
+
+test('strict evidence rejects declarations, property keys, shadowing, and fake namespaces', async (context) => {
+    const invalidSources = [
+        `const ExpectedPublicSymbol = 0\nvoid ExpectedPublicSymbol\n`,
+        `const values = { ExpectedPublicSymbol: true }\nvoid values\n`,
+        `import { ExpectedPublicSymbol as Subject } from './subject.mjs'\nfunction invoke(Subject) { return Subject() }\ninvoke(() => true)\n`,
+        `const toolkit = { ExpectedPublicSymbol() { return true } }\ntoolkit.ExpectedPublicSymbol()\n`
+    ]
+
+    for (const source of invalidSources) {
+        await assert.rejects(
+            () => validateSemanticEvidence(context, source),
+            /Evidence tests do not bind ExpectedPublicSymbol for semantic-evidence/u
+        )
+    }
+})
+
+test('strict evidence accepts real aliased and namespace import uses', async (context) => {
+    const aliased = await validateSemanticEvidence(
+        context,
+        `import { ExpectedPublicSymbol as Subject } from './subject.mjs'\nSubject()\n`
+    )
+    const namespace = await validateSemanticEvidence(
+        context,
+        `import * as toolkit from './subject.mjs'\ntoolkit.ExpectedPublicSymbol()\n`
+    )
+
+    assert.equal(aliased.featureCount, 1)
+    assert.equal(namespace.featureCount, 1)
 })
 
 test('strict feature checker rejects stale packed API mappings', async (context) => {
@@ -228,6 +380,7 @@ test('strict feature checker rejects stale packed API mappings', async (context)
     const apiFeature = {
         ...baselineFeature('.#MissingExport'),
         kind: 'export',
+        evidenceMode: 'packed-contract',
         entrypoint: '.',
         exportName: 'MissingExport',
         tests: ['index.mjs'],
@@ -245,6 +398,7 @@ test('strict feature checker rejects stale packed API mappings', async (context)
                 ledger: [
                     ledgerRow(apiFeature.feature, {
                         kind: 'export',
+                        evidenceMode: 'packed-contract',
                         tests: ['index.mjs'],
                         documentation: ['index.mjs']
                     })
@@ -333,12 +487,16 @@ test('strict file-backed checker imports entrypoints from an npm pack', async (c
             version: '1.0.0',
             type: 'module',
             exports: { '.': './index.mjs' },
-            files: ['index.mjs']
+            files: ['index.mjs', 'evidence.mjs']
         })
     )
     await writeFile(
         join(root, 'index.mjs'),
         `export class ToolkitCapabilities { static inventory() { return ${JSON.stringify([capabilityRow('parse.document')])} } }\n`
+    )
+    await writeFile(
+        join(root, 'evidence.mjs'),
+        `import { ToolkitCapabilities } from './index.mjs'\nToolkitCapabilities.inventory()\n`
     )
     await writeFile(
         apiPath,
@@ -349,8 +507,8 @@ test('strict file-backed checker imports entrypoints from an npm pack', async (c
             features: [
                 {
                     ...baselineFeature('mapped'),
-                    tests: ['index.mjs'],
-                    documentation: ['index.mjs']
+                    tests: ['evidence.mjs'],
+                    documentation: ['evidence.mjs']
                 }
             ]
         })
@@ -359,8 +517,8 @@ test('strict file-backed checker imports entrypoints from an npm pack', async (c
         ledgerPath,
         JSON.stringify([
             ledgerRow('mapped', {
-                tests: ['index.mjs'],
-                documentation: ['index.mjs']
+                tests: ['evidence.mjs'],
+                documentation: ['evidence.mjs']
             })
         ])
     )
@@ -421,7 +579,7 @@ test('feature checker requires exact baseline and ledger mapping values', async 
         ]
     }
     const mismatches = [
-        { kind: 'field' },
+        { kind: 'field', evidenceMode: 'runtime-reference' },
         { capabilityId: 'query.document' },
         { disposition: 'native-extension' },
         { replacement: 'Different replacement' },

@@ -1,16 +1,22 @@
-import { readdir, readFile } from 'node:fs/promises'
-import { pathToFileURL } from 'node:url'
+import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import {
     BaselineProvenance,
     ImmutableBaselineWriter
 } from './BaselineArtifacts.mjs'
+import { JavaScriptEvidenceAnalyzer } from './JavaScriptEvidenceAnalyzer.mjs'
 import { PublicContractExtractor } from './PublicContractExtractor.mjs'
 
 const repositoryRoot = new URL('../', import.meta.url)
 const BASELINE_VERSION = '1.0.17'
 const IGNORED_CLASS_MEMBERS = new Set(['name', 'prototype'])
-const EXTENSION_EXPORTS = new Set([
+const LEGACY_EXPORTS = new Set([
+    'CircuitJsonBomBuilder',
+    'CircuitJsonElementValidator',
+    'CircuitJsonManufacturingBuilder',
+    'CircuitJsonManufacturingDownloadBuilder',
+    'CircuitJsonParser',
     'CircuitJsonPcbClearanceDiagnostics',
     'CircuitJsonPcbCopperGeometry',
     'CircuitJsonPcbDrawingStyle',
@@ -25,14 +31,29 @@ const EXTENSION_EXPORTS = new Set([
     'CircuitJsonPcbPrimitiveGroups',
     'CircuitJsonPcbPrimitiveIndex',
     'CircuitJsonPcbPrimitiveOverlays',
+    'CircuitJsonPcbSvgRenderer',
     'CircuitJsonPcbTraceLengthModel',
     'CircuitJsonPcbViaSvgRenderer',
     'CircuitJsonPcbZonePrimitiveBuilder',
     'CircuitJsonSchematicSvgArcPath',
     'CircuitJsonSchematicSvgPortMetadata',
     'CircuitJsonSchematicSvgPrimitiveAttributes',
+    'CircuitJsonSchematicSvgRenderer',
     'CircuitJsonSchematicTableSvgRenderer',
-    'SelectedPartCircuitJsonExportAdapter'
+    'CircuitJsonSourceMetadata',
+    'CircuitJsonSupportMatrixBuilder',
+    'PcbBoundsSelectionModel',
+    'PcbCandidateSelectionModel',
+    'PcbDiagnosticFocusModel',
+    'PcbInteractionPrimitiveModel',
+    'SelectedPartCircuitJsonExportAdapter',
+    'SpiceCompatibilityPreprocessor',
+    'SpiceSimulationService'
+])
+const RETAINED_ROOT_EXPORTS = new Set([
+    'CircuitJsonDocument',
+    'CircuitJsonIndexer',
+    'CircuitJsonUnits'
 ])
 const SHARED_AVAILABILITY = Object.freeze({
     'circuitjson-toolkit': 'shared',
@@ -46,15 +67,9 @@ const DERIVED_AVAILABILITY = Object.freeze({
     'altium-toolkit': 'derived',
     'kicad-toolkit': 'derived'
 })
-const EXTENSION_AVAILABILITY = Object.freeze({
-    'circuitjson-toolkit': 'native',
-    'gerber-toolkit': 'unavailable',
-    'altium-toolkit': 'unavailable',
-    'kicad-toolkit': 'unavailable'
-})
 const CAPABILITY_POLICIES = Object.freeze({
     'parse.document': {
-        replacement: 'Parser.parse()/Parser.parseSync()',
+        replacement: 'circuitjson-toolkit/parser#Parser.parse()',
         availability: DERIVED_AVAILABILITY,
         reason: 'CircuitJSON parsing is source-neutral; source toolkits derive it after projection.',
         tests: ['tests/circuit-json-parser.test.mjs'],
@@ -62,70 +77,73 @@ const CAPABILITY_POLICIES = Object.freeze({
     },
     'validation.document': {
         replacement:
-            'DocumentResult.createValidated()/CircuitJsonDocumentContext.prepare()',
+            'circuitjson-toolkit/parser#DocumentResult.createValidated()',
         availability: SHARED_AVAILABILITY,
         reason: 'CircuitJSON validation and prepared contexts are shared model operations.',
         tests: ['tests/circuit-json-document.test.mjs'],
         documentation: ['docs/api.md']
     },
     'query.document': {
-        replacement: 'QueryService/CircuitJsonDocumentContext indexes',
+        replacement: 'circuitjson-toolkit/query#QueryService.create()',
         availability: SHARED_AVAILABILITY,
         reason: 'Indexes and relationship queries operate only on neutral CircuitJSON.',
         tests: ['tests/circuit-json-indexer.test.mjs'],
         documentation: ['docs/api.md']
     },
     'units.convert': {
-        replacement: 'CircuitJsonUnits deprecated compatibility export',
+        replacement: 'circuitjson-toolkit#CircuitJsonUnits',
         availability: SHARED_AVAILABILITY,
         reason: 'Unit conversion is source-neutral and remains shared compatibility behavior.',
         tests: ['tests/circuit-json-document.test.mjs'],
         documentation: ['docs/api.md']
     },
     'metadata.normalize': {
-        replacement: 'DocumentResult.source/DocumentResult.extensions',
+        replacement: 'circuitjson-toolkit/parser#DocumentResult.create()',
         availability: DERIVED_AVAILABILITY,
         reason: 'Normalized source metadata is shared while source packages derive its values.',
         tests: ['tests/circuit-json-document.test.mjs'],
         documentation: ['docs/model-format.md']
     },
     'bom.build': {
-        replacement: 'BomTableRenderer rows from DocumentResult.model',
+        replacement: 'circuitjson-toolkit/renderers#BomTableRenderer.render()',
         availability: DERIVED_AVAILABILITY,
         reason: 'BOM rows derive from standard source-component elements.',
         tests: ['tests/circuit-json-document.test.mjs'],
         documentation: ['spec/library-scope.md']
     },
     'manufacturing.export': {
-        replacement: 'ManufacturingService.listExports()/export()',
+        replacement:
+            'circuitjson-toolkit/manufacturing#ManufacturingService.export()',
         availability: DERIVED_AVAILABILITY,
         reason: 'Manufacturing outputs share a request contract and derive from standard elements.',
         tests: ['tests/circuit-json-manufacturing.test.mjs'],
         documentation: ['spec/library-scope.md']
     },
     'render.pcb': {
-        replacement: 'PcbSvgRenderer.render()',
+        replacement: 'circuitjson-toolkit/renderers#PcbSvgRenderer.render()',
         availability: DERIVED_AVAILABILITY,
         reason: 'PCB SVG rendering consumes standard CircuitJSON with source-derived fidelity.',
         tests: ['tests/circuitjson-variant-geometry.test.mjs'],
         documentation: ['docs/model-format.md']
     },
     'render.schematic': {
-        replacement: 'SchematicSvgRenderer.render()',
+        replacement:
+            'circuitjson-toolkit/renderers#SchematicSvgRenderer.render()',
         availability: DERIVED_AVAILABILITY,
         reason: 'Schematic SVG rendering consumes standard CircuitJSON.',
         tests: ['tests/api-entrypoints.test.mjs'],
         documentation: ['docs/model-format.md']
     },
     'interaction.pcb': {
-        replacement: 'PcbInteractionIndex',
+        replacement:
+            'circuitjson-toolkit/interaction#PcbInteractionIndex.create()',
         availability: DERIVED_AVAILABILITY,
         reason: 'PCB hit testing and selection derive from shared render primitives.',
         tests: ['tests/pcb-interaction-primitive-model.test.mjs'],
         documentation: ['docs/model-format.md']
     },
     'simulation.spice': {
-        replacement: 'SimulationService.simulate()',
+        replacement: 'circuitjson-toolkit/simulation#SimulationService.run()',
         availability: DERIVED_AVAILABILITY,
         reason: 'Simulation uses a shared request/result contract with toolkit-specific engines.',
         tests: ['tests/spice-simulation-service.test.mjs'],
@@ -134,8 +152,8 @@ const CAPABILITY_POLICIES = Object.freeze({
     'export.selected-part': {
         replacement:
             'circuitjson-toolkit/extensions#SelectedPartCircuitJsonExportAdapter',
-        availability: EXTENSION_AVAILABILITY,
-        reason: 'Selected-part export adaptation remains a CircuitJSON compatibility extension.',
+        availability: DERIVED_AVAILABILITY,
+        reason: 'Selected-part export adaptation operates on source-neutral CircuitJSON and is derived after source projection.',
         tests: ['tests/circuit-json-document.test.mjs'],
         documentation: ['spec/library-scope.md']
     }
@@ -378,13 +396,24 @@ function flattenEntrypoints(entrypoints) {
  * @returns {string} Extension export name or an empty string.
  */
 function extensionOwner(feature) {
-    return (
-        [...EXTENSION_EXPORTS].find(
-            (name) =>
-                feature.exportName === name ||
-                feature.feature.startsWith(`${name}.`)
-        ) || ''
-    )
+    return LEGACY_EXPORTS.has(feature.exportName) ? feature.exportName : ''
+}
+
+/**
+ * Returns the exact retained extension target for a historical source contract.
+ * @param {Record<string, any>} feature Baseline feature.
+ * @param {string} owner Historical export owner.
+ * @returns {string} Exact extension replacement.
+ */
+function retainedReplacement(feature, owner, entrypoint = 'extensions') {
+    if (!feature.methodName) {
+        return `circuitjson-toolkit${entrypoint ? `/${entrypoint}` : ''}#${owner}`
+    }
+    const member =
+        feature.methodType === 'instance'
+            ? `prototype.${feature.methodName}()`
+            : `${feature.methodName}()`
+    return `circuitjson-toolkit${entrypoint ? `/${entrypoint}` : ''}#${owner}.${member}`
 }
 
 /**
@@ -395,16 +424,30 @@ function extensionOwner(feature) {
 function preservationMapping(feature) {
     const owner = extensionOwner(feature)
     if (owner) {
+        const policy = CAPABILITY_POLICIES[feature.capabilityId]
+        if (!policy) {
+            throw new Error(
+                `Missing preservation policy for ${feature.capabilityId}.`
+            )
+        }
         return {
-            disposition: 'native-extension',
-            replacement:
-                owner === 'SelectedPartCircuitJsonExportAdapter'
-                    ? CAPABILITY_POLICIES['export.selected-part'].replacement
-                    : `circuitjson-toolkit/renderers#${owner}`,
-            availability: { ...EXTENSION_AVAILABILITY },
-            reason: `${owner} is a low-level CircuitJSON compatibility extension; canonical hosts use the shared service or renderer facade.`,
+            disposition: 'shared',
+            replacement: retainedReplacement(feature, owner),
+            availability: { ...policy.availability },
+            reason: `${owner} remains an exact source-neutral compatibility contract; source toolkits share it directly or derive it after CircuitJSON projection.`,
             tests: ['tests/api-entrypoints.test.mjs'],
             documentation: ['docs/model-format.md']
+        }
+    }
+    if (RETAINED_ROOT_EXPORTS.has(feature.exportName)) {
+        const policy = CAPABILITY_POLICIES[feature.capabilityId]
+        return {
+            disposition: 'shared',
+            replacement: retainedReplacement(feature, feature.exportName, ''),
+            availability: { ...policy.availability },
+            reason: `${feature.exportName} remains an exact deprecated root compatibility contract throughout 1.1.x.`,
+            tests: ['tests/api-entrypoints.test.mjs'],
+            documentation: ['docs/api.md']
         }
     }
     const policy = CAPABILITY_POLICIES[feature.capabilityId]
@@ -452,15 +495,50 @@ async function readTestSources(directory, relativeDirectory = 'tests') {
 }
 
 /**
- * Finds repository tests that reference a public symbol token.
+ * Parses test sources once into semantic public-import evidence.
+ * @param {{ path: string, source: string }[]} testSources Test source records.
+ * @returns {Promise<{ path: string, references: Set<string>, executable: Set<string> }[]>} Semantic evidence records.
+ */
+async function analyzeTestSources(testSources) {
+    const rootPath = fileURLToPath(repositoryRoot)
+    return Promise.all(
+        testSources.map(async (testSource) => ({
+            path: testSource.path,
+            ...(await JavaScriptEvidenceAnalyzer.analyze(testSource.source, {
+                path: fileURLToPath(new URL(testSource.path, repositoryRoot)),
+                repositoryRoot: rootPath
+            }))
+        }))
+    )
+}
+
+/**
+ * Finds repository tests with a semantically bound public symbol token.
  * @param {string} evidenceToken Public symbol token.
- * @param {{ path: string, source: string }[]} testSources Test sources.
+ * @param {'runtime-reference' | 'executable'} evidenceMode Evidence mode.
+ * @param {{ path: string, references: Set<string>, executable: Set<string> }[]} testSources Test sources.
  * @returns {string[]} Matching repository-relative test paths.
  */
-function evidenceTests(evidenceToken, testSources) {
+function evidenceTests(evidenceToken, evidenceMode, testSources) {
     return testSources
-        .filter((testSource) => testSource.source.includes(evidenceToken))
+        .filter((testSource) =>
+            (evidenceMode === 'executable'
+                ? testSource.executable
+                : testSource.references
+            ).has(evidenceToken)
+        )
         .map((testSource) => testSource.path)
+}
+
+/**
+ * Returns the strict evidence mode for one feature kind.
+ * @param {string} kind Feature kind.
+ * @returns {'packed-contract' | 'runtime-reference' | 'executable'} Evidence mode.
+ */
+function evidenceMode(kind) {
+    if (['export', 'method'].includes(kind)) return 'packed-contract'
+    if (kind === 'behavior') return 'executable'
+    return 'runtime-reference'
 }
 
 /**
@@ -471,16 +549,22 @@ function evidenceTests(evidenceToken, testSources) {
  */
 function mapFeature(feature, testSources) {
     const evidenceToken = feature.evidenceToken || feature.exportName
-    const tests = evidenceTests(evidenceToken, testSources)
+    const mode = evidenceMode(feature.kind)
+    const mapping = preservationMapping(feature)
+    const tests =
+        mode === 'packed-contract'
+            ? mapping.tests
+            : evidenceTests(evidenceToken, mode, testSources)
     if (tests.length === 0) {
         throw new Error(
-            `No repository test references public symbol ${evidenceToken}.`
+            `No repository test binds public symbol ${evidenceToken}.`
         )
     }
     return {
         ...feature,
-        ...preservationMapping(feature),
+        ...mapping,
         evidenceToken,
+        evidenceMode: mode,
         tests
     }
 }
@@ -501,6 +585,7 @@ function createLedger(features) {
         availability: feature.availability,
         reason: feature.reason,
         evidenceToken: feature.evidenceToken,
+        evidenceMode: feature.evidenceMode,
         sourceContract: feature.sourceContract,
         tests: feature.tests,
         documentation: feature.documentation
@@ -526,10 +611,11 @@ export async function captureApiBaseline() {
                 captureEntrypoint(entrypoint, definition)
             )
     )
-    const [sourceContracts, testSources] = await Promise.all([
+    const [sourceContracts, rawTestSources] = await Promise.all([
         PublicContractExtractor.extract(repositoryRoot),
         readTestSources(new URL('tests/', repositoryRoot))
     ])
+    const testSources = await analyzeTestSources(rawTestSources)
     const features = [
         ...sourceContracts.map((feature) => ({
             ...feature,
@@ -571,6 +657,43 @@ export async function captureApiBaseline() {
         ledger
     )
     return { baseline, ledger }
+}
+
+/**
+ * Regenerates mutable preservation mappings from the immutable captured contracts.
+ * @returns {Promise<{ baseline: Record<string, any>, ledger: Record<string, any>[] }>} Synchronized artifacts.
+ */
+export async function synchronizeFeaturePreservation() {
+    const baseline = await readJson('spec/api-baseline-v1.0.17.json')
+    const testSources = await analyzeTestSources(
+        await readTestSources(new URL('tests/', repositoryRoot))
+    )
+    const features = baseline.features
+        .map((feature) => mapFeature(feature, testSources))
+        .sort((left, right) => left.feature.localeCompare(right.feature))
+    const synchronizedBaseline = { ...baseline, features }
+    const ledger = createLedger(features)
+    await Promise.all([
+        writeCompactJson(
+            new URL('spec/api-baseline-v1.0.17.json', repositoryRoot),
+            synchronizedBaseline
+        ),
+        writeCompactJson(
+            new URL('spec/feature-preservation.json', repositoryRoot),
+            ledger
+        )
+    ])
+    return { baseline: synchronizedBaseline, ledger }
+}
+
+/**
+ * Writes deterministic compact JSON so generated catalogs obey the line cap.
+ * @param {string | URL} path Output path.
+ * @param {unknown} value JSON-compatible value.
+ * @returns {Promise<void>}
+ */
+async function writeCompactJson(path, value) {
+    await writeFile(path, JSON.stringify(value) + '\n', 'utf8')
 }
 
 /**
