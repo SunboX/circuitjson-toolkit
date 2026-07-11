@@ -1,6 +1,6 @@
 import { CircuitJsonDocumentContext } from '../context/CircuitJsonDocumentContext.mjs'
+import { PcbPrimitivePreparation } from '../context/PcbPrimitivePreparation.mjs'
 import { ToolkitDiagnostic } from '../contracts/ToolkitDiagnostic.mjs'
-import { CircuitJsonPcbPrimitiveBuilder } from '../CircuitJsonPcbPrimitiveBuilder.mjs'
 import { CircuitJsonPcbPrimitiveFields } from '../CircuitJsonPcbPrimitiveFields.mjs'
 import { CanonicalRenderOptions } from './CanonicalRenderOptions.mjs'
 
@@ -37,7 +37,6 @@ const VIRTUAL_LAYER_ORDER = [
 ]
 const VIRTUAL_LAYER_IDS = new Set(VIRTUAL_LAYER_ORDER)
 const PREPARED_PLANS = new WeakSet()
-const PREPARED_MODELS = new WeakMap()
 
 /**
  * Prepares one reusable CircuitJSON PCB primitive model and layer selection.
@@ -57,27 +56,7 @@ export class PcbRenderPlan {
         })
         CanonicalRenderOptions.requireCanonicalFidelity(normalized.fidelity)
         const context = CircuitJsonDocumentContext.prepare(document)
-        const model = context.getOrCreateDerived(
-            'render',
-            'pcb-primitives-v1',
-            () => {
-                const built = CircuitJsonPcbPrimitiveBuilder.build(
-                    context.model
-                )
-                PcbRenderPlan.#freeze(built)
-                PREPARED_MODELS.set(built, context)
-                return built
-            }
-        )
-        if (
-            !model ||
-            typeof model !== 'object' ||
-            PREPARED_MODELS.get(model) !== context
-        ) {
-            throw CanonicalRenderOptions.error(
-                'Prepared PCB rendering encountered a derived-cache collision.'
-            )
-        }
+        const model = PcbPrimitivePreparation.prepareComplete(context)
         const availableLayers = PcbRenderPlan.#layers(model)
         const byId = new Map(availableLayers.map((layer) => [layer.id, layer]))
         const selectedIds = normalized.layers

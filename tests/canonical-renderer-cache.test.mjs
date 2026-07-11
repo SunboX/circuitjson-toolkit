@@ -39,7 +39,7 @@ test('canonical renderers reject caller-owned derived-cache collisions', () => {
         () => pcbCollision
     )
     assert.throws(() => PcbSvgRenderer.render(pcbContext), {
-        code: 'ERR_RENDER_OPTIONS'
+        code: 'ERR_INTERACTION_CACHE_COLLISION'
     })
     assert.equal(Object.isFrozen(pcbCollision), false)
     assert.equal(Object.isFrozen(pcbCollision.bounds), false)
@@ -108,10 +108,15 @@ test('canonical renderer cache entries cannot be transplanted across contexts', 
             height: 2
         }
     ])
-    secondPcb.getOrCreateDerived('render', 'pcb-primitives-v1', () => pcbModel)
-    assert.throws(() => PcbSvgRenderer.render(secondPcb), {
-        code: 'ERR_RENDER_OPTIONS'
-    })
+    assert.throws(
+        () =>
+            secondPcb.getOrCreateDerived(
+                'render',
+                'pcb-primitives-v1',
+                () => pcbModel
+            ),
+        TypeError
+    )
 
     const firstSchematic = CircuitJsonDocumentContext.prepare(
         createSchematicDocument()
@@ -125,14 +130,15 @@ test('canonical renderer cache entries cannot be transplanted across contexts', 
     const secondSchematic = CircuitJsonDocumentContext.prepare(
         createSchematicDocument()
     )
-    secondSchematic.getOrCreateDerived(
-        'render',
-        'schematic-svg-v1:cache_collision_sheet',
-        () => schematicEntry
+    assert.throws(
+        () =>
+            secondSchematic.getOrCreateDerived(
+                'render',
+                'schematic-svg-v1:cache_collision_sheet',
+                () => schematicEntry
+            ),
+        TypeError
     )
-    assert.throws(() => SchematicSvgRenderer.render(secondSchematic), {
-        code: 'ERR_RENDER_OPTIONS'
-    })
 
     const firstBom = CircuitJsonDocumentContext.prepare(
         createRichCircuitJsonDocument()
@@ -151,18 +157,28 @@ test('canonical renderer cache entries cannot be transplanted across contexts', 
     const secondBom = CircuitJsonDocumentContext.prepare(
         createRichCircuitJsonDocument()
     )
-    secondBom.getOrCreateDerived('render', 'bom-rows-v1', () => bomRows)
-    assert.throws(() => BomTableRenderer.render(secondBom), {
-        code: 'ERR_RENDER_OPTIONS'
-    })
+    assert.throws(
+        () =>
+            secondBom.getOrCreateDerived(
+                'render',
+                'bom-rows-v1',
+                () => bomRows
+            ),
+        TypeError
+    )
 
     const thirdBom = CircuitJsonDocumentContext.prepare(
         createRichCircuitJsonDocument()
     )
-    thirdBom.getOrCreateDerived('render', 'bom-table-v1', () => bomTable)
-    assert.throws(() => BomTableRenderer.render(thirdBom), {
-        code: 'ERR_RENDER_OPTIONS'
-    })
+    assert.throws(
+        () =>
+            thirdBom.getOrCreateDerived(
+                'render',
+                'bom-table-v1',
+                () => bomTable
+            ),
+        TypeError
+    )
 })
 
 test('schematic cache entries cannot be transplanted across sheets', () => {
@@ -198,18 +214,14 @@ test('schematic cache entries cannot be transplanted across sheets', () => {
         'schematic-svg-v1:cache_sheet_a',
         () => null
     )
-    context.getOrCreateDerived(
-        'render',
-        'schematic-svg-v1:cache_sheet_b',
-        () => firstSheetEntry
-    )
-
     assert.throws(
         () =>
-            SchematicSvgRenderer.render(context, {
-                sheetId: 'cache_sheet_b'
-            }),
-        { code: 'ERR_RENDER_OPTIONS' }
+            context.getOrCreateDerived(
+                'render',
+                'schematic-svg-v1:cache_sheet_b',
+                () => firstSheetEntry
+            ),
+        TypeError
     )
 })
 
