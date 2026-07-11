@@ -20,11 +20,12 @@ export class CircuitJsonContextIndexes {
     /**
      * Creates a context-owned index registry.
      * @param {Record<string, any>} document Proven document envelope.
+     * @param {object[]} model Proven CircuitJSON model.
      * @param {Record<string, number>} builds Named index build counters.
      */
-    constructor(document, builds) {
+    constructor(document, model, builds) {
         this.#document = document
-        this.#model = document.model
+        this.#model = model
         this.#builds = builds
     }
 

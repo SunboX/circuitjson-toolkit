@@ -66,7 +66,9 @@ export class CircuitJsonValidationProof {
         if (!CircuitJsonValidationProof.#matches(document, model)) {
             const errors = CircuitJsonValidationProof.#validateAndFreeze(model)
             if (errors.length) throw new TypeError(errors[0])
-            if (document?.model !== model) {
+            if (
+                CircuitJsonValidationProof.#requireModelData(document) !== model
+            ) {
                 throw new TypeError(
                     'CircuitJSON document model changed during validation.'
                 )
@@ -126,7 +128,7 @@ export class CircuitJsonValidationProof {
         const options = { validated: true, families: normalizedFamilies }
         Object.defineProperty(options, VALIDATED_INDEX_ACCESS, {
             enumerable: false,
-            value: document[VALIDATION_PROOF]
+            value: CircuitJsonValidationProof.#proof(document)
         })
         return Object.freeze(options)
     }
@@ -166,9 +168,30 @@ export class CircuitJsonValidationProof {
      */
     static #matches(document, model) {
         return CircuitJsonValidationToken.matches(
-            document?.[VALIDATION_PROOF],
+            CircuitJsonValidationProof.#proof(document),
             model
         )
+    }
+
+    /**
+     * Reads one validation proof through its own data descriptor.
+     * @param {unknown} document Document candidate.
+     * @returns {unknown} Captured proof value.
+     */
+    static #proof(document) {
+        if (!document || typeof document !== 'object') return undefined
+        let descriptor
+        try {
+            descriptor = Object.getOwnPropertyDescriptor(
+                document,
+                VALIDATION_PROOF
+            )
+        } catch {
+            return undefined
+        }
+        return descriptor && Object.hasOwn(descriptor, 'value')
+            ? descriptor.value
+            : undefined
     }
 
     /**

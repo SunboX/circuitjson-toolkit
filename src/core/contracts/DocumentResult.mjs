@@ -1,4 +1,5 @@
 import { CircuitJsonValidationProof } from '../context/CircuitJsonValidationProof.mjs'
+import { CircuitJsonReadOnlyDocument } from '../context/CircuitJsonReadOnlyDocument.mjs'
 import { ToolkitAsset } from './ToolkitAsset.mjs'
 import { ToolkitDiagnostic, cloneSafeValue } from './ToolkitDiagnostic.mjs'
 
@@ -32,7 +33,11 @@ export class DocumentResult {
                 fields.extensions
             ),
             assets: Array.isArray(fields.assets)
-                ? fields.assets.map((asset) => ToolkitAsset.create(asset))
+                ? fields.assets.map((asset) =>
+                      CircuitJsonReadOnlyDocument.protectOwnedAsset(
+                          ToolkitAsset.create(asset)
+                      )
+                  )
                 : [],
             diagnostics: Array.isArray(fields.diagnostics)
                 ? fields.diagnostics.map((diagnostic) =>

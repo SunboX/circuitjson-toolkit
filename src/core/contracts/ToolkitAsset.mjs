@@ -1,4 +1,5 @@
 import { cloneSafeValue } from './ToolkitDiagnostic.mjs'
+import { BinaryDataSnapshot } from '../context/BinaryDataSnapshot.mjs'
 
 /**
  * Normalizes embedded and external asset records.
@@ -32,15 +33,8 @@ export class ToolkitAsset {
      * @returns {any} Copied clone-safe payload.
      */
     static #copyData(data) {
-        if (data instanceof ArrayBuffer) return new Uint8Array(data.slice(0))
-        if (ArrayBuffer.isView(data)) {
-            const bytes = new Uint8Array(
-                data.buffer,
-                data.byteOffset,
-                data.byteLength
-            )
-            return new Uint8Array(bytes)
-        }
+        const range = BinaryDataSnapshot.describe(data)
+        if (range) return BinaryDataSnapshot.copyBytes(data, range)
         return typeof data === 'string' ? data : null
     }
 
@@ -51,8 +45,8 @@ export class ToolkitAsset {
      * @returns {number} Byte length.
      */
     static #byteLength(data, declaredByteLength) {
-        if (data instanceof ArrayBuffer) return data.byteLength
-        if (ArrayBuffer.isView(data)) return data.byteLength
+        const binaryLength = BinaryDataSnapshot.byteLength(data)
+        if (binaryLength !== null) return binaryLength
         if (typeof data === 'string')
             return new TextEncoder().encode(data).length
         const declared = Number(declaredByteLength)

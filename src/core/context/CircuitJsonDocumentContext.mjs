@@ -1,6 +1,7 @@
 import { DocumentResult } from '../contracts/DocumentResult.mjs'
 import { CircuitJsonContextIndexes } from './CircuitJsonContextIndexes.mjs'
 import { CircuitJsonDerivedCache } from './CircuitJsonDerivedCache.mjs'
+import { CircuitJsonReadOnlyDocument } from './CircuitJsonReadOnlyDocument.mjs'
 import { CircuitJsonValidationProof } from './CircuitJsonValidationProof.mjs'
 
 const DOCUMENT_SCHEMA = 'ecad-toolkit.document.v1'
@@ -13,16 +14,36 @@ export class CircuitJsonDocumentContext {
     #document
     #indexes
     #model
+    #source
+    #extensions
+    #assets
     #statistics
 
     /**
      * Creates a context from a proven document envelope.
      * @param {Record<string, any>} document Proven document envelope.
+     * @param {object[]} model Proven CircuitJSON model.
      * @param {number} validationPasses Validation passes performed by prepare.
      */
-    constructor(document, validationPasses) {
+    constructor(document, model, validationPasses) {
         this.#document = document
-        this.#model = document.model
+        this.#model = model
+        this.#source = CircuitJsonReadOnlyDocument.copyReadonlyMetadataValue(
+            CircuitJsonDocumentContext.#ownData(document, 'source', false) || {}
+        )
+        this.#extensions =
+            CircuitJsonReadOnlyDocument.copyReadonlyMetadataValue(
+                CircuitJsonDocumentContext.#ownData(
+                    document,
+                    'extensions',
+                    false
+                ) || {}
+            )
+        this.#assets = CircuitJsonDocumentContext.#ownData(
+            document,
+            'assets',
+            false
+        )
         this.#statistics = {
             validationPasses,
             indexBuilds: {},
@@ -30,6 +51,7 @@ export class CircuitJsonDocumentContext {
         }
         this.#indexes = new CircuitJsonContextIndexes(
             document,
+            model,
             this.#statistics.indexBuilds
         )
         this.#derived = new CircuitJsonDerivedCache(
@@ -44,10 +66,9 @@ export class CircuitJsonDocumentContext {
      * @returns {CircuitJsonDocumentContext} Prepared request-scoped context.
      */
     static prepare(input, options = {}) {
-        const context =
-            input instanceof CircuitJsonDocumentContext
-                ? input
-                : CircuitJsonDocumentContext.#fromInput(input)
+        const context = CircuitJsonDocumentContext.#isContext(input)
+            ? input
+            : CircuitJsonDocumentContext.#fromInput(input)
         context.#indexes.ensure(options?.indexes || [])
         return context
     }
@@ -73,7 +94,7 @@ export class CircuitJsonDocumentContext {
      * @returns {Record<string, any>} Source metadata.
      */
     get source() {
-        return this.#document.source
+        return this.#source
     }
 
     /**
@@ -81,7 +102,7 @@ export class CircuitJsonDocumentContext {
      * @returns {Record<string, any>} Extension map.
      */
     get extensions() {
-        return this.#document.extensions
+        return this.#extensions
     }
 
     /**
@@ -89,7 +110,7 @@ export class CircuitJsonDocumentContext {
      * @returns {object[]} Asset records.
      */
     get assets() {
-        return this.#document.assets
+        return this.#assets
     }
 
     /**
@@ -159,8 +180,17 @@ export class CircuitJsonDocumentContext {
         const validationPasses = CircuitJsonValidationProof.has(document)
             ? 0
             : 1
-        CircuitJsonValidationProof.validateAndAttach(document)
-        return new CircuitJsonDocumentContext(document, validationPasses)
+        const readonlyDocument =
+            CircuitJsonValidationProof.validateAndAttach(document)
+        const model = CircuitJsonDocumentContext.#ownData(
+            readonlyDocument,
+            'model'
+        )
+        return new CircuitJsonDocumentContext(
+            readonlyDocument,
+            model,
+            validationPasses
+        )
     }
 
     /**
@@ -171,16 +201,74 @@ export class CircuitJsonDocumentContext {
     static #normalizeDocument(input) {
         if (Array.isArray(input)) {
             return DocumentResult.create({
-                fileName: input.fileName,
-                fileType: input.fileType,
+                fileName: CircuitJsonDocumentContext.#ownData(
+                    input,
+                    'fileName',
+                    false
+                ),
+                fileType: CircuitJsonDocumentContext.#ownData(
+                    input,
+                    'fileType',
+                    false
+                ),
                 model: input
             })
         }
-        if (input?.schema === DOCUMENT_SCHEMA && Array.isArray(input.model)) {
+        if (!input || typeof input !== 'object') {
+            throw new TypeError(
+                'Expected a DocumentResult, CircuitJSON element array, or document context.'
+            )
+        }
+        const schema = CircuitJsonDocumentContext.#ownData(input, 'schema')
+        const model = CircuitJsonDocumentContext.#ownData(input, 'model')
+        if (schema === DOCUMENT_SCHEMA && Array.isArray(model)) {
             return input
         }
         throw new TypeError(
             'Expected a DocumentResult, CircuitJSON element array, or document context.'
         )
+    }
+
+    /**
+     * Detects genuine contexts through a private slot without proxy traps.
+     * @param {unknown} value Context candidate.
+     * @returns {boolean} Whether the private context slot is present.
+     */
+    static #isContext(value) {
+        try {
+            return Boolean(value.#document)
+        } catch {
+            return false
+        }
+    }
+
+    /**
+     * Reads one own data property without ordinary property access.
+     * @param {object} owner Canonical envelope or model array.
+     * @param {PropertyKey} key Property key.
+     * @param {boolean} [required] Whether absence is rejected.
+     * @returns {any} Own data value.
+     */
+    static #ownData(owner, key, required = true) {
+        let descriptor
+        try {
+            descriptor = Object.getOwnPropertyDescriptor(owner, key)
+        } catch {
+            throw new TypeError(
+                'CircuitJSON document properties could not be inspected safely.'
+            )
+        }
+        if (!descriptor) {
+            if (!required) return undefined
+            throw new TypeError(
+                `CircuitJSON document ${String(key)} must be an own data property.`
+            )
+        }
+        if (!Object.hasOwn(descriptor, 'value')) {
+            throw new TypeError(
+                `CircuitJSON document ${String(key)} must be an own data property.`
+            )
+        }
+        return descriptor.value
     }
 }
