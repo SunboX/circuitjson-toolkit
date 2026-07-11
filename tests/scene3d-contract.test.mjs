@@ -122,15 +122,15 @@ test('canonical scene cache rejects pre-seeded and cross-context values', () => 
     secondModel[0].pcb_board_id = 'board_2'
     secondModel[0].center = { x: 100, y: 100 }
     const secondContext = CircuitJsonDocumentContext.prepare(secondModel)
-    secondContext.getOrCreateDerived(
-        'scene3d',
-        'canonical:1.6',
-        () => firstScene
+    assert.throws(
+        () =>
+            secondContext.getOrCreateDerived(
+                'scene3d',
+                'canonical:1.6',
+                () => firstScene
+            ),
+        /cannot be transplanted between cache entries/u
     )
-    assert.throws(() => PcbScene3dBuilder.build(secondContext), {
-        name: 'ToolkitError',
-        code: 'ERR_CONTEXT_CACHE_COLLISION'
-    })
 })
 
 test('scene options use millimeters and reject accessors without invoking them', () => {
