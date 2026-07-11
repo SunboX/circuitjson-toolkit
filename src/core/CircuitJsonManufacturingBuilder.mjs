@@ -12,10 +12,14 @@ export class CircuitJsonManufacturingBuilder {
      * @returns {{ pickAndPlaceRows: object[], routingDsn: string, routingGuides: object[], fabricationNotes: object[] }}
      */
     static build(circuitJson, index = CircuitJsonIndexer.index(circuitJson)) {
+        const pickAndPlaceRows =
+            CircuitJsonManufacturingBuilder.#pickAndPlaceRows(index)
         return {
-            pickAndPlaceRows:
-                CircuitJsonManufacturingBuilder.#pickAndPlaceRows(index),
-            routingDsn: CircuitJsonManufacturingBuilder.#routingDsn(index),
+            pickAndPlaceRows,
+            routingDsn: CircuitJsonManufacturingBuilder.#routingDsn(
+                index,
+                pickAndPlaceRows
+            ),
             routingGuides:
                 CircuitJsonManufacturingBuilder.#routingGuides(index),
             fabricationNotes:
@@ -85,13 +89,24 @@ export class CircuitJsonManufacturingBuilder {
     /**
      * Builds a compact routing exchange text payload.
      * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
+     * @param {object[]} placements Prepared placement rows.
      * @returns {string}
      */
-    static #routingDsn(index) {
+    static #routingDsn(index, placements) {
         const lines = ['(pcb assembly)', '  (unit mm)']
-        lines.push(...CircuitJsonManufacturingBuilder.#boardLines(index))
-        lines.push(...CircuitJsonManufacturingBuilder.#placementLines(index))
-        lines.push(...CircuitJsonManufacturingBuilder.#networkLines(index))
+        for (const line of CircuitJsonManufacturingBuilder.#boardLines(index)) {
+            lines.push(line)
+        }
+        for (const line of CircuitJsonManufacturingBuilder.#placementLines(
+            placements
+        )) {
+            lines.push(line)
+        }
+        for (const line of CircuitJsonManufacturingBuilder.#networkLines(
+            index
+        )) {
+            lines.push(line)
+        }
         lines.push(')')
         return lines.join('\n')
     }
@@ -139,13 +154,13 @@ export class CircuitJsonManufacturingBuilder {
 
     /**
      * Builds component placement lines.
-     * @param {{ elementsByType?: Map<string, object[]>, sourceComponentById?: Map<string, object> }} index Element index.
+     * @param {object[]} rows Prepared placement rows.
      * @returns {string[]}
      */
-    static #placementLines(index) {
+    static #placementLines(rows) {
         return [
             '  (placement',
-            ...CircuitJsonManufacturingBuilder.#pickAndPlaceRows(index).map(
+            ...rows.map(
                 (row) =>
                     '    (component ' +
                     CircuitJsonManufacturingBuilder.#token(row.designator) +
@@ -168,109 +183,143 @@ export class CircuitJsonManufacturingBuilder {
      * @returns {string[]}
      */
     static #networkLines(index) {
+        const model = CircuitJsonManufacturingBuilder.#networkModel(index)
+        const lines = ['  (network']
+        for (const netName of model.names) {
+            lines.push(
+                '    (net ' + CircuitJsonManufacturingBuilder.#token(netName)
+            )
+            for (const family of [model.pins, model.drills, model.wires]) {
+                for (const line of family.get(netName) || []) lines.push(line)
+            }
+            lines.push('    )')
+        }
+        lines.push('  )')
+        return lines
+    }
+
+    /**
+     * Groups routing features by net with one pass per element family.
+     * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
+     * @returns {{ names: string[], pins: Map<string, string[]>, drills: Map<string, string[]>, wires: Map<string, string[]> }} Grouped network model.
+     */
+    static #networkModel(index) {
         const sourceNetNames =
             CircuitJsonManufacturingBuilder.#sourceNetNames(index)
-        return [
-            '  (network',
-            ...CircuitJsonManufacturingBuilder.#netNames(index).flatMap(
-                (netName) => [
-                    '    (net ' +
-                        CircuitJsonManufacturingBuilder.#token(netName),
-                    ...CircuitJsonManufacturingBuilder.#pinLines(
-                        index,
-                        netName,
-                        sourceNetNames
-                    ),
-                    ...CircuitJsonManufacturingBuilder.#drillLines(
-                        index,
-                        netName,
-                        sourceNetNames
-                    ),
-                    ...CircuitJsonManufacturingBuilder.#wireLines(
-                        index,
-                        netName,
-                        sourceNetNames
-                    ),
-                    '    )'
-                ]
-            ),
-            '  )'
-        ]
-    }
-
-    /**
-     * Builds pad pin lines for one net.
-     * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
-     * @param {string} netName Net name.
-     * @param {Map<string, string>} sourceNetNames Source net lookup.
-     * @returns {string[]}
-     */
-    static #pinLines(index, netName, sourceNetNames) {
-        return CircuitJsonManufacturingBuilder.#all(index, 'pcb_smtpad')
-            .filter(
-                (pad) =>
-                    CircuitJsonManufacturingBuilder.#netName(
-                        pad,
-                        sourceNetNames
-                    ) === netName
+        const names = new Set([...sourceNetNames.values()].filter(Boolean))
+        const pins = new Map()
+        const drills = new Map()
+        const wires = new Map()
+        for (const pad of CircuitJsonManufacturingBuilder.#all(
+            index,
+            'pcb_smtpad'
+        )) {
+            const netName = CircuitJsonManufacturingBuilder.#netName(
+                pad,
+                sourceNetNames
             )
-            .map((pad) => {
-                const point = CircuitJsonUnits.optionalPoint(
-                    pad.center || pad
-                ) || {
-                    x: 0,
-                    y: 0
-                }
-                return (
-                    '      (pin ' +
-                    CircuitJsonManufacturingBuilder.#token(
-                        pad.pcb_smtpad_id || ''
-                    ) +
-                    ' ' +
-                    [
-                        CircuitJsonManufacturingBuilder.#round(point.x),
-                        CircuitJsonManufacturingBuilder.#round(point.y)
-                    ].join(' ') +
-                    ')'
+            if (!netName) continue
+            CircuitJsonManufacturingBuilder.#appendNetworkLines(
+                pins,
+                netName,
+                [CircuitJsonManufacturingBuilder.#pinLine(pad)],
+                names
+            )
+        }
+        for (const [type, kind] of [
+            ['pcb_via', 'via'],
+            ['pcb_plated_hole', 'plated_hole']
+        ]) {
+            for (const element of CircuitJsonManufacturingBuilder.#all(
+                index,
+                type
+            )) {
+                const netName = CircuitJsonManufacturingBuilder.#netName(
+                    element,
+                    sourceNetNames
                 )
-            })
+                if (!netName) continue
+                CircuitJsonManufacturingBuilder.#appendNetworkLines(
+                    drills,
+                    netName,
+                    [CircuitJsonManufacturingBuilder.#drillLine(element, kind)],
+                    names
+                )
+            }
+        }
+        for (const trace of CircuitJsonManufacturingBuilder.#all(
+            index,
+            'pcb_trace'
+        )) {
+            const netName = CircuitJsonManufacturingBuilder.#netName(
+                trace,
+                sourceNetNames
+            )
+            if (!netName) continue
+            CircuitJsonManufacturingBuilder.#appendNetworkLines(
+                wires,
+                netName,
+                CircuitJsonManufacturingBuilder.#traceWireLines(trace),
+                names
+            )
+        }
+        for (const type of ['pcb_trace_hint', 'pcb_breakout_point']) {
+            for (const element of CircuitJsonManufacturingBuilder.#all(
+                index,
+                type
+            )) {
+                const name = CircuitJsonManufacturingBuilder.#netName(
+                    element,
+                    sourceNetNames
+                )
+                if (name) names.add(name)
+            }
+        }
+        return {
+            names: [...names].sort((left, right) => left.localeCompare(right)),
+            pins,
+            drills,
+            wires
+        }
     }
 
     /**
-     * Builds drill feature lines for one net.
-     * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
-     * @param {string} netName Net name.
-     * @param {Map<string, string>} sourceNetNames Source net lookup.
-     * @returns {string[]}
+     * Builds one pad pin line.
+     * @param {object} pad Pad element.
+     * @returns {string} Pin line.
      */
-    static #drillLines(index, netName, sourceNetNames) {
-        return [
-            ...CircuitJsonManufacturingBuilder.#all(index, 'pcb_via')
-                .filter(
-                    (via) =>
-                        CircuitJsonManufacturingBuilder.#netName(
-                            via,
-                            sourceNetNames
-                        ) === netName
-                )
-                .map((via) =>
-                    CircuitJsonManufacturingBuilder.#drillLine(via, 'via')
-                ),
-            ...CircuitJsonManufacturingBuilder.#all(index, 'pcb_plated_hole')
-                .filter(
-                    (hole) =>
-                        CircuitJsonManufacturingBuilder.#netName(
-                            hole,
-                            sourceNetNames
-                        ) === netName
-                )
-                .map((hole) =>
-                    CircuitJsonManufacturingBuilder.#drillLine(
-                        hole,
-                        'plated_hole'
-                    )
-                )
-        ].filter(Boolean)
+    static #pinLine(pad) {
+        const point = CircuitJsonUnits.optionalPoint(pad.center || pad) || {
+            x: 0,
+            y: 0
+        }
+        return (
+            '      (pin ' +
+            CircuitJsonManufacturingBuilder.#token(pad.pcb_smtpad_id || '') +
+            ' ' +
+            [
+                CircuitJsonManufacturingBuilder.#round(point.x),
+                CircuitJsonManufacturingBuilder.#round(point.y)
+            ].join(' ') +
+            ')'
+        )
+    }
+
+    /**
+     * Appends non-empty feature lines and records their net name.
+     * @param {Map<string, string[]>} target Lines grouped by net.
+     * @param {string} netName Net name.
+     * @param {string[]} lines Feature lines.
+     * @param {Set<string>} names Discovered net names.
+     * @returns {void}
+     */
+    static #appendNetworkLines(target, netName, lines, names) {
+        if (!netName) return
+        names.add(netName)
+        if (!target.has(netName)) target.set(netName, [])
+        for (const line of lines) {
+            if (line) target.get(netName).push(line)
+        }
     }
 
     /**
@@ -305,27 +354,6 @@ export class CircuitJsonManufacturingBuilder {
             ].join(' ') +
             ')'
         )
-    }
-
-    /**
-     * Builds routed wire lines for one net.
-     * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
-     * @param {string} netName Net name.
-     * @param {Map<string, string>} sourceNetNames Source net lookup.
-     * @returns {string[]}
-     */
-    static #wireLines(index, netName, sourceNetNames) {
-        return CircuitJsonManufacturingBuilder.#all(index, 'pcb_trace')
-            .filter(
-                (trace) =>
-                    CircuitJsonManufacturingBuilder.#netName(
-                        trace,
-                        sourceNetNames
-                    ) === netName
-            )
-            .flatMap((trace) =>
-                CircuitJsonManufacturingBuilder.#traceWireLines(trace)
-            )
     }
 
     /**
@@ -366,40 +394,6 @@ export class CircuitJsonManufacturingBuilder {
             previous = { ...entry, x: current.x, y: current.y }
         }
         return lines
-    }
-
-    /**
-     * Builds sorted net names.
-     * @param {{ elementsByType?: Map<string, object[]> }} index Element index.
-     * @returns {string[]}
-     */
-    static #netNames(index) {
-        const names = new Set()
-        const sourceNetNames =
-            CircuitJsonManufacturingBuilder.#sourceNetNames(index)
-        for (const name of sourceNetNames.values()) {
-            if (name) names.add(name)
-        }
-        for (const type of [
-            'pcb_smtpad',
-            'pcb_trace',
-            'pcb_via',
-            'pcb_plated_hole',
-            'pcb_trace_hint',
-            'pcb_breakout_point'
-        ]) {
-            for (const element of CircuitJsonManufacturingBuilder.#all(
-                index,
-                type
-            )) {
-                const name = CircuitJsonManufacturingBuilder.#netName(
-                    element,
-                    sourceNetNames
-                )
-                if (name) names.add(name)
-            }
-        }
-        return [...names].sort((left, right) => left.localeCompare(right))
     }
 
     /**

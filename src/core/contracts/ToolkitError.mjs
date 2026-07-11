@@ -7,6 +7,7 @@ const ERROR_CATEGORIES = new Set([
     'cancelled',
     'runtime'
 ])
+const TOOLKIT_ERROR_INSTANCES = new WeakSet()
 
 /**
  * Shared typed toolkit failure with clone-safe serialization.
@@ -19,6 +20,7 @@ export class ToolkitError extends Error {
      */
     constructor(message, fields = {}) {
         super(String(message || 'Toolkit operation failed.'))
+        TOOLKIT_ERROR_INSTANCES.add(this)
         this.name = 'ToolkitError'
         this.code = String(fields.code || 'ERR_TOOLKIT_RUNTIME')
         const category = String(fields.category || 'runtime')
@@ -37,12 +39,12 @@ export class ToolkitError extends Error {
      * @returns {ToolkitError} Typed error.
      */
     static from(error, fields = {}) {
-        return error instanceof ToolkitError
-            ? error
-            : new ToolkitError(error?.message || error, {
-                  ...fields,
-                  cause: error
-              })
+        if (TOOLKIT_ERROR_INSTANCES.has(error)) return error
+        const cause = ToolkitError.cloneSafeCause(error)
+        return new ToolkitError(cause?.message || 'Toolkit operation failed.', {
+            ...fields,
+            cause
+        })
     }
 
     /**
@@ -51,11 +53,55 @@ export class ToolkitError extends Error {
      * @returns {{ name: string, message: string, code: string | null } | null} Cause summary.
      */
     static cloneSafeCause(error) {
-        if (!error) return null
+        if (error === null || error === undefined) return null
+        const recordLike = ['object', 'function'].includes(typeof error)
+        const name = recordLike
+            ? ToolkitError.#safeProperty(error, 'name')
+            : null
+        const message = recordLike
+            ? ToolkitError.#safeProperty(error, 'message')
+            : error
+        const code = recordLike
+            ? ToolkitError.#safeProperty(error, 'code')
+            : null
         return {
-            name: String(error.name || 'Error'),
-            message: String(error.message || error),
-            code: error.code == null ? null : String(error.code)
+            name: ToolkitError.#safeString(name, 'Error'),
+            message: ToolkitError.#safeString(
+                message ?? error,
+                'Uninspectable thrown value.'
+            ),
+            code: code == null ? null : ToolkitError.#safeString(code, null)
+        }
+    }
+
+    /**
+     * Reads one error field without trusting a thrown object.
+     * @param {object | Function} value Error-like value.
+     * @param {string} key Field name.
+     * @returns {unknown} Field value or undefined.
+     */
+    static #safeProperty(value, key) {
+        try {
+            return value[key]
+        } catch {
+            return undefined
+        }
+    }
+
+    /**
+     * Converts a value to string without allowing conversion traps to escape.
+     * @param {unknown} value String candidate.
+     * @param {string | null} fallback Fallback string.
+     * @returns {string | null} Safe string.
+     */
+    static #safeString(value, fallback) {
+        if (value === null || value === undefined || value === '') {
+            return fallback
+        }
+        try {
+            return String(value)
+        } catch {
+            return fallback
         }
     }
 

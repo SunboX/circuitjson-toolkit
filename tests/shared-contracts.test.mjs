@@ -348,6 +348,29 @@ test('ToolkitError categories and diagnostic severities stay inside canonical un
     assert.equal(progressError.category, 'runtime')
 })
 
+test('ToolkitError.from safely contains hostile thrown values', () => {
+    const hostile = new Proxy(
+        {},
+        {
+            get() {
+                throw new Error('hostile failure property trap')
+            }
+        }
+    )
+
+    const error = ToolkitError.from(hostile, {
+        code: 'ERR_HOSTILE_FAILURE',
+        category: 'runtime'
+    })
+
+    assert.equal(error instanceof ToolkitError, true)
+    assert.equal(error.code, 'ERR_HOSTILE_FAILURE')
+    assert.equal(error.category, 'runtime')
+    assert.equal(error.cause.name, 'Error')
+    assert.equal(typeof error.cause.message, 'string')
+    assert.doesNotThrow(() => structuredClone(error.toJSON()))
+})
+
 test('ToolkitCapabilities inventories every frozen capability with stable clone-safe rows', async () => {
     const ledger = JSON.parse(
         await readFile(
