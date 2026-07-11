@@ -232,6 +232,8 @@ export class ParserWorkerClient {
         if (this.#pending.size >= MAX_PENDING_REQUESTS) {
             throw ParserWorkerClient.#queueError()
         }
+        const wasQueued = Boolean(this.#activeRequestId)
+        if (wasQueued) prepared = WorkerRequestData.ownForQueue(prepared)
         const requestId = `worker-${this.#nextRequestId}`
         this.#nextRequestId += 1
 
@@ -245,7 +247,7 @@ export class ParserWorkerClient {
                 onAbort: null,
                 onProgress: prepared.onProgress,
                 previousProgress: null,
-                attemptToken
+                attemptToken: wasQueued ? null : attemptToken
             }
             if (prepared.signal) {
                 pending.onAbort = () => this.cancel(requestId)

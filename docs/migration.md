@@ -92,6 +92,12 @@ returns either `{ ok: true, value }` or
 uses ordered `detect`, `decode`, `project`, `validate`, and `complete`
 stages. Cancellation is request-scoped.
 
+Since 1.1.1, a request waiting behind active worker work is owned immediately
+after admission. With the default `transferInput: false`, later caller
+mutations cannot alter a queued parser input, project entry, or asset. With
+`transferInput: true`, exact transferable buffers detach at admission;
+partial, resizable, and shared ranges continue to use isolated copies.
+
 ## Package subpaths
 
 - `circuitjson-toolkit/parser`

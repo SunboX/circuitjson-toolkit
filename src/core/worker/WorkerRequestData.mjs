@@ -50,6 +50,7 @@ const DATA_VIEW_BYTE_OFFSET_GETTER = Object.getOwnPropertyDescriptor(
 const DATA_VIEW_CONSTRUCTOR = DataView
 const UINT8_ARRAY_CONSTRUCTOR = Uint8Array
 const UINT8_ARRAY_SET = Uint8Array.prototype.set
+const STRUCTURED_CLONE = globalThis.structuredClone
 const MAX_REQUEST_BYTES = 100_000_000
 const MAX_REQUEST_DEPTH = 64
 const MAX_REQUEST_VALUES = 100_000
@@ -93,6 +94,32 @@ export class WorkerRequestData {
             trustProof: false,
             values: MAX_REQUEST_VALUES
         })
+    }
+
+    /**
+     * Owns one already-prepared queued request and rebuilds its post transfer list.
+     * @param {{ payload: unknown, transfer: Transferable[] }} prepared Prepared request.
+     * @returns {Record<string, any>} Owned queued request.
+     */
+    static ownForQueue(prepared) {
+        const owned = Reflect.apply(STRUCTURED_CLONE, undefined, [
+            prepared.payload,
+            { transfer: prepared.transfer }
+        ])
+        const posted = WorkerRequestData.#prepare(owned, {
+            bytes: MAX_REQUEST_BYTES,
+            copyBinary: false,
+            output: false,
+            strictDescriptors: false,
+            transferInput: true,
+            trustProof: false,
+            values: MAX_REQUEST_VALUES
+        })
+        return {
+            ...prepared,
+            payload: posted.value,
+            transfer: posted.transfer
+        }
     }
 
     /**

@@ -177,10 +177,14 @@ test('catalog-driven suite satisfies deterministic workload and clone expectatio
     const report = JSON.parse(stdout)
     const catalog = await readJson('benchmarks/case-catalog-v1.0.17.json')
     const baseline = await readJson('benchmarks/baseline-v1.0.17.json')
+    const packageMetadata = await readJson('package.json')
 
-    assert.equal(report.packageVersion, '1.1.0')
+    assert.equal(report.packageVersion, packageMetadata.version)
     assert.equal(report.candidateProvenance.packageName, 'circuitjson-toolkit')
-    assert.equal(report.candidateProvenance.packageVersion, '1.1.0')
+    assert.equal(
+        report.candidateProvenance.packageVersion,
+        packageMetadata.version
+    )
     assert.match(report.candidateProvenance.sourceDigest, /^[a-f0-9]{64}$/u)
     assert.match(report.candidateProvenance.tarballSha256, /^[a-f0-9]{64}$/u)
     assert.deepEqual(report.execution, {

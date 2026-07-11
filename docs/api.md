@@ -80,6 +80,12 @@ Asynchronous parser and project calls accept:
 unavailable. Protocol, post-message, parser, and runtime errors stay visible.
 Worker and direct results have the same serialized shape.
 
+Requests waiting behind active worker work take ownership immediately after
+admission. The default mode clones the exact binary graph into a private queue
+snapshot and leaves caller buffers intact. `transferInput: true` detaches exact
+transferable buffers at admission; partial views, resizable buffers, and
+shared buffers are isolated without detaching unrelated caller bytes.
+
 `retainSource` is exactly `'none' | 'reference'` and defaults to `'none'`.
 `'reference'` is an in-process parser option: the returned document has a
 non-enumerable `sourceReference` property whose value is the exact caller input

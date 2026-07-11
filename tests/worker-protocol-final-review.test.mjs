@@ -254,6 +254,218 @@ test('worker client ignores responses for queued requests until they are posted'
     }
 })
 
+test('queued parser and project requests own caller buffers before posting', async () => {
+    const worker = new ManualWorker()
+    const client = new ParserWorkerClient({ createWorker: () => worker })
+    const active = client.parse({ fileName: 'active.json', data: '[]' })
+    await new Promise((resolve) => setImmediate(resolve))
+
+    const parserData = new TextEncoder().encode('[]')
+    const parserAsset = new Uint8Array([1, 2, 3])
+    const queuedParser = client.parse({
+        fileName: 'queued-parser.json',
+        data: parserData,
+        assets: [{ name: 'parser.bin', data: parserAsset }]
+    })
+    parserData.set(new TextEncoder().encode('{}'))
+    parserAsset.fill(9)
+
+    worker.emit(resultResponse('worker-1', documentResult()))
+    await active
+    assert.equal(worker.requests.length, 2)
+    assert.deepEqual(
+        [...worker.requests[1].input.data],
+        [...new TextEncoder().encode('[]')]
+    )
+    assert.deepEqual([...worker.requests[1].input.assets[0].data], [1, 2, 3])
+    worker.emit(resultResponse('worker-2', documentResult()))
+    await queuedParser
+
+    const blocker = client.parse({ fileName: 'blocker.json', data: '[]' })
+    const projectData = new TextEncoder().encode('[]')
+    const projectAsset = new Uint8Array([4, 5, 6])
+    const queuedProject = client.loadProject([
+        {
+            name: 'queued-project.json',
+            data: projectData,
+            assets: [{ name: 'project.bin', data: projectAsset }]
+        }
+    ])
+    projectData.set(new TextEncoder().encode('{}'))
+    projectAsset.fill(8)
+
+    worker.emit(resultResponse('worker-3', documentResult()))
+    await blocker
+    assert.equal(worker.requests.length, 4)
+    assert.deepEqual(
+        [...worker.requests[3].entries[0].data],
+        [...new TextEncoder().encode('[]')]
+    )
+    assert.deepEqual(
+        [...worker.requests[3].entries[0].assets[0].data],
+        [4, 5, 6]
+    )
+    worker.emit(
+        resultResponse(
+            'worker-4',
+            ProjectLoader.load([{ name: 'queued-project.json', data: '[]' }])
+        )
+    )
+    await queuedProject
+    client.dispose()
+})
+
+test('queued transfer requests detach exact caller buffers immediately', async () => {
+    const worker = new ManualWorker()
+    const client = new ParserWorkerClient({ createWorker: () => worker })
+    const active = client.parse({ fileName: 'active.json', data: '[]' })
+    await new Promise((resolve) => setImmediate(resolve))
+
+    const data = new TextEncoder().encode('[]')
+    const asset = new Uint8Array([7, 8, 9])
+    const alias = new DataView(asset.buffer)
+    const partialBacking = new Uint8Array([0, 4, 5, 6, 0])
+    const partial = partialBacking.subarray(1, 4)
+    const shared =
+        typeof SharedArrayBuffer === 'function'
+            ? new Uint8Array(new SharedArrayBuffer(5), 1, 3)
+            : new Uint8Array(new ArrayBuffer(5), 1, 3)
+    shared.set([3, 2, 1])
+    const queued = client.parse(
+        {
+            fileName: 'queued-transfer.json',
+            data,
+            assets: [
+                {
+                    name: 'transfer.bin',
+                    data: asset,
+                    source: { alias, partial, shared }
+                }
+            ]
+        },
+        { transferInput: true }
+    )
+    assert.equal(data.byteLength, 0)
+    assert.equal(asset.byteLength, 0)
+    assert.equal(partialBacking.byteLength, 5)
+    assert.equal(shared.byteLength, 3)
+
+    worker.emit(resultResponse('worker-1', documentResult()))
+    await active
+    assert.equal(worker.requests.length, 2)
+    assert.deepEqual(
+        [...worker.requests[1].input.data],
+        [...new TextEncoder().encode('[]')]
+    )
+    assert.deepEqual([...worker.requests[1].input.assets[0].data], [7, 8, 9])
+    assert.equal(
+        worker.requests[1].input.assets[0].data.buffer,
+        worker.requests[1].input.assets[0].source.alias.buffer
+    )
+    assert.equal(
+        worker.requests[1].input.assets[0].source.partial.buffer.byteLength,
+        3
+    )
+    if (typeof SharedArrayBuffer === 'function') {
+        assert.equal(
+            worker.requests[1].input.assets[0].source.shared.buffer instanceof
+                SharedArrayBuffer,
+            false
+        )
+    }
+    worker.emit(resultResponse('worker-2', documentResult()))
+    await queued
+    client.dispose()
+})
+
+test('rejected transfer requests preserve buffers before queue admission', async () => {
+    const disposedClient = new ParserWorkerClient({
+        createWorker: () => new ManualWorker()
+    })
+    disposedClient.dispose()
+    const disposedBytes = new TextEncoder().encode('[]')
+    await assert.rejects(
+        () =>
+            disposedClient.parse(
+                { fileName: 'disposed.json', data: disposedBytes },
+                { transferInput: true }
+            ),
+        { code: 'ERR_WORKER_DISPOSED' }
+    )
+    assert.equal(disposedBytes.byteLength, 2)
+
+    const cancelledClient = new ParserWorkerClient({
+        createWorker: () => new ManualWorker()
+    })
+    const controller = new AbortController()
+    controller.abort()
+    const cancelledBytes = new TextEncoder().encode('[]')
+    await assert.rejects(
+        () =>
+            cancelledClient.parse(
+                { fileName: 'cancelled.json', data: cancelledBytes },
+                {
+                    signal: controller.signal,
+                    transferInput: true
+                }
+            ),
+        { code: 'ERR_CANCELLED' }
+    )
+    assert.equal(cancelledBytes.byteLength, 2)
+    cancelledClient.dispose()
+})
+
+test('accepted queued transfer stays owned when cancelled before posting', async () => {
+    const worker = new ManualWorker()
+    const client = new ParserWorkerClient({ createWorker: () => worker })
+    const active = client.parse({ fileName: 'active.json', data: '[]' })
+    await new Promise((resolve) => setImmediate(resolve))
+    const controller = new AbortController()
+    const bytes = new TextEncoder().encode('[]')
+    const queued = client.parse(
+        { fileName: 'queued-cancel.json', data: bytes },
+        {
+            signal: controller.signal,
+            transferInput: true
+        }
+    )
+    assert.equal(bytes.byteLength, 0)
+    controller.abort()
+    await assert.rejects(() => queued, { code: 'ERR_CANCELLED' })
+    assert.equal(worker.requests.length, 1)
+    worker.emit(resultResponse('worker-1', documentResult()))
+    await active
+    assert.equal(worker.requests.length, 1)
+    client.dispose()
+})
+
+test('queue-limit rejection preserves explicitly transferable buffers', async () => {
+    const worker = new ManualWorker()
+    const client = new ParserWorkerClient({ createWorker: () => worker })
+    const active = client.parse({ fileName: 'active.json', data: '[]' })
+    await new Promise((resolve) => setImmediate(resolve))
+    const queued = []
+    for (let index = 0; index < 1023; index += 1) {
+        queued.push(
+            client
+                .parse({ fileName: `queued-${index}.json`, data: '[]' })
+                .catch((error) => error.code)
+        )
+    }
+    const rejectedBytes = new TextEncoder().encode('[]')
+    await assert.rejects(
+        () =>
+            client.parse(
+                { fileName: 'over-limit.json', data: rejectedBytes },
+                { transferInput: true }
+            ),
+        { code: 'ERR_WORKER_QUEUE_LIMIT' }
+    )
+    assert.equal(rejectedBytes.byteLength, 2)
+    client.dispose()
+    await Promise.allSettled([active, ...queued])
+})
+
 test('worker progress accepts only exact primitive wire fields', async (t) => {
     await t.test('boxed primitives', async () => {
         const state = await startManualParse()
@@ -453,15 +665,28 @@ test('worker auto mode falls back only when worker construction is unavailable',
     }
     ParserWorkerClient.disposeDefault()
     try {
+        const fallbackData = new TextEncoder().encode('[]')
+        const fallbackAsset = new Uint8Array([1, 2, 3])
         const parsed = await Parser.parseAsync(
-            { fileName: 'fallback.json', data: '[]' },
-            { worker: 'auto' }
+            {
+                fileName: 'fallback.json',
+                data: fallbackData,
+                assets: [{ name: 'fallback.bin', data: fallbackAsset }]
+            },
+            {
+                worker: 'auto',
+                decodeAssets: 'full',
+                transferInput: true
+            }
         )
         const project = await ProjectLoader.loadAsync(
             [{ name: 'fallback.json', data: '[]' }],
             { worker: 'auto' }
         )
         assert.equal(parsed.schema, 'ecad-toolkit.document.v1')
+        assert.deepEqual([...parsed.assets[0].data], [1, 2, 3])
+        assert.equal(fallbackData.byteLength, 2)
+        assert.equal(fallbackAsset.byteLength, 3)
         assert.equal(project.schema, 'ecad-toolkit.project.v1')
         assert.equal(constructions, 2)
         await assert.rejects(

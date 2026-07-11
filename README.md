@@ -37,6 +37,12 @@ See the [migration guide](docs/migration.md) and its generated
 [1.1.0 release notes](docs/release-notes-v1.1.0.md) provide the concise change
 summary.
 
+Version 1.1.1 makes queued worker-request ownership synchronous. Parser and
+project requests waiting behind active work can no longer observe later
+caller-buffer mutation; explicit transfers detach exact buffers immediately
+after admission. See the
+[1.1.1 release notes](docs/release-notes-v1.1.1.md).
+
 Before 1.1.0:
 
 ```js
@@ -294,6 +300,7 @@ copy while keeping sync, direct async, and worker results mutation-isolated.
 - [Model and envelope format](docs/model-format.md)
 - [Testing and downstream conformance](docs/testing.md)
 - [1.1.0 release notes](docs/release-notes-v1.1.0.md)
+- [1.1.1 release notes](docs/release-notes-v1.1.1.md)
 - [Library scope](spec/library-scope.md)
 
 ## Package scope

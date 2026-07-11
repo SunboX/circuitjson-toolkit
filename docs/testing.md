@@ -80,6 +80,11 @@ Worker checks install an in-memory `ecad-toolkit.worker.v1` loopback with real
 structured-clone and transfer boundaries, then require `worker: true`. A direct
 fallback cannot satisfy these checks.
 
+Queue regressions hold one worker operation active while parser and project
+requests wait behind it. They mutate default-mode caller buffers and require
+the original request snapshot, then verify explicit-transfer buffers detach
+only after admission and preserve shared backing-buffer aliases.
+
 Extension ownership tests use a realistic native graph above the former
 compact-metadata item ceiling. They require one bounded immutable capture,
 mutation isolation, a direct capture under two seconds, exact worker-result
