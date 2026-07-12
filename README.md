@@ -43,6 +43,12 @@ caller-buffer mutation; explicit transfers detach exact buffers immediately
 after admission. See the
 [1.1.1 release notes](docs/release-notes-v1.1.1.md).
 
+Version 1.1.2 makes schematic SVG paint deterministic. Open primitives always
+emit `fill="none"`, filled primitives retain authored paint or use the shared
+theme fallback, and generic component and symbol bodies explicitly use the
+ECAD Forge schematic palette. See the
+[1.1.2 release notes](docs/release-notes-v1.1.2.md).
+
 Before 1.1.0:
 
 ```js
@@ -72,6 +78,8 @@ const model = document.model
 - Copy-on-write normalization of supported legacy CircuitJSON aliases through
   `CircuitJsonDocument.normalizeModel()`
 - Deterministic PCB, schematic, and BOM renderers
+- Explicit schematic SVG stroke/fill paint that does not depend on browser
+  defaults
 - Asset-backed `schematic_image` rows and hierarchical
   `schematic_sheet_symbol` rows with shared bounds and SVG behavior
 - Reusable exact PCB interaction and spatial indexes
@@ -301,6 +309,7 @@ copy while keeping sync, direct async, and worker results mutation-isolated.
 - [Testing and downstream conformance](docs/testing.md)
 - [1.1.0 release notes](docs/release-notes-v1.1.0.md)
 - [1.1.1 release notes](docs/release-notes-v1.1.1.md)
+- [1.1.2 release notes](docs/release-notes-v1.1.2.md)
 - [Library scope](spec/library-scope.md)
 
 ## Package scope
