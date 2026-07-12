@@ -202,7 +202,7 @@ test('schematic closed primitives never inherit the browser black fill', () => {
                 { x: 40, y: 0 },
                 { x: 42, y: 1 }
             ],
-            is_filled: false
+            fill_color: '#abcdef'
         },
         {
             type: 'schematic_arc',

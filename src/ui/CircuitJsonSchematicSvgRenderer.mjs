@@ -517,7 +517,9 @@ export class CircuitJsonSchematicSvgRenderer {
                 CircuitJsonSchematicSvgRenderer.#pointsAttribute(points)
             ) +
             '"' +
-            CircuitJsonSchematicSvgPrimitiveAttributes.attributes(element) +
+            CircuitJsonSchematicSvgPrimitiveAttributes.attributes(element, {
+                fill: tag === 'polygon'
+            }) +
             '></' +
             tag +
             '>'
