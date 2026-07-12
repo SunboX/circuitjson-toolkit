@@ -151,7 +151,7 @@ export class CircuitJsonSchematicSvgRenderer {
                     component.schematic_component_id || ''
                 ) +
                 '">' +
-                '<rect class="schematic-component__body" x="' +
+                '<rect class="schematic-component__body" fill="var(--schematic-fill-color, #f1d8bd)" stroke="var(--schematic-default-ink-color, #008aa3)" x="' +
                 CircuitJsonSchematicSvgRenderer.#formatNumber(x) +
                 '" y="' +
                 CircuitJsonSchematicSvgRenderer.#formatNumber(y) +
@@ -218,7 +218,7 @@ export class CircuitJsonSchematicSvgRenderer {
             CircuitJsonSchematicSvgRenderer.#escapeHtml(
                 symbol.schematic_symbol_id || ''
             ) +
-            '"><rect class="schematic-symbol__body" x="' +
+            '"><rect class="schematic-symbol__body" fill="var(--schematic-fill-color, #f1d8bd)" stroke="var(--schematic-default-ink-color, #008aa3)" x="' +
             CircuitJsonSchematicSvgRenderer.#formatNumber(x) +
             '" y="' +
             CircuitJsonSchematicSvgRenderer.#formatNumber(y) +

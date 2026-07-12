@@ -1,5 +1,7 @@
 import { SafeXmlText } from './SafeXmlText.mjs'
 
+const DEFAULT_FILLED_PAINT = 'var(--schematic-fill-color, #f1d8bd)'
+
 /**
  * Builds SVG drawing attributes for schematic primitive rows.
  */
@@ -46,11 +48,16 @@ export class CircuitJsonSchematicSvgPrimitiveAttributes {
                     '"'
             )
         }
-        if (options.fill !== false && safeFill) {
+        const resolvedFill = CircuitJsonSchematicSvgPrimitiveAttributes.#fill(
+            element,
+            options,
+            safeFill
+        )
+        if (resolvedFill) {
             attributes.push(
                 'fill="' +
                     CircuitJsonSchematicSvgPrimitiveAttributes.#escapeHtml(
-                        safeFill
+                        resolvedFill
                     ) +
                     '"'
             )
@@ -69,6 +76,21 @@ export class CircuitJsonSchematicSvgPrimitiveAttributes {
         }
 
         return attributes.length ? ' ' + attributes.join(' ') : ''
+    }
+
+    /**
+     * Resolves deterministic fill semantics for one SVG primitive.
+     * @param {object} element CircuitJSON element row.
+     * @param {{ fill?: boolean }} options Attribute options.
+     * @param {string} safeFill Valid authored fill paint.
+     * @returns {string} Explicit SVG fill paint.
+     */
+    static #fill(element, options, safeFill) {
+        if (options.fill === false || element?.is_filled === false) {
+            return 'none'
+        }
+        if (safeFill) return safeFill
+        return element?.is_filled === true ? DEFAULT_FILLED_PAINT : 'none'
     }
 
     /**
