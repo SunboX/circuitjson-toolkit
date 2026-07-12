@@ -155,6 +155,104 @@ test('canonical schematic SVG fixes its inherited default font size', () => {
     assert.equal(/^<svg[^>]*font-size="1"/u.test(svg), true)
 })
 
+test('schematic closed primitives never inherit the browser black fill', () => {
+    const svg = CircuitJsonSchematicSvgRenderer.render([
+        {
+            type: 'schematic_component',
+            schematic_component_id: 'component_fill_guard',
+            center: { x: 0, y: 0 },
+            size: { width: 4, height: 3 },
+            show_label: false
+        },
+        {
+            type: 'schematic_symbol',
+            schematic_symbol_id: 'symbol_fill_guard',
+            center: { x: 5, y: 0 },
+            size: { width: 3, height: 2 },
+            name: 'SAFE_SYMBOL'
+        },
+        {
+            type: 'schematic_rect',
+            schematic_rect_id: 'rect_unfilled',
+            center: { x: 10, y: 0 },
+            width: 4,
+            height: 2,
+            is_filled: false
+        },
+        {
+            type: 'schematic_rect',
+            schematic_rect_id: 'rect_default_fill',
+            center: { x: 20, y: 0 },
+            width: 4,
+            height: 2,
+            is_filled: true
+        },
+        {
+            type: 'schematic_circle',
+            schematic_circle_id: 'circle_authored_fill',
+            center: { x: 30, y: 0 },
+            radius: 2,
+            is_filled: true,
+            fill_color: '#ddeeff'
+        },
+        {
+            type: 'schematic_path',
+            schematic_path_id: 'path_open',
+            points: [
+                { x: 40, y: 0 },
+                { x: 42, y: 1 }
+            ],
+            fill_color: '#abcdef'
+        },
+        {
+            type: 'schematic_path',
+            schematic_path_id: 'path_filled',
+            points: [
+                { x: 44, y: 0 },
+                { x: 46, y: 1 },
+                { x: 45, y: 2 }
+            ],
+            is_filled: true,
+            fill_color: '#fedcba'
+        },
+        {
+            type: 'schematic_arc',
+            schematic_arc_id: 'arc_open',
+            center: { x: 50, y: 0 },
+            radius: 2,
+            start_angle: 0,
+            end_angle: 90
+        }
+    ])
+
+    assert.match(
+        svg,
+        /class="schematic-component__body"[^>]+fill="var\(--schematic-fill-color, #f1d8bd\)"/u
+    )
+    assert.match(
+        svg,
+        /class="schematic-symbol__body"[^>]+fill="var\(--schematic-fill-color, #f1d8bd\)"/u
+    )
+    assert.match(
+        svg,
+        /class="schematic-shape schematic-shape--rect" x="8"[^>]+fill="none"/u
+    )
+    assert.match(
+        svg,
+        /class="schematic-shape schematic-shape--rect" x="18"[^>]+fill="var\(--schematic-fill-color, #f1d8bd\)"/u
+    )
+    assert.match(
+        svg,
+        /class="schematic-shape schematic-shape--circle"[^>]+fill="#ddeeff"/u
+    )
+    assert.match(svg, /<polyline[^>]+fill="none"/u)
+    assert.match(svg, /<polygon[^>]+fill="#fedcba"/u)
+    assert.match(
+        svg,
+        /class="schematic-shape schematic-shape--arc"[^>]+fill="none"/u
+    )
+})
+
 test('legacy schematic debug rectangles preserve their original byte shape', () => {
     const svg = CircuitJsonSchematicSvgRenderer.render([
         {

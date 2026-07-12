@@ -36,6 +36,7 @@ test('required project files exist', async () => {
         'docs/model-format.md',
         'docs/testing.md',
         'docs/release-notes-v1.1.1.md',
+        'docs/release-notes-v1.1.2.md',
         'spec/library-scope.md',
         'src/index.mjs',
         'src/capabilities.mjs',

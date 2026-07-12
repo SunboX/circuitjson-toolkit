@@ -330,7 +330,12 @@ the same option names across toolkits. Canonical `schematic_image` rows resolve
 their exact `asset_id` from `document.assets`; full asset mode renders the
 payload, while metadata-only or unresolved assets are omitted without a
 placeholder. `schematic_sheet_symbol` renders a hierarchical child box and is
-never treated as a selectable `schematic_sheet` page.
+never treated as a selectable `schematic_sheet` page. Since 1.1.2, every
+primitive emits explicit SVG fill paint: open arcs, polylines, and shapes use
+`fill="none"`; filled primitives keep valid authored paint or fall back to
+`var(--schematic-fill-color, #f1d8bd)`. Generic component and symbol bodies use
+the same fill variable plus
+`var(--schematic-default-ink-color, #008aa3)` for their stroke.
 
 ### `BomTableRenderer.render(document, options?)`
 

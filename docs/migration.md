@@ -98,6 +98,13 @@ mutations cannot alter a queued parser input, project entry, or asset. With
 `transferInput: true`, exact transferable buffers detach at admission;
 partial, resizable, and shared ranges continue to use isolated copies.
 
+Since 1.1.2, schematic SVG renderers no longer inherit the browser's default
+black fill. Open primitives always render with `fill="none"`. A primitive with
+`is_filled: true` uses its valid authored `fill_color`/`fillColor`, or the
+shared `--schematic-fill-color` theme variable when no paint is authored.
+Generic component and symbol bodies explicitly use the shared schematic fill
+and ink variables. Public names, parameters, and return shapes are unchanged.
+
 ## Package subpaths
 
 - `circuitjson-toolkit/parser`
