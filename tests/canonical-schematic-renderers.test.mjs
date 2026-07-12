@@ -205,6 +205,17 @@ test('schematic closed primitives never inherit the browser black fill', () => {
             fill_color: '#abcdef'
         },
         {
+            type: 'schematic_path',
+            schematic_path_id: 'path_filled',
+            points: [
+                { x: 44, y: 0 },
+                { x: 46, y: 1 },
+                { x: 45, y: 2 }
+            ],
+            is_filled: true,
+            fill_color: '#fedcba'
+        },
+        {
             type: 'schematic_arc',
             schematic_arc_id: 'arc_open',
             center: { x: 50, y: 0 },
@@ -235,6 +246,7 @@ test('schematic closed primitives never inherit the browser black fill', () => {
         /class="schematic-shape schematic-shape--circle"[^>]+fill="#ddeeff"/u
     )
     assert.match(svg, /<polyline[^>]+fill="none"/u)
+    assert.match(svg, /<polygon[^>]+fill="#fedcba"/u)
     assert.match(
         svg,
         /class="schematic-shape schematic-shape--arc"[^>]+fill="none"/u
