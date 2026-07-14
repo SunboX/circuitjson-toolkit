@@ -1,6 +1,6 @@
 {
     "name": "circuitjson-toolkit",
-    "version": "1.2.1",
+    "version": "1.3.0",
     "description": "Canonical CircuitJSON parsing, project, rendering, query, manufacturing, simulation, and scene contracts",
     "keywords": [
         "circuitjson",
@@ -55,6 +55,7 @@
         "docs/release-notes-v1.1.2.md",
         "docs/release-notes-v1.2.0.md",
         "docs/release-notes-v1.2.1.md",
+        "docs/release-notes-v1.3.0.md",
         "docs/testing.md",
         "spec",
         "LICENSE",
@@ -67,7 +68,7 @@
         "REUSE.toml"
     ],
     "scripts": {
-        "test": "node --test",
+        "test": "node scripts/run-tests.mjs",
         "format": "prettier --write .",
         "check:format": "prettier --check .",
         "sync:schema": "node scripts/sync-circuit-json-schema.mjs",

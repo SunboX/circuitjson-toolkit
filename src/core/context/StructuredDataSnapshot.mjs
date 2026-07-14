@@ -26,8 +26,8 @@ const SET_VALUES = Set.prototype.values
 export class StructuredDataSnapshot {
     /**
      * Creates state shared by multiple metadata roots in one request.
-     * @param {{ label?: string, maxBytes?: number, maxItems?: number, preserveBinary?: boolean }} [limits] Capture limits.
-     * @returns {{ seen: Map<object, unknown>, accounted: Set<object>, bytes: number, items: number, label: string, maxBytes: number, maxItems: number, preserveBinary: boolean }} Capture state.
+     * @param {{ label?: string, maxBytes?: number, maxItems?: number, preserveBinary?: boolean, standardBuiltins?: boolean }} [limits] Capture limits and proven graph provenance.
+     * @returns {{ seen: Map<object, unknown>, accounted: Set<object>, bytes: number, items: number, label: string, maxBytes: number, maxItems: number, preserveBinary: boolean, standardBuiltins: boolean }} Capture state.
      */
     static createState(limits = {}) {
         const maxBytes =
@@ -52,7 +52,8 @@ export class StructuredDataSnapshot {
             label: String(limits.label || 'Canonical asset source'),
             maxBytes,
             maxItems,
-            preserveBinary: limits.preserveBinary === true
+            preserveBinary: limits.preserveBinary === true,
+            standardBuiltins: limits.standardBuiltins === true
         }
     }
 
@@ -71,7 +72,8 @@ export class StructuredDataSnapshot {
             !Number.isSafeInteger(state.maxBytes) ||
             !Number.isSafeInteger(state.maxItems) ||
             typeof state.label !== 'string' ||
-            typeof state.preserveBinary !== 'boolean'
+            typeof state.preserveBinary !== 'boolean' ||
+            typeof state.standardBuiltins !== 'boolean'
         ) {
             throw new TypeError('Invalid source-metadata capture state.')
         }
@@ -93,7 +95,8 @@ export class StructuredDataSnapshot {
             !Number.isSafeInteger(state.maxBytes) ||
             !Number.isSafeInteger(state.maxItems) ||
             typeof state.label !== 'string' ||
-            typeof state.preserveBinary !== 'boolean'
+            typeof state.preserveBinary !== 'boolean' ||
+            typeof state.standardBuiltins !== 'boolean'
         ) {
             throw new TypeError('Invalid source-metadata capture state.')
         }
@@ -224,7 +227,9 @@ export class StructuredDataSnapshot {
         if (state.seen.has(value)) return state.seen.get(value)
         StructuredDataSnapshot.#reserve(state, 1)
 
-        const binary = BinaryDataSnapshot.describe(value)
+        const binary = state.standardBuiltins
+            ? BinaryDataSnapshot.describeStandard(value)
+            : BinaryDataSnapshot.describe(value)
         if (binary) {
             return StructuredDataSnapshot.#binary(value, binary, state)
         }

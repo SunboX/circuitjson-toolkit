@@ -41,9 +41,10 @@ export class CircuitJsonReadOnlyDocument {
      * Seals an envelope whose exact model was already deeply frozen by validation.
      * @param {Record<string, any>} document Canonical document envelope.
      * @param {object[]} model Exact deeply frozen model owned by the proof.
+     * @param {{ standardBuiltins?: boolean }} [options] Proven metadata provenance.
      * @returns {Record<string, any>} The same read-only envelope.
      */
-    static freezeValidated(document, model) {
+    static freezeValidated(document, model, options = {}) {
         if (!CircuitJsonValidationAuthority.permitsSeal(model)) {
             throw new TypeError(
                 'Validated document sealing requires an unforgeable validation proof.'
@@ -76,7 +77,8 @@ export class CircuitJsonReadOnlyDocument {
         }
         return CircuitJsonReadOnlyDocument.#freezeDocument(
             document,
-            frozenRoots
+            frozenRoots,
+            options?.standardBuiltins === true
         )
     }
 
@@ -84,14 +86,18 @@ export class CircuitJsonReadOnlyDocument {
      * Captures owned boundaries and freezes an envelope with known frozen roots.
      * @param {Record<string, any>} document Canonical document envelope.
      * @param {Set<object>} frozenRoots Deeply frozen roots that need no revisit.
+     * @param {boolean} [standardBuiltins] Whether extension built-ins have proven standard prototypes.
      * @returns {Record<string, any>} The same read-only envelope.
      */
-    static #freezeDocument(document, frozenRoots) {
+    static #freezeDocument(document, frozenRoots, standardBuiltins = false) {
         const assets = CircuitJsonReadOnlyDocument.#documentAssets(document)
         const metadataState = StructuredDataSnapshot.createState()
         CircuitJsonReadOnlyDocument.#captureAssetData(assets, metadataState)
         const extensions =
-            CircuitJsonReadOnlyDocument.#captureDocumentExtensions(document)
+            CircuitJsonReadOnlyDocument.#captureDocumentExtensions(
+                document,
+                standardBuiltins
+            )
         if (extensions && typeof extensions === 'object') {
             frozenRoots.add(extensions)
         }
@@ -199,9 +205,10 @@ export class CircuitJsonReadOnlyDocument {
      * transfer-sized item and byte ceilings.
      * @param {unknown} value Extension candidate.
      * @param {((snapshot: unknown) => unknown) | null} [normalize] Optional normalization over the owned mutable snapshot.
+     * @param {{ standardBuiltins?: boolean }} [options] Proven source-graph provenance.
      * @returns {unknown} Deeply immutable owned extension metadata.
      */
-    static copyReadonlyExtensionValue(value, normalize = null) {
+    static copyReadonlyExtensionValue(value, normalize = null, options = {}) {
         if (
             value &&
             typeof value === 'object' &&
@@ -216,7 +223,10 @@ export class CircuitJsonReadOnlyDocument {
         }
         const snapshot = StructuredDataSnapshot.capture(
             value,
-            StructuredDataSnapshot.createState(EXTENSION_METADATA_LIMITS)
+            StructuredDataSnapshot.createState({
+                ...EXTENSION_METADATA_LIMITS,
+                standardBuiltins: options?.standardBuiltins === true
+            })
         )
         ProtectedExtensionBinaryBoundary.protect(snapshot)
         const normalized = normalize ? normalize(snapshot) : snapshot
@@ -327,9 +337,10 @@ export class CircuitJsonReadOnlyDocument {
      * Captures an unowned worker or caller extension root with extension-sized
      * bounds before the generic source metadata pass begins.
      * @param {Record<string, any>} document Canonical document envelope.
+     * @param {boolean} standardBuiltins Whether extension built-ins have proven standard prototypes.
      * @returns {unknown} Owned extension root or undefined.
      */
-    static #captureDocumentExtensions(document) {
+    static #captureDocumentExtensions(document, standardBuiltins) {
         let descriptor
         try {
             descriptor = Object.getOwnPropertyDescriptor(document, 'extensions')
@@ -345,7 +356,9 @@ export class CircuitJsonReadOnlyDocument {
             )
         }
         const captured = CircuitJsonReadOnlyDocument.copyReadonlyExtensionValue(
-            descriptor.value
+            descriptor.value,
+            null,
+            { standardBuiltins }
         )
         if (captured === descriptor.value) return captured
         Object.defineProperty(document, 'extensions', {

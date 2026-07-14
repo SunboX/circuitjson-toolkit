@@ -12,7 +12,7 @@ export class ProtectedExtensionBinaryBoundary {
      * @returns {void}
      */
     static protect(root) {
-        if (BinaryDataSnapshot.describe(root)) {
+        if (BinaryDataSnapshot.describeStandard(root)) {
             throw new TypeError(
                 'Canonical extension root must be a plain data container.'
             )
@@ -51,7 +51,7 @@ export class ProtectedExtensionBinaryBoundary {
                     stack.push(child)
                     continue
                 }
-                const binary = BinaryDataSnapshot.describe(child)
+                const binary = BinaryDataSnapshot.describeStandard(child)
                 if (!binary) continue
                 const ownedBinary = child
                 /** @returns {ArrayBuffer | Uint8Array | DataView} A defensive binary copy. */

@@ -61,6 +61,14 @@ million structured items, while exact project envelopes receive independent
 per-document, project-metadata, aggregate-byte, and repeated-work limits. See
 the [1.2.1 release notes](docs/release-notes-v1.2.1.md).
 
+Version 1.3.0 adds an explicit fast preparation path for documents received
+through platform structured clone. Large native extension graphs can be owned
+without exception-driven binary probing of every ordinary record, while the
+general preparation path remains prototype-independent for arbitrary caller
+input. Cross-realm and altered-prototype buffers, typed views, byte limits,
+defensive copies, and all existing return shapes remain supported.
+See the [1.3.0 release notes](docs/release-notes-v1.3.0.md).
+
 Before 1.1.0:
 
 ```js
@@ -329,6 +337,7 @@ copy while keeping sync, direct async, and worker results mutation-isolated.
 - [1.1.2 release notes](docs/release-notes-v1.1.2.md)
 - [1.2.0 release notes](docs/release-notes-v1.2.0.md)
 - [1.2.1 release notes](docs/release-notes-v1.2.1.md)
+- [1.3.0 release notes](docs/release-notes-v1.3.0.md)
 - [Library scope](spec/library-scope.md)
 
 ## Package scope

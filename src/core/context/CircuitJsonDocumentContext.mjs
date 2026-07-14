@@ -74,9 +74,31 @@ export class CircuitJsonDocumentContext {
      * @returns {CircuitJsonDocumentContext} Prepared request-scoped context.
      */
     static prepare(input, options = {}) {
+        return CircuitJsonDocumentContext.#prepare(input, options, false)
+    }
+
+    /**
+     * Prepares a document whose platform built-ins were normalized by the
+     * structured-clone algorithm.
+     * @param {unknown} input Structured-cloned document result or existing context.
+     * @param {{ indexes?: unknown }} [options] Requested context options.
+     * @returns {CircuitJsonDocumentContext} Prepared request-scoped context.
+     */
+    static prepareStructuredClone(input, options = {}) {
+        return CircuitJsonDocumentContext.#prepare(input, options, true)
+    }
+
+    /**
+     * Prepares one context with explicit metadata provenance.
+     * @param {unknown} input Document result, CircuitJSON model, or context.
+     * @param {{ indexes?: unknown }} options Requested context options.
+     * @param {boolean} standardBuiltins Whether metadata built-ins have standard local prototypes.
+     * @returns {CircuitJsonDocumentContext} Prepared request-scoped context.
+     */
+    static #prepare(input, options, standardBuiltins) {
         const context = CircuitJsonDocumentContext.#isContext(input)
             ? input
-            : CircuitJsonDocumentContext.#fromInput(input)
+            : CircuitJsonDocumentContext.#fromInput(input, standardBuiltins)
         context.#indexes.ensure(options?.indexes || [])
         return context
     }
@@ -181,15 +203,20 @@ export class CircuitJsonDocumentContext {
     /**
      * Creates one context and establishes a matching immutable model proof.
      * @param {unknown} input Document result or CircuitJSON model.
+     * @param {boolean} standardBuiltins Whether metadata built-ins have standard local prototypes.
      * @returns {CircuitJsonDocumentContext} New context.
      */
-    static #fromInput(input) {
+    static #fromInput(input, standardBuiltins) {
         const document = CircuitJsonDocumentContext.#normalizeDocument(input)
         const validationPasses = CircuitJsonValidationProof.has(document)
             ? 0
             : 1
-        const readonlyDocument =
-            CircuitJsonValidationProof.validateAndAttach(document)
+        const readonlyDocument = CircuitJsonValidationProof.validateAndAttach(
+            document,
+            {
+                standardBuiltins
+            }
+        )
         const model = CircuitJsonDocumentContext.#ownData(
             readonlyDocument,
             'model'

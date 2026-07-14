@@ -109,6 +109,28 @@ Validation, indexes, render primitives, and other derived values are cached by
 the context. Public outputs remain detached or immutable; a caller cannot
 mutate later results through a returned object.
 
+Hosts that receive a document from the platform structured-clone algorithm may
+use the explicit provenance-aware entry point:
+
+```js
+const context = CircuitJsonDocumentContext.prepareStructuredClone(
+    message.data,
+    {
+        indexes: ['elements', 'relations']
+    }
+)
+```
+
+`prepareStructuredClone()` has the same options, return type, validation,
+ownership, limits, and derived-cache behavior as `prepare()`. It avoids
+exception-driven raw-buffer brand checks for ordinary objects by relying on the
+standard local prototypes guaranteed by a completed platform structured clone.
+Use it only for the exact structured-cloned result (or a graph created entirely
+by the toolkit after that boundary). Use `prepare()` for arbitrary caller-owned,
+cross-realm, proxy-backed, or prototype-modified input. The general path keeps
+intrinsic binary slots authoritative and preserves altered-prototype
+`ArrayBuffer`, `SharedArrayBuffer`, typed-array, and `DataView` values.
+
 ## Root entrypoint
 
 `circuitjson-toolkit` has an exact 17-class root. The 14 canonical classes are:

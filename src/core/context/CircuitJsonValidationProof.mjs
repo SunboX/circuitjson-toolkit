@@ -53,9 +53,10 @@ export class CircuitJsonValidationProof {
     /**
      * Validates, freezes, and proves one canonical document envelope.
      * @param {Record<string, any>} document Canonical document envelope.
+     * @param {{ standardBuiltins?: boolean }} [options] Proven metadata provenance.
      * @returns {Record<string, any>} The same read-only document envelope.
      */
-    static validateAndAttach(document) {
+    static validateAndAttach(document, options = {}) {
         const model = CircuitJsonValidationProof.#requireModelData(document)
         if (!CircuitJsonValidationProof.#matches(document, model)) {
             const errors =
@@ -80,7 +81,8 @@ export class CircuitJsonValidationProof {
         }
         const readonlyDocument = CircuitJsonReadOnlyDocument.freezeValidated(
             document,
-            model
+            model,
+            options
         )
         if (
             CircuitJsonValidationProof.#requireModelData(readonlyDocument) !==

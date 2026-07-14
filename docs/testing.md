@@ -21,6 +21,13 @@ checked-in artifacts. Check mode is read-only. It also preserves upstream
 transform rejection boundaries, including malformed SI-unit strings that the
 upstream schema rejects by throwing instead of returning a failed parse.
 
+`npm test` first runs the benchmark contract in an uncontended process, then
+runs the functional test modules with normal Node test concurrency, and finally
+runs the remaining elapsed-time modules in isolated phases. This preserves
+complete test coverage while preventing unrelated CPU-heavy suites from
+contaminating timing comparisons. `npm test -- <node-test-arguments>` still
+forwards focused arguments directly to the Node test runner.
+
 The schema differential suite samples every upstream union leaf, compares
 required-field failures, exercises transform-owned resistor, capacitor,
 inductor, current-source, and crystal fields, and verifies that a fresh compile
@@ -92,6 +99,13 @@ round-trip behavior, and visible rejection beyond the separate 128 MiB
 extension payload ceiling. A 3 MiB binary regression additionally requires
 byte-backed `Uint8Array` shape, defensive-copy mutation isolation, direct and
 worker parity, bounded elapsed time, and bounded JavaScript heap growth.
+An isolated inspector regression pauses on all thrown exceptions and requires
+ordinary populated records and arrays in an explicitly proven standard-built-in
+graph to complete ownership without exception-driven binary probing. Separate
+exact-path regressions require cross-realm buffers, altered-prototype
+`ArrayBuffer` and `SharedArrayBuffer` values, altered view prototypes, and
+proxy-backed non-binary candidates to retain the prior prototype-independent
+behavior.
 
 Variant-geometry tests also lock rotation-local polygon-plated pad extents and
 pill drill dimensions, independent outer/drill rotations, and every legal

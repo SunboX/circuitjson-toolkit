@@ -39,7 +39,9 @@ test('required project files exist', async () => {
         'docs/release-notes-v1.1.2.md',
         'docs/release-notes-v1.2.0.md',
         'docs/release-notes-v1.2.1.md',
+        'docs/release-notes-v1.3.0.md',
         'spec/library-scope.md',
+        'scripts/run-tests.mjs',
         'src/index.mjs',
         'src/capabilities.mjs',
         'src/extensions.mjs',
@@ -113,5 +115,5 @@ test('package exports public entrypoints', async () => {
     )
     assert.equal(pkg.files.includes('docs/api.md'), true)
     assert.equal(pkg.files.includes('REUSE.toml'), true)
-    assert.equal(pkg.scripts.test, 'node --test')
+    assert.equal(pkg.scripts.test, 'node scripts/run-tests.mjs')
 })
