@@ -53,12 +53,13 @@ make the common shape smaller.
 
 Validated source documents own selected extension values as one deeply
 immutable, descriptor-safe snapshot. This uses a distinct 128 MiB payload and
-2,000,000-item ceiling so large native renderer graphs do not inherit the
+4,000,000-item ceiling so large native renderer graphs do not inherit the
 compact metadata limit. The shared worker protocol applies the same ownership
-boundary after structured cloning and retains its 250 MB whole-result ceiling.
-Binary values preserve their `ArrayBuffer`/typed-view shape behind defensive
-copy access, so payload bytes do not inflate into one JavaScript number per
-byte.
+boundary after structured cloning. Canonical standalone documents retain a
+250 MB byte ceiling; exact multi-document projects use a 256 MiB aggregate
+ceiling with independent 250 MB document and project-metadata limits. Binary
+values preserve their `ArrayBuffer`/typed-view shape behind defensive copy
+access, so payload bytes do not inflate into one JavaScript number per byte.
 
 ### Errors
 

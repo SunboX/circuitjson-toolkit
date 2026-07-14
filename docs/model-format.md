@@ -102,15 +102,19 @@ must not duplicate the CircuitJSON model or keep a renamed renderer model.
 Default parsing excludes raw/base64/full-payload graphs.
 
 When a caller explicitly selects a native extension, the toolkit captures and
-freezes that graph once under a distinct ceiling of 2,000,000 structured items
+freezes that graph once under a distinct ceiling of 4,000,000 structured items
 and 128 MiB of string or binary content. The ceiling is shared across the
-selected namespace, applies equally after worker transfer, and remains below
-the worker's 250 MB whole-result limit. General document metadata keeps its
-smaller budget, so a large native projection cannot consume the canonical
-metadata allowance. Oversized graphs are rejected; they are never truncated or
-partially retained. Binary extension values remain byte-backed with their
-common buffer/view type and are exposed as defensive copies, preserving
-mutation isolation without expanding bytes into plain numeric arrays.
+selected namespace and applies equally after worker transfer. Canonical
+standalone documents allow the extension plus envelope overhead within five
+million result values and 250 MB. Exact project envelopes allow eight million
+aggregate values and 256 MiB, while each document stays within five million
+values and 250 MB and non-document project metadata stays within two million
+values and 250 MB. Reused graphs are charged independently to each local scope,
+and repeated accounting work is itself bounded by the aggregate project
+budget. Oversized graphs are rejected; they are never truncated or partially
+retained. Binary extension values remain byte-backed with their common
+buffer/view type and are exposed as defensive copies, preserving mutation
+isolation without expanding bytes into plain numeric arrays.
 
 Supported pre-union CircuitJSON aliases may be projected through
 `CircuitJsonDocument.normalizeModel()`. The copy-on-write form preserves exact

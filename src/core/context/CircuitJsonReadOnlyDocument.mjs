@@ -13,7 +13,7 @@ const METADATA_BUDGETS = new WeakMap()
 const EXTENSION_METADATA_LIMITS = Object.freeze({
     label: 'Canonical extension data',
     maxBytes: 128 * 1024 * 1024,
-    maxItems: 2_000_000,
+    maxItems: 4_000_000,
     preserveBinary: true
 })
 const ASSET_SCALAR_FIELDS = new Set([

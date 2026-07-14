@@ -55,6 +55,12 @@ metadata ownership traversals now support deeply nested, valid ECAD documents
 up to 256 levels. See the
 [1.2.0 release notes](docs/release-notes-v1.2.0.md).
 
+Version 1.2.1 keeps large canonical documents and multi-document projects
+inside explicit worker budgets. Selected extensions may contain up to four
+million structured items, while exact project envelopes receive independent
+per-document, project-metadata, aggregate-byte, and repeated-work limits. See
+the [1.2.1 release notes](docs/release-notes-v1.2.1.md).
+
 Before 1.1.0:
 
 ```js
@@ -100,7 +106,7 @@ const model = document.model
 - Strict `ecad-toolkit.worker.v1` parsing/project protocol with progress,
   cancellation, and controlled buffer transfer
 - One-pass ownership for selected source extensions, with a separate 128 MiB /
-  2,000,000-item bound and exact direct/worker result parity
+  4,000,000-item bound and exact direct/worker result parity
 - Machine-readable capability inventory and packed downstream conformance
   harness
 - Explicit `/extensions` surface retaining every previous specialized API
@@ -201,11 +207,14 @@ falls back to direct execution only when worker construction is unavailable;
 explicit worker and runtime failures remain visible.
 
 Selected source-native extensions are captured once into an immutable owned
-snapshot. Their separate 128 MiB payload and 2,000,000-item ceilings permit
-realistic renderer/model graphs without weakening the worker protocol's 250 MB
-total-result ceiling; an over-limit extension fails visibly instead of being
-silently truncated. Binary extension values remain byte-backed and return
-defensive copies instead of expanding into JavaScript number arrays.
+snapshot. Their separate 128 MiB payload and 4,000,000-item ceilings permit
+realistic renderer/model graphs. Canonical standalone documents remain within
+a 250 MB result ceiling, while exact multi-document project envelopes use a
+256 MiB aggregate ceiling plus independent 250 MB per-document and metadata
+ceilings. Item and repeated-alias work budgets remain separately bounded; an
+over-limit extension or result fails visibly instead of being silently
+truncated. Binary extension values remain byte-backed and return defensive
+copies instead of expanding into JavaScript number arrays.
 When extensions are disabled, native documents and projects return the exact
 empty map `{}`. Bounded ZIP consumers can preflight local/central filenames and
 CRC32/size metadata with
@@ -319,6 +328,7 @@ copy while keeping sync, direct async, and worker results mutation-isolated.
 - [1.1.1 release notes](docs/release-notes-v1.1.1.md)
 - [1.1.2 release notes](docs/release-notes-v1.1.2.md)
 - [1.2.0 release notes](docs/release-notes-v1.2.0.md)
+- [1.2.1 release notes](docs/release-notes-v1.2.1.md)
 - [Library scope](spec/library-scope.md)
 
 ## Package scope

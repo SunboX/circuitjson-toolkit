@@ -2,6 +2,7 @@ import { CircuitJsonValidationProof } from '../context/CircuitJsonValidationProo
 import { CircuitJsonReadOnlyDocument } from '../context/CircuitJsonReadOnlyDocument.mjs'
 import { ProtectedExtensionBinaryBoundary } from '../context/ProtectedExtensionBinaryBoundary.mjs'
 import { RuntimeProxyBoundary } from '../contracts/RuntimeProxyBoundary.mjs'
+import { WorkerResultShape } from './WorkerResultShape.mjs'
 
 const ARRAY_BUFFER_BYTE_LENGTH_GETTER = Object.getOwnPropertyDescriptor(
     ArrayBuffer.prototype,
@@ -56,6 +57,11 @@ const MAX_REQUEST_DEPTH = 256
 const MAX_REQUEST_VALUES = 100_000
 const MAX_RESULT_BYTES = 250_000_000
 const MAX_RESULT_VALUES = 2_000_000
+const MAX_DOCUMENT_RESULT_VALUES = 5_000_000
+// Project documents retain the single-result ceiling independently while this
+// aggregate ceiling bounds total worker traversal regardless of document count.
+const MAX_PROJECT_RESULT_VALUES = 8_000_000
+const MAX_PROJECT_RESULT_BYTES = 256 * 1024 * 1024
 const TYPED_ARRAYS = new Map(
     [
         Int8Array,
@@ -166,14 +172,28 @@ export class WorkerRequestData {
         const state = {
             bytes: 0,
             copyBinary: limits.copyBinary,
+            documentAccounted: null,
+            documentBytes: null,
+            documentValues: null,
             maxBytes: limits.bytes,
+            maxDocumentBytes: limits.bytes,
+            maxDocumentValues: MAX_DOCUMENT_RESULT_VALUES,
+            maxUnscopedBytes: limits.bytes,
+            maxUnscopedValues: limits.values,
             maxValues: limits.values,
             output: limits.output,
             prepared: new WeakMap(),
+            projectDocuments: null,
+            projectResult: false,
+            reaccountValues: 0,
             strictDescriptors: limits.strictDescriptors,
             transfer: { items: [], seen: new Set() },
             transferInput: limits.transferInput,
             trustProof: limits.trustProof,
+            unscopedAccounted: null,
+            unscopedBytes: 0,
+            unscopedIncomplete: new WeakSet(),
+            unscopedValues: 0,
             values: 0,
             visiting: new WeakSet()
         }
@@ -223,8 +243,26 @@ export class WorkerRequestData {
         if (state.visiting.has(value)) {
             throw new TypeError('Worker request data must not be cyclic.')
         }
-        if (state.prepared.has(value)) return state.prepared.get(value)
+        if (state.prepared.has(value)) {
+            const accounted = WorkerRequestData.#accountedScope(state)
+            if (accounted && !accounted.has(value)) {
+                WorkerRequestData.#accountPreparedValue(value, state, depth)
+            } else if (
+                accounted === state.unscopedAccounted &&
+                state.unscopedIncomplete.delete(value)
+            ) {
+                // The documents array itself was already charged unscoped.
+                WorkerRequestData.#accountPreparedContainer(
+                    value,
+                    state,
+                    depth,
+                    false
+                )
+            }
+            return state.prepared.get(value)
+        }
         WorkerRequestData.#reserveValues(state, 1)
+        WorkerRequestData.#accountedScope(state)?.add(value)
         state.visiting.add(value)
         try {
             const bufferLength = WorkerRequestData.#bufferLength(value)
@@ -305,18 +343,32 @@ export class WorkerRequestData {
                 'Worker requests may contain only plain data objects.'
             )
         }
-        const keys =
-            state.output && !state.strictDescriptors
-                ? Reflect.ownKeys(descriptors).filter(
-                      (key) =>
-                          typeof key === 'string' && descriptors[key].enumerable
-                  )
-                : Reflect.ownKeys(descriptors)
-        const documentResult =
+        const keys = WorkerResultShape.keys(
+            descriptors,
+            state.output,
+            state.strictDescriptors
+        )
+        const projectResult =
+            depth === 0 &&
+            state.output &&
+            WorkerResultShape.project(descriptors, keys)
+        if (projectResult) {
+            state.maxBytes = MAX_PROJECT_RESULT_BYTES
+            state.maxValues = MAX_PROJECT_RESULT_VALUES
+            state.projectResult = true
+            state.unscopedAccounted = new WeakSet([value])
+            state.unscopedBytes = state.bytes
+            state.unscopedValues = state.values
+        }
+        const canonicalDocumentResult =
+            state.output && WorkerResultShape.document(descriptors, keys)
+        if (depth === 0 && canonicalDocumentResult) {
+            state.maxValues = MAX_DOCUMENT_RESULT_VALUES
+        }
+        const provenDocumentResult =
             state.output &&
             state.trustProof &&
-            WorkerRequestData.#dataValue(descriptors.schema) ===
-                'ecad-toolkit.document.v1' &&
+            canonicalDocumentResult &&
             CircuitJsonValidationProof.has(value)
         WorkerRequestData.#reserveValues(state, keys.length)
         const prepared = prototype === null ? Object.create(null) : {}
@@ -330,13 +382,19 @@ export class WorkerRequestData {
                 configurable: true,
                 enumerable: true,
                 value:
-                    documentResult && key === 'model'
-                        ? WorkerRequestData.#documentModel(descriptors[key])
-                        : WorkerRequestData.#descriptorValue(
+                    projectResult && key === 'documents'
+                        ? WorkerRequestData.#projectDocuments(
                               descriptors[key],
                               state,
                               depth
-                          ),
+                          )
+                        : provenDocumentResult && key === 'model'
+                          ? WorkerRequestData.#documentModel(descriptors[key])
+                          : WorkerRequestData.#descriptorValue(
+                                descriptors[key],
+                                state,
+                                depth
+                            ),
                 writable: true
             })
         }
@@ -353,40 +411,113 @@ export class WorkerRequestData {
      * @returns {any[]} Prepared array.
      */
     static #prepareArray(value, prototype, descriptors, state, depth) {
-        const keys = Reflect.ownKeys(descriptors)
-        const length = WorkerRequestData.#dataValue(descriptors.length)
-        const visibleKeys =
-            state.output && !state.strictDescriptors
-                ? keys.filter(
-                      (key) =>
-                          key !== 'length' &&
-                          typeof key === 'string' &&
-                          descriptors[key].enumerable
-                  )
-                : keys
-        if (
-            prototype !== Array.prototype ||
-            !Number.isSafeInteger(length) ||
-            length < 0 ||
-            (state.output && !state.strictDescriptors
-                ? visibleKeys.length !== length
-                : keys.length !== length + 1)
-        ) {
-            throw new TypeError(
-                'Worker request arrays must be bounded, dense, and plain.'
-            )
-        }
+        const length = WorkerResultShape.arrayLength(
+            prototype,
+            descriptors,
+            state.output,
+            state.strictDescriptors
+        )
         WorkerRequestData.#reserveValues(state, length)
         const prepared = new Array(length)
         state.prepared.set(value, prepared)
+        const projectDocuments = state.projectDocuments === value
         for (let index = 0; index < length; index += 1) {
-            prepared[index] = WorkerRequestData.#descriptorValue(
+            prepared[index] = projectDocuments
+                ? WorkerRequestData.#projectDocument(
+                      descriptors[String(index)],
+                      state,
+                      depth
+                  )
+                : WorkerRequestData.#descriptorValue(
+                      descriptors[String(index)],
+                      state,
+                      depth
+                  )
+        }
+        return prepared
+    }
+
+    /** @param {PropertyDescriptor | undefined} descriptor Descriptor. @param {Record<string, any>} state State. @param {number} depth Depth. @returns {unknown} Documents. */
+    static #projectDocuments(descriptor, state, depth) {
+        const value = WorkerRequestData.#descriptorDataValue(descriptor, state)
+        const reused = state.prepared.has(value)
+        state.projectDocuments = value
+        try {
+            const prepared = WorkerRequestData.#prepareValue(
+                value,
+                state,
+                depth + 1
+            )
+            if (reused) {
+                WorkerRequestData.#accountProjectDocuments(
+                    value,
+                    state,
+                    depth + 1
+                )
+            } else {
+                // Descendants were charged only to their document scopes.
+                state.unscopedIncomplete.add(value)
+            }
+            return prepared
+        } finally {
+            state.projectDocuments = null
+        }
+    }
+
+    /** @param {object} value Documents. @param {Record<string, any>} state State. @param {number} depth Depth. @returns {void} */
+    static #accountProjectDocuments(value, state, depth) {
+        let prototype
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(value)
+            descriptors = Object.getOwnPropertyDescriptors(value)
+        } catch {
+            throw new TypeError(
+                'Worker request data could not be inspected safely.'
+            )
+        }
+        const length = WorkerResultShape.arrayLength(
+            prototype,
+            descriptors,
+            state.output,
+            state.strictDescriptors
+        )
+        for (let index = 0; index < length; index += 1) {
+            WorkerRequestData.#projectDocument(
                 descriptors[String(index)],
                 state,
                 depth
             )
         }
-        return prepared
+    }
+
+    /**
+     * Prepares one project document under the normal single-result ceiling.
+     * @param {PropertyDescriptor | undefined} descriptor Document descriptor.
+     * @param {Record<string, any>} state Traversal state.
+     * @param {number} depth Parent depth.
+     * @returns {unknown} Prepared document.
+     */
+    static #projectDocument(descriptor, state, depth) {
+        const previousMaxDocumentValues = state.maxDocumentValues
+        const document = WorkerRequestData.#dataValue(descriptor)
+        state.maxDocumentValues = WorkerResultShape.documentCandidate(
+            document,
+            state.strictDescriptors
+        )
+            ? MAX_DOCUMENT_RESULT_VALUES
+            : state.maxUnscopedValues
+        state.documentAccounted = new WeakSet()
+        state.documentBytes = 0
+        state.documentValues = 0
+        try {
+            return WorkerRequestData.#descriptorValue(descriptor, state, depth)
+        } finally {
+            state.documentAccounted = null
+            state.documentBytes = null
+            state.documentValues = null
+            state.maxDocumentValues = previousMaxDocumentValues
+        }
     }
 
     /**
@@ -397,24 +528,30 @@ export class WorkerRequestData {
      * @returns {unknown} Prepared value.
      */
     static #descriptorValue(descriptor, state, depth) {
+        return WorkerRequestData.#prepareValue(
+            WorkerRequestData.#descriptorDataValue(descriptor, state),
+            state,
+            depth + 1
+        )
+    }
+
+    /**
+     * Reads one enumerable descriptor through trusted internal boundaries only.
+     * @param {PropertyDescriptor | undefined} descriptor Descriptor candidate.
+     * @param {Record<string, any>} state Traversal state.
+     * @returns {unknown} Descriptor data value.
+     */
+    static #descriptorDataValue(descriptor, state) {
         if (state.trustProof) {
             const protectedData =
                 CircuitJsonReadOnlyDocument.readProtectedAssetData(descriptor)
             if (protectedData.trusted) {
-                return WorkerRequestData.#prepareValue(
-                    protectedData.value,
-                    state,
-                    depth + 1
-                )
+                return protectedData.value
             }
             const protectedExtensionBinary =
                 ProtectedExtensionBinaryBoundary.read(descriptor)
             if (protectedExtensionBinary.trusted) {
-                return WorkerRequestData.#prepareValue(
-                    protectedExtensionBinary.value,
-                    state,
-                    depth + 1
-                )
+                return protectedExtensionBinary.value
             }
         }
         if (
@@ -426,8 +563,138 @@ export class WorkerRequestData {
                 'Worker requests may contain only enumerable data properties.'
             )
         }
-        return WorkerRequestData.#prepareValue(
-            descriptor.value,
+        return descriptor.value
+    }
+
+    /**
+     * Charges one previously prepared graph to the active project document.
+     * @param {unknown} value Reused prepared value.
+     * @param {Record<string, any>} state Traversal state.
+     * @param {number} depth Container depth.
+     * @returns {void}
+     */
+    static #accountPreparedValue(value, state, depth) {
+        const type = typeof value
+        if (
+            value === null ||
+            ['undefined', 'boolean', 'number', 'bigint'].includes(type)
+        ) {
+            return
+        }
+        if (type === 'string') {
+            WorkerRequestData.#reserveAccountedBytes(state, value.length * 2)
+            return
+        }
+        if (type !== 'object') {
+            throw new TypeError(
+                'Worker requests may contain only clone-safe data.'
+            )
+        }
+        RuntimeProxyBoundary.assert(value, 'Worker request data')
+        if (depth > MAX_REQUEST_DEPTH) {
+            throw new TypeError('Worker request data is nested too deeply.')
+        }
+        const accounted = WorkerRequestData.#accountedScope(state)
+        if (accounted.has(value)) return
+        accounted.add(value)
+        WorkerRequestData.#reserveAccountedValues(state, 1)
+        const bufferLength = WorkerRequestData.#bufferLength(value)
+        if (bufferLength !== null) {
+            WorkerRequestData.#reserveAccountedBytes(state, bufferLength)
+            return
+        }
+        const sharedLength = WorkerRequestData.#sharedBufferLength(value)
+        if (sharedLength !== null) {
+            WorkerRequestData.#reserveAccountedBytes(state, sharedLength)
+            return
+        }
+        const view = WorkerRequestData.#view(value)
+        if (view) {
+            WorkerRequestData.#reserveAccountedBytes(state, view.byteLength)
+            return
+        }
+        WorkerRequestData.#accountPreparedContainer(value, state, depth)
+    }
+
+    /** @param {object} value Container. @param {Record<string, any>} state State. @param {number} depth Depth. @param {boolean} [accountEntries] Whether to charge its own entries. @returns {void} */
+    static #accountPreparedContainer(
+        value,
+        state,
+        depth,
+        accountEntries = true
+    ) {
+        let prototype
+        let descriptors
+        try {
+            prototype = Object.getPrototypeOf(value)
+            descriptors = Object.getOwnPropertyDescriptors(value)
+        } catch {
+            throw new TypeError(
+                'Worker request data could not be inspected safely.'
+            )
+        }
+        if (Array.isArray(value)) {
+            const length = WorkerResultShape.arrayLength(
+                prototype,
+                descriptors,
+                state.output,
+                state.strictDescriptors
+            )
+            if (accountEntries) {
+                WorkerRequestData.#reserveAccountedValues(state, length)
+            }
+            for (let index = 0; index < length; index += 1) {
+                WorkerRequestData.#accountDescriptor(
+                    descriptors[String(index)],
+                    state,
+                    depth
+                )
+            }
+            return
+        }
+        if (prototype !== Object.prototype && prototype !== null) {
+            throw new TypeError(
+                'Worker requests may contain only plain data objects.'
+            )
+        }
+        const keys = WorkerResultShape.keys(
+            descriptors,
+            state.output,
+            state.strictDescriptors
+        )
+        const provenDocumentResult =
+            state.output &&
+            state.trustProof &&
+            WorkerResultShape.document(descriptors, keys) &&
+            CircuitJsonValidationProof.has(value)
+        if (accountEntries) {
+            WorkerRequestData.#reserveAccountedValues(state, keys.length)
+        }
+        for (const key of keys) {
+            if (typeof key !== 'string') {
+                throw new TypeError('Worker request keys must be strings.')
+            }
+            WorkerRequestData.#reserveAccountedBytes(state, key.length * 2)
+            if (!(provenDocumentResult && key === 'model')) {
+                WorkerRequestData.#accountDescriptor(
+                    descriptors[key],
+                    state,
+                    depth
+                )
+            }
+        }
+    }
+
+    /**
+     * Charges one reused descriptor to the active document.
+     * @param {PropertyDescriptor | undefined} descriptor Descriptor candidate.
+     * @param {Record<string, any>} state Traversal state.
+     * @param {number} depth Parent depth.
+     * @returns {void}
+     */
+    static #accountDescriptor(descriptor, state, depth) {
+        WorkerRequestData.#accountPreparedValue(
+            WorkerRequestData.#descriptorDataValue(descriptor, state),
             state,
             depth + 1
         )
@@ -624,27 +891,106 @@ export class WorkerRequestData {
         transfer.items.push(value)
     }
 
-    /** @param {{ bytes: number }} state State. @param {number} count Bytes. */
+    /** @param {Record<string, any>} state State. @returns {WeakSet<object> | null} Active identities. */
+    static #accountedScope(state) {
+        if (state.documentAccounted) return state.documentAccounted
+        return state.projectResult ? state.unscopedAccounted : null
+    }
+
+    /** @param {{ documentBytes: number | null, maxDocumentBytes: number, maxUnscopedBytes: number, projectResult: boolean, unscopedBytes: number }} state State. @param {number} count Bytes. */
+    static #reserveAccountedBytes(state, count) {
+        const invalid = !Number.isSafeInteger(count) || count < 0
+        if (state.documentBytes !== null) {
+            if (
+                invalid ||
+                state.documentBytes + count > state.maxDocumentBytes
+            ) {
+                throw new TypeError(
+                    'Worker request data exceeds its byte limit.'
+                )
+            }
+            state.documentBytes += count
+            return
+        }
+        if (
+            invalid ||
+            !state.projectResult ||
+            state.unscopedBytes + count > state.maxUnscopedBytes
+        ) {
+            throw new TypeError('Worker request data exceeds its byte limit.')
+        }
+        state.unscopedBytes += count
+    }
+
+    /** @param {{ documentValues: number | null, maxDocumentValues: number, maxUnscopedValues: number, maxValues: number, projectResult: boolean, reaccountValues: number, unscopedValues: number }} state State. @param {number} count Values. */
+    static #reserveAccountedValues(state, count) {
+        const invalid =
+            !Number.isSafeInteger(count) ||
+            count < 0 ||
+            state.reaccountValues + count > state.maxValues
+        if (state.documentValues !== null) {
+            if (
+                invalid ||
+                state.documentValues + count > state.maxDocumentValues
+            ) {
+                throw new TypeError('Worker request data is too large.')
+            }
+            state.documentValues += count
+            state.reaccountValues += count
+            return
+        }
+        if (
+            invalid ||
+            !state.projectResult ||
+            state.unscopedValues + count > state.maxUnscopedValues
+        ) {
+            throw new TypeError('Worker request data is too large.')
+        }
+        state.unscopedValues += count
+        state.reaccountValues += count
+    }
+
+    /** @param {{ bytes: number, documentBytes: number | null, maxBytes: number, maxDocumentBytes: number, maxUnscopedBytes: number, projectResult: boolean, unscopedBytes: number }} state State. @param {number} count Bytes. */
     static #reserveBytes(state, count) {
+        const documentBytes = state.documentBytes
         if (
             !Number.isSafeInteger(count) ||
             count < 0 ||
-            state.bytes + count > state.maxBytes
+            state.bytes + count > state.maxBytes ||
+            (documentBytes !== null
+                ? documentBytes + count > state.maxDocumentBytes
+                : state.projectResult &&
+                  state.unscopedBytes + count > state.maxUnscopedBytes)
         ) {
             throw new TypeError('Worker request data exceeds its byte limit.')
         }
         state.bytes += count
+        if (documentBytes !== null) {
+            state.documentBytes += count
+        } else if (state.projectResult) {
+            state.unscopedBytes += count
+        }
     }
 
-    /** @param {{ values: number }} state State. @param {number} count Values. */
+    /** @param {{ documentValues: number | null, maxDocumentValues: number, maxUnscopedValues: number, maxValues: number, projectResult: boolean, unscopedValues: number, values: number }} state State. @param {number} count Values. */
     static #reserveValues(state, count) {
+        const documentValues = state.documentValues
         if (
             !Number.isSafeInteger(count) ||
             count < 0 ||
-            state.values + count > state.maxValues
+            state.values + count > state.maxValues ||
+            (documentValues !== null
+                ? documentValues + count > state.maxDocumentValues
+                : state.projectResult &&
+                  state.unscopedValues + count > state.maxUnscopedValues)
         ) {
             throw new TypeError('Worker request data is too large.')
         }
         state.values += count
+        if (documentValues !== null) {
+            state.documentValues += count
+        } else if (state.projectResult) {
+            state.unscopedValues += count
+        }
     }
 }

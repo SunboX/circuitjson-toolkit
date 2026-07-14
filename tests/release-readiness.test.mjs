@@ -101,11 +101,14 @@ test('release metadata and migration ledger agree', async () => {
     const patchReleaseNotes = await text('docs/release-notes-v1.1.1.md')
     const rendererPatchReleaseNotes = await text('docs/release-notes-v1.1.2.md')
     const pcbFidelityReleaseNotes = await text('docs/release-notes-v1.2.0.md')
+    const projectBoundaryReleaseNotes = await text(
+        'docs/release-notes-v1.2.1.md'
+    )
     const readme = await text('README.md')
     const modelFormat = await text('docs/model-format.md')
     const migratedFeatures = firstTableColumnValues(appendices.join('\n'))
 
-    assert.equal(pkg.version, '1.2.0')
+    assert.equal(pkg.version, '1.2.1')
     assert.equal(pkg.dependencies, undefined)
     assert.equal(
         ledger.every((row) => {
@@ -131,6 +134,7 @@ test('release metadata and migration ledger agree', async () => {
     assert.match(patchReleaseNotes, /Synchronous queued-request ownership/u)
     assert.match(rendererPatchReleaseNotes, /Deterministic schematic paint/u)
     assert.match(pcbFidelityReleaseNotes, /Canonical PCB fidelity/u)
+    assert.match(projectBoundaryReleaseNotes, /Large canonical worker results/u)
     assert.match(
         modelFormat,
         /legacy array[^.]*mutable[^.]*element graph[^.]*deeply immutable/iu
@@ -142,6 +146,7 @@ test('release metadata and migration ledger agree', async () => {
     assert.equal(pkg.files.includes('docs/release-notes-v1.1.1.md'), true)
     assert.equal(pkg.files.includes('docs/release-notes-v1.1.2.md'), true)
     assert.equal(pkg.files.includes('docs/release-notes-v1.2.0.md'), true)
+    assert.equal(pkg.files.includes('docs/release-notes-v1.2.1.md'), true)
     for (const path of migrationPages) {
         assert.match(migration, new RegExp(path.replace('docs/migration/', '')))
     }
