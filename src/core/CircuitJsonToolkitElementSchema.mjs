@@ -1,6 +1,24 @@
+import { optionalAngle, optionalLength } from './CircuitJsonUnitParsers.mjs'
+
 const TOOLKIT_ELEMENT_TYPES = new Set([
     'schematic_image',
     'schematic_sheet_symbol'
+])
+const PCB_TEXT_EXTENSION_TYPES = new Set([
+    'pcb_note_text',
+    'pcb_fabrication_note_text',
+    'pcb_silkscreen_text'
+])
+const PCB_TEXT_ANCHOR_ALIGNMENTS = new Set([
+    'top_left',
+    'top_center',
+    'top_right',
+    'center_left',
+    'center',
+    'center_right',
+    'bottom_left',
+    'bottom_center',
+    'bottom_right'
 ])
 
 /**
@@ -42,6 +60,22 @@ export class CircuitJsonToolkitElementSchema {
             ? []
             : [
                   `CircuitJSON element ${type}${location} does not match the canonical toolkit schema.`
+              ]
+    }
+
+    /**
+     * Validates source-fidelity fields retained on pinned upstream elements.
+     * @param {Record<string, any>} value Element value.
+     * @param {string} type Element type.
+     * @param {string} [location] Human-readable location suffix.
+     * @returns {string[]} Empty on success or one validation error.
+     */
+    static validateExtensions(value, type, location = '') {
+        if (!PCB_TEXT_EXTENSION_TYPES.has(type)) return []
+        return CircuitJsonToolkitElementSchema.#pcbTextExtensions(value, type)
+            ? []
+            : [
+                  `CircuitJSON element ${type}${location} does not match the canonical toolkit extension schema.`
               ]
     }
 
@@ -157,6 +191,67 @@ export class CircuitJsonToolkitElementSchema {
     }
 
     /**
+     * Validates exact PCB text dimensions, alignment, visibility, and source provenance.
+     * @param {Record<string, any>} value Text element.
+     * @param {string} type Text element type.
+     * @returns {boolean} Whether the extension fields match their contract.
+     */
+    static #pcbTextExtensions(value, type) {
+        for (const field of ['font_width', 'font_height']) {
+            if (
+                value[field] !== undefined &&
+                !CircuitJsonToolkitElementSchema.#positiveLength(value[field])
+            ) {
+                return false
+            }
+        }
+        if (
+            value.stroke_width !== undefined &&
+            !CircuitJsonToolkitElementSchema.#nonNegativeLength(
+                value.stroke_width
+            )
+        ) {
+            return false
+        }
+        for (const field of [
+            'source_layer',
+            'source_type',
+            'source_text_kind'
+        ]) {
+            if (
+                value[field] !== undefined &&
+                !CircuitJsonToolkitElementSchema.#requiredString(value[field])
+            ) {
+                return false
+            }
+        }
+        if (
+            value.source_anchor_alignment !== undefined &&
+            !PCB_TEXT_ANCHOR_ALIGNMENTS.has(value.source_anchor_alignment)
+        ) {
+            return false
+        }
+        if (
+            value.is_hidden !== undefined &&
+            typeof value.is_hidden !== 'boolean'
+        ) {
+            return false
+        }
+        if (
+            type === 'pcb_note_text' &&
+            value.ccw_rotation !== undefined &&
+            optionalAngle(value.ccw_rotation) === null
+        ) {
+            return false
+        }
+        return !(
+            type === 'pcb_fabrication_note_text' &&
+            value.is_mirrored !== undefined &&
+            typeof value.is_mirrored !== 'boolean'
+        )
+    }
+
+    /**
      * Validates a required non-empty string.
      * @param {unknown} value Candidate.
      * @returns {boolean} Whether the value is valid.
@@ -181,6 +276,26 @@ export class CircuitJsonToolkitElementSchema {
      */
     static #positive(value) {
         return CircuitJsonToolkitElementSchema.#number(value) && value > 0
+    }
+
+    /**
+     * Validates a positive CircuitJSON length with optional unit suffix.
+     * @param {unknown} value Candidate.
+     * @returns {boolean} Whether the length is positive.
+     */
+    static #positiveLength(value) {
+        const length = optionalLength(value)
+        return length !== null && length > 0
+    }
+
+    /**
+     * Validates a non-negative CircuitJSON length with optional unit suffix.
+     * @param {unknown} value Candidate.
+     * @returns {boolean} Whether the length is non-negative.
+     */
+    static #nonNegativeLength(value) {
+        const length = optionalLength(value)
+        return length !== null && length >= 0
     }
 
     /**

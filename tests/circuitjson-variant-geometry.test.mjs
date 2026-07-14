@@ -38,6 +38,46 @@ test('shared hole geometry derives rotation-local polygon pad and pill dimension
     assert.ok(Math.abs(geometry.bounds.height - 2.6) < 1e-9)
 })
 
+test('shared hole geometry preserves rounded plated-pad border radius', () => {
+    const geometry = CircuitJsonPcbHolePrimitiveModel.build(
+        {
+            type: 'pcb_plated_hole',
+            shape: 'circular_hole_with_rect_pad',
+            pad_shape: 'rect',
+            rect_pad_width: 3.048,
+            rect_pad_height: 1.524,
+            rect_ccw_rotation: 90,
+            rect_border_radius: 0.762,
+            hole_shape: 'circle',
+            hole_diameter: 1.016,
+            x: 1,
+            y: 2
+        },
+        { x: 1, y: 2 }
+    )
+
+    assert.deepEqual(
+        {
+            shape: geometry.shape,
+            width: geometry.width,
+            height: geometry.height,
+            rotation: geometry.rotation,
+            cornerRadius: geometry.cornerRadius,
+            holeShape: geometry.holeShape,
+            holeDiameter: geometry.holeDiameter
+        },
+        {
+            shape: 'rect',
+            width: 3.048,
+            height: 1.524,
+            rotation: 90,
+            cornerRadius: 0.762,
+            holeShape: 'circle',
+            holeDiameter: 1.016
+        }
+    )
+})
+
 test('shared hole geometry preserves independent outer and drill variants', () => {
     const pill = CircuitJsonPcbHolePrimitiveModel.build(
         {
@@ -137,6 +177,47 @@ test('shared hole geometry preserves independent outer and drill variants', () =
             holeRotation: 70
         }
     )
+})
+
+test('shared hole geometry computes rotated rectangular and pill bounds', () => {
+    const rectangle = CircuitJsonPcbHolePrimitiveModel.build(
+        {
+            type: 'pcb_plated_hole',
+            shape: 'circular_hole_with_rect_pad',
+            pad_shape: 'rect',
+            x: 10,
+            y: 20,
+            rect_pad_width: 4,
+            rect_pad_height: 2,
+            rect_ccw_rotation: 30,
+            hole_shape: 'circle',
+            hole_diameter: 0.8
+        },
+        { x: 10, y: 20 }
+    )
+    const pill = CircuitJsonPcbHolePrimitiveModel.build(
+        {
+            type: 'pcb_plated_hole',
+            shape: 'pill',
+            x: -4,
+            y: 3,
+            outer_width: 4,
+            outer_height: 2,
+            ccw_rotation: 30,
+            hole_width: 2,
+            hole_height: 0.8
+        },
+        { x: -4, y: 3 }
+    )
+
+    assert.ok(Math.abs(rectangle.bounds.width - 4.464101615) < 1e-9)
+    assert.ok(Math.abs(rectangle.bounds.height - 3.732050808) < 1e-9)
+    assert.ok(Math.abs(rectangle.bounds.minX - 7.767949192) < 1e-9)
+    assert.ok(Math.abs(rectangle.bounds.maxY - 21.866025404) < 1e-9)
+    assert.ok(Math.abs(pill.bounds.width - 3.732050808) < 1e-9)
+    assert.ok(Math.abs(pill.bounds.height - 3) < 1e-9)
+    assert.ok(Math.abs(pill.bounds.minX - -5.866025404) < 1e-9)
+    assert.ok(Math.abs(pill.bounds.maxY - 4.5) < 1e-9)
 })
 
 /**

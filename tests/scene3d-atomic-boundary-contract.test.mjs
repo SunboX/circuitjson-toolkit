@@ -6,6 +6,7 @@ import { CircuitJsonDocumentContext } from '../src/core/context/CircuitJsonDocum
 import { CircuitJsonReadOnlyDocument } from '../src/core/context/CircuitJsonReadOnlyDocument.mjs'
 import { StructuredDataSnapshot } from '../src/core/context/StructuredDataSnapshot.mjs'
 import { DocumentResult } from '../src/core/contracts/DocumentResult.mjs'
+import { WorkerRequestData } from '../src/core/worker/WorkerRequestData.mjs'
 import { PcbScene3dBuilder } from '../src/scene3d.mjs'
 import { createNativeDocument } from './helpers/FakeScene3dDocuments.mjs'
 
@@ -19,6 +20,19 @@ const U_SHAPE = Object.freeze([
     Object.freeze({ x: -1, y: 3 }),
     Object.freeze({ x: -3, y: 3 })
 ])
+
+/**
+ * Builds a deterministic plain metadata chain with one leaf value.
+ * @param {number} depth Number of nested child containers.
+ * @returns {object} Nested metadata root.
+ */
+function nestedMetadata(depth) {
+    let value = { label: 'leaf' }
+    for (let index = 0; index < depth; index += 1) {
+        value = { child: value }
+    }
+    return value
+}
 
 /**
  * Subdivides every U-shape edge without changing its geometry.
@@ -287,4 +301,36 @@ test('shrinking binary metadata during capture fails atomically', () => {
     } finally {
         Reflect.ownKeys = originalOwnKeys
     }
+})
+
+test('metadata capture accepts bounded native extension graphs at depth 256', () => {
+    const snapshot = StructuredDataSnapshot.capture(nestedMetadata(256))
+    let cursor = snapshot
+    for (let depth = 0; depth < 256; depth += 1) {
+        cursor = cursor.child
+    }
+    assert.equal(cursor.label, 'leaf')
+})
+
+test('metadata capture rejects native extension graphs beyond depth 256', () => {
+    assert.throws(
+        () => StructuredDataSnapshot.capture(nestedMetadata(257)),
+        /nested too deeply/u
+    )
+})
+
+test('worker result transport accepts bounded graphs at depth 256', () => {
+    const prepared = WorkerRequestData.prepareResult(nestedMetadata(256))
+    let cursor = prepared.value
+    for (let depth = 0; depth < 256; depth += 1) {
+        cursor = cursor.child
+    }
+    assert.equal(cursor.label, 'leaf')
+})
+
+test('worker result transport rejects graphs beyond depth 256', () => {
+    assert.throws(
+        () => WorkerRequestData.prepareResult(nestedMetadata(257)),
+        /nested too deeply/u
+    )
 })

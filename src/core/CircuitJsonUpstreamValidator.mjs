@@ -31,11 +31,16 @@ export class CircuitJsonUpstreamValidator {
             type === 'source_net'
                 ? CircuitJsonUpstreamValidator.#sourceNet(value)
                 : CircuitJsonUpstreamValidator.#matches(schema, value)
-        return matches
-            ? []
-            : [
-                  `CircuitJSON element ${type}${location} does not match the pinned upstream schema.`
-              ]
+        if (!matches) {
+            return [
+                `CircuitJSON element ${type}${location} does not match the pinned upstream schema.`
+            ]
+        }
+        return CircuitJsonToolkitElementSchema.validateExtensions(
+            value,
+            type,
+            location
+        )
     }
 
     /**

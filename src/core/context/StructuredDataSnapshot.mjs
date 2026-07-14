@@ -1,6 +1,6 @@
 import { BinaryDataSnapshot } from './BinaryDataSnapshot.mjs'
 
-const METADATA_MAX_DEPTH = 64
+const METADATA_MAX_DEPTH = 256
 const METADATA_MAX_ITEMS = 100_000
 const UNBOUNDED_METADATA_BYTES = Number.MAX_SAFE_INTEGER
 const DATE_GET_TIME = Date.prototype.getTime

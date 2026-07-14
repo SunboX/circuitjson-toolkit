@@ -29,19 +29,23 @@ export class CircuitJsonPcbHolePrimitiveModel {
             shape,
             size
         )
-        const bounds = points.length
-            ? CircuitJsonPcbPrimitiveGeometry.pointsBounds(points)
-            : CircuitJsonPcbPrimitiveGeometry.centerBounds(
-                  center,
-                  size.width,
-                  size.height
-              )
+        const bounds = CircuitJsonPcbHolePrimitiveModel.#outerBounds(
+            center,
+            size,
+            shape,
+            rotation,
+            points
+        )
 
         return {
             shape,
             width: size.width,
             height: size.height,
             diameter: Math.max(size.width, size.height),
+            cornerRadius: CircuitJsonUnits.length(
+                element.rect_border_radius ?? element.corner_radius,
+                0
+            ),
             holeShape: hole.shape,
             holeDiameter: hole.diameter,
             holeWidth: hole.width,
@@ -121,6 +125,55 @@ export class CircuitJsonPcbHolePrimitiveModel {
             width,
             height: shape === 'circle' ? width : height
         }
+    }
+
+    /**
+     * Resolves the board-space axis-aligned bounds of the visible outer shape.
+     * @param {{ x: number, y: number }} center Shape center.
+     * @param {{ width: number, height: number }} size Local shape size.
+     * @param {'circle' | 'pill' | 'polygon' | 'rect'} shape Shape kind.
+     * @param {number} rotation Counter-clockwise rotation in degrees.
+     * @param {{ x: number, y: number }[]} points Polygon points.
+     * @returns {object} Board-space axis-aligned bounds.
+     */
+    static #outerBounds(center, size, shape, rotation, points) {
+        if (points.length) {
+            return CircuitJsonPcbPrimitiveGeometry.pointsBounds(points)
+        }
+        if (shape === 'circle' || rotation === 0) {
+            return CircuitJsonPcbPrimitiveGeometry.centerBounds(
+                center,
+                size.width,
+                size.height
+            )
+        }
+
+        const radians = (rotation * Math.PI) / 180
+        if (shape === 'pill') {
+            const minor = Math.min(size.width, size.height)
+            const lineLength = Math.max(size.width, size.height) - minor
+            const axisRadians =
+                radians + (size.height > size.width ? Math.PI / 2 : 0)
+            const width = Math.abs(Math.cos(axisRadians)) * lineLength + minor
+            const height = Math.abs(Math.sin(axisRadians)) * lineLength + minor
+            return CircuitJsonPcbPrimitiveGeometry.centerBounds(
+                center,
+                width,
+                height
+            )
+        }
+
+        const width =
+            Math.abs(Math.cos(radians)) * size.width +
+            Math.abs(Math.sin(radians)) * size.height
+        const height =
+            Math.abs(Math.sin(radians)) * size.width +
+            Math.abs(Math.cos(radians)) * size.height
+        return CircuitJsonPcbPrimitiveGeometry.centerBounds(
+            center,
+            width,
+            height
+        )
     }
 
     /**

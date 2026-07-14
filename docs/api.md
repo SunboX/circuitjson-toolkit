@@ -144,6 +144,15 @@ The canonical union is the pinned upstream schema plus the source-neutral
 snapshot, `canonicalElementTypes()` for all accepted types, and
 `extensionElementTypes()` for the toolkit-owned additions.
 
+Pinned PCB text rows may also retain the validated source-fidelity fields
+`font_width`, `font_height`, `stroke_width`, `source_anchor_alignment`,
+`is_hidden`, `source_layer`, `source_type`, and `source_text_kind`. Board note
+rotation uses `ccw_rotation`; fabrication note mirroring uses `is_mirrored`.
+Canonical upstream properties remain authoritative when they exist. In
+particular, `pcb_note_text.anchor_alignment` keeps the narrower upstream enum,
+while `source_anchor_alignment` can preserve the exact nine-position source
+anchor for lossless rendering.
+
 The projection covers legacy schematic table row/column/span geometry, PCB
 artwork `points`/`width` paths, pad-clearance diagnostic relations, courtyard
 line/path/polygon forms, outer-layer aliases, and retained stroke dash fields.

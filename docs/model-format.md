@@ -119,6 +119,40 @@ validation/proof boundary. Table cell geometry, PCB artwork routes,
 pad-clearance relations, courtyards, layer aliases, and stroke dashes are
 derived structurally and never from a source filename or fixture identity.
 
+### PCB text source fidelity
+
+`pcb_note_text`, `pcb_fabrication_note_text`, and `pcb_silkscreen_text` retain
+canonical upstream fields first. Source formats with independent width and
+height, edge-center anchors, native layer names, or hidden-text state may add:
+
+```js
+{
+    type: 'pcb_note_text',
+    pcb_note_text_id: 'board_text_1',
+    text: 'BOARD MARK',
+    anchor_position: { x: 12.5, y: 4.25 },
+    layer: 'bottom',
+    ccw_rotation: 28,
+    font_size: 1.2,
+    font_width: 0.8,
+    font_height: 1.2,
+    stroke_width: 0.12,
+    anchor_alignment: 'center',
+    source_anchor_alignment: 'center_left',
+    is_mirrored_from_top_view: true,
+    is_hidden: false,
+    source_layer: 'B.SilkS',
+    source_type: 'gr_text'
+}
+```
+
+The extension fields are validated and preserved through immutable document
+preparation. Lengths accept the same numeric millimeter or unit-suffixed style
+as canonical dimensions. `source_anchor_alignment` accepts all nine standard
+anchor positions. The narrower upstream anchor on board and fabrication notes
+must remain `center` or a corner; renderers use the source anchor when they
+need the exact edge-center placement.
+
 ## Assets and diagnostics
 
 Assets have exact `id`, `kind`, `name`, `mediaType`, `byteLength`, `data`, and

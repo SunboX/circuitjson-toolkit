@@ -49,6 +49,12 @@ theme fallback, and generic component and symbol bodies explicitly use the
 ECAD Forge schematic palette. See the
 [1.1.2 release notes](docs/release-notes-v1.1.2.md).
 
+Version 1.2.0 extends the canonical PCB contract with validated source text
+fidelity, rotated drilled-pad bounds, and rounded-pad corner radii. Worker and
+metadata ownership traversals now support deeply nested, valid ECAD documents
+up to 256 levels. See the
+[1.2.0 release notes](docs/release-notes-v1.2.0.md).
+
 Before 1.1.0:
 
 ```js
@@ -82,6 +88,8 @@ const model = document.model
   defaults
 - Asset-backed `schematic_image` rows and hierarchical
   `schematic_sheet_symbol` rows with shared bounds and SVG behavior
+- Validated PCB text source-fidelity fields for independent font dimensions,
+  exact nine-position anchors, visibility, layer provenance, and native type
 - Reusable exact PCB interaction and spatial indexes
 - Query, manufacturing, and injected simulation services
 - Data-only, millimeter-based, right-handed Z-up PCB 3D scenes
