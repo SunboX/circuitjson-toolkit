@@ -318,6 +318,7 @@ copy while keeping sync, direct async, and worker results mutation-isolated.
 - [1.1.0 release notes](docs/release-notes-v1.1.0.md)
 - [1.1.1 release notes](docs/release-notes-v1.1.1.md)
 - [1.1.2 release notes](docs/release-notes-v1.1.2.md)
+- [1.2.0 release notes](docs/release-notes-v1.2.0.md)
 - [Library scope](spec/library-scope.md)
 
 ## Package scope

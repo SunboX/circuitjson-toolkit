@@ -179,7 +179,7 @@ test('shared hole geometry preserves independent outer and drill variants', () =
     )
 })
 
-test('shared hole geometry computes rotated rectangular and pill bounds', () => {
+test('shared hole geometry computes sharp, rounded, and pill rotated bounds', () => {
     const rectangle = CircuitJsonPcbHolePrimitiveModel.build(
         {
             type: 'pcb_plated_hole',
@@ -194,6 +194,22 @@ test('shared hole geometry computes rotated rectangular and pill bounds', () => 
             hole_diameter: 0.8
         },
         { x: 10, y: 20 }
+    )
+    const roundedRectangle = CircuitJsonPcbHolePrimitiveModel.build(
+        {
+            type: 'pcb_plated_hole',
+            shape: 'circular_hole_with_rect_pad',
+            pad_shape: 'rect',
+            x: 0,
+            y: 0,
+            rect_pad_width: 4,
+            rect_pad_height: 2,
+            rect_ccw_rotation: 30,
+            rect_border_radius: 1,
+            hole_shape: 'circle',
+            hole_diameter: 0.8
+        },
+        { x: 0, y: 0 }
     )
     const pill = CircuitJsonPcbHolePrimitiveModel.build(
         {
@@ -214,6 +230,10 @@ test('shared hole geometry computes rotated rectangular and pill bounds', () => 
     assert.ok(Math.abs(rectangle.bounds.height - 3.732050808) < 1e-9)
     assert.ok(Math.abs(rectangle.bounds.minX - 7.767949192) < 1e-9)
     assert.ok(Math.abs(rectangle.bounds.maxY - 21.866025404) < 1e-9)
+    assert.ok(
+        Math.abs(roundedRectangle.bounds.width - 3.732050807568877) < 1e-12
+    )
+    assert.ok(Math.abs(roundedRectangle.bounds.height - 3) < 1e-12)
     assert.ok(Math.abs(pill.bounds.width - 3.732050808) < 1e-9)
     assert.ok(Math.abs(pill.bounds.height - 3) < 1e-9)
     assert.ok(Math.abs(pill.bounds.minX - -5.866025404) < 1e-9)

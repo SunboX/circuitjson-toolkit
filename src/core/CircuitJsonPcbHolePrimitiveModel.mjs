@@ -29,11 +29,16 @@ export class CircuitJsonPcbHolePrimitiveModel {
             shape,
             size
         )
+        const cornerRadius = CircuitJsonUnits.length(
+            element.rect_border_radius ?? element.corner_radius,
+            0
+        )
         const bounds = CircuitJsonPcbHolePrimitiveModel.#outerBounds(
             center,
             size,
             shape,
             rotation,
+            cornerRadius,
             points
         )
 
@@ -42,10 +47,7 @@ export class CircuitJsonPcbHolePrimitiveModel {
             width: size.width,
             height: size.height,
             diameter: Math.max(size.width, size.height),
-            cornerRadius: CircuitJsonUnits.length(
-                element.rect_border_radius ?? element.corner_radius,
-                0
-            ),
+            cornerRadius,
             holeShape: hole.shape,
             holeDiameter: hole.diameter,
             holeWidth: hole.width,
@@ -133,10 +135,11 @@ export class CircuitJsonPcbHolePrimitiveModel {
      * @param {{ width: number, height: number }} size Local shape size.
      * @param {'circle' | 'pill' | 'polygon' | 'rect'} shape Shape kind.
      * @param {number} rotation Counter-clockwise rotation in degrees.
+     * @param {number} cornerRadius Parsed rectangular corner radius.
      * @param {{ x: number, y: number }[]} points Polygon points.
      * @returns {object} Board-space axis-aligned bounds.
      */
-    static #outerBounds(center, size, shape, rotation, points) {
+    static #outerBounds(center, size, shape, rotation, cornerRadius, points) {
         if (points.length) {
             return CircuitJsonPcbPrimitiveGeometry.pointsBounds(points)
         }
@@ -163,12 +166,20 @@ export class CircuitJsonPcbHolePrimitiveModel {
             )
         }
 
+        const radius = Math.max(
+            0,
+            Math.min(cornerRadius, Math.min(size.width, size.height) / 2)
+        )
+        const innerWidth = size.width - radius * 2
+        const innerHeight = size.height - radius * 2
         const width =
-            Math.abs(Math.cos(radians)) * size.width +
-            Math.abs(Math.sin(radians)) * size.height
+            Math.abs(Math.cos(radians)) * innerWidth +
+            Math.abs(Math.sin(radians)) * innerHeight +
+            radius * 2
         const height =
-            Math.abs(Math.sin(radians)) * size.width +
-            Math.abs(Math.cos(radians)) * size.height
+            Math.abs(Math.sin(radians)) * innerWidth +
+            Math.abs(Math.cos(radians)) * innerHeight +
+            radius * 2
         return CircuitJsonPcbPrimitiveGeometry.centerBounds(
             center,
             width,

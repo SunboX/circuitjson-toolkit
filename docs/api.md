@@ -166,7 +166,12 @@ rendering and interaction consumers. Polygon `pad_outline` points determine
 rotation-local outer width and height; pill drill width, height, diameter, and
 board-space rotation remain distinct from outer-pad rotation. Legal
 `outer_width`, `outer_height`, `rect_ccw_rotation`, and `hole_ccw_rotation`
-variants are preserved. Import this retained source-neutral helper from
+variants are preserved. The returned geometry includes the parsed rectangular
+`cornerRadius`. Rotated rectangular bounds use the exact visible
+rounded-rectangle support dimensions, with the effective radius clamped from
+zero through half the smaller outer dimension. A zero radius therefore retains
+sharp-rectangle bounds, while a half-minor-dimension radius has the same support
+extent as a pill. Import this retained source-neutral helper from
 `circuitjson-toolkit/extensions`.
 
 Packed release checks reject any missing or additional root export.

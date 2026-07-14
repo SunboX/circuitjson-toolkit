@@ -240,7 +240,8 @@ export class CircuitJsonToolkitElementSchema {
         if (
             type === 'pcb_note_text' &&
             value.ccw_rotation !== undefined &&
-            optionalAngle(value.ccw_rotation) === null
+            (!CircuitJsonToolkitElementSchema.#unitScalar(value.ccw_rotation) ||
+                optionalAngle(value.ccw_rotation) === null)
         ) {
             return false
         }
@@ -284,6 +285,7 @@ export class CircuitJsonToolkitElementSchema {
      * @returns {boolean} Whether the length is positive.
      */
     static #positiveLength(value) {
+        if (!CircuitJsonToolkitElementSchema.#unitScalar(value)) return false
         const length = optionalLength(value)
         return length !== null && length > 0
     }
@@ -294,8 +296,18 @@ export class CircuitJsonToolkitElementSchema {
      * @returns {boolean} Whether the length is non-negative.
      */
     static #nonNegativeLength(value) {
+        if (!CircuitJsonToolkitElementSchema.#unitScalar(value)) return false
         const length = optionalLength(value)
         return length !== null && length >= 0
+    }
+
+    /**
+     * Returns whether a unit field is a primitive parser input.
+     * @param {unknown} value Candidate.
+     * @returns {boolean} Whether the value can be parsed without coercion.
+     */
+    static #unitScalar(value) {
+        return typeof value === 'number' || typeof value === 'string'
     }
 
     /**
