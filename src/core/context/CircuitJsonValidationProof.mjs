@@ -57,18 +57,62 @@ export class CircuitJsonValidationProof {
      * @returns {Record<string, any>} The same read-only document envelope.
      */
     static validateAndAttach(document, options = {}) {
+        const model = CircuitJsonValidationProof.#validateModel(document)
+        return CircuitJsonValidationProof.#attachAndSeal(
+            document,
+            model,
+            options
+        )
+    }
+
+    /**
+     * Validates a clone-owned model, yields to the host, and then seals its
+     * extension envelope without weakening the matching runtime proof.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @param {{ standardBuiltins?: boolean, yield?: () => Promise<void> | void }} [options] Proven metadata provenance and host scheduler.
+     * @returns {Promise<Record<string, any>>} The same read-only document envelope.
+     */
+    static async validateAndAttachAsync(document, options = {}) {
+        const model = CircuitJsonValidationProof.#validateModel(document)
+        await CircuitJsonValidationProof.#yieldToHost(options?.yield)
+        return CircuitJsonValidationProof.#attachAndSealAsync(document, model, {
+            ...options,
+            yield: () => CircuitJsonValidationProof.#yieldToHost(options?.yield)
+        })
+    }
+
+    /**
+     * Validates and freezes one exact model before any cooperative yield.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @returns {object[]} Stable validated model.
+     */
+    static #validateModel(document) {
         const model = CircuitJsonValidationProof.#requireModelData(document)
+        if (CircuitJsonValidationProof.#matches(document, model)) return model
+        const errors = CircuitJsonValidationAuthority.validateAndFreeze(model)
+        if (errors.length) throw new TypeError(errors[0])
+        if (CircuitJsonValidationProof.#requireModelData(document) !== model) {
+            throw new TypeError(
+                'CircuitJSON document model changed during validation.'
+            )
+        }
+        return model
+    }
+
+    /**
+     * Attaches the private proof and seals the matching document envelope.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @param {object[]} model Stable validated model.
+     * @param {{ standardBuiltins?: boolean }} options Proven metadata provenance.
+     * @returns {Record<string, any>} Read-only document envelope.
+     */
+    static #attachAndSeal(document, model, options) {
+        if (CircuitJsonValidationProof.#requireModelData(document) !== model) {
+            throw new TypeError(
+                'CircuitJSON document model changed before sealing.'
+            )
+        }
         if (!CircuitJsonValidationProof.#matches(document, model)) {
-            const errors =
-                CircuitJsonValidationAuthority.validateAndFreeze(model)
-            if (errors.length) throw new TypeError(errors[0])
-            if (
-                CircuitJsonValidationProof.#requireModelData(document) !== model
-            ) {
-                throw new TypeError(
-                    'CircuitJSON document model changed during validation.'
-                )
-            }
             Object.defineProperty(document, VALIDATION_PROOF, {
                 configurable: false,
                 enumerable: false,
@@ -94,6 +138,74 @@ export class CircuitJsonValidationProof {
             )
         }
         return readonlyDocument
+    }
+
+    /**
+     * Attaches the proof and cooperatively seals a matching clone-owned
+     * document envelope.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @param {object[]} model Stable validated model.
+     * @param {{ standardBuiltins?: boolean, yield: () => Promise<void> }} options Proven provenance and normalized scheduler.
+     * @returns {Promise<Record<string, any>>} Read-only document envelope.
+     */
+    static async #attachAndSealAsync(document, model, options) {
+        if (CircuitJsonValidationProof.#requireModelData(document) !== model) {
+            throw new TypeError(
+                'CircuitJSON document model changed before sealing.'
+            )
+        }
+        if (!CircuitJsonValidationProof.#matches(document, model)) {
+            Object.defineProperty(document, VALIDATION_PROOF, {
+                configurable: false,
+                enumerable: false,
+                value: new CircuitJsonValidationToken(
+                    model,
+                    VALIDATION_TOKEN_SECRET
+                ),
+                writable: false
+            })
+        }
+        const readonlyDocument =
+            await CircuitJsonReadOnlyDocument.freezeValidatedAsync(
+                document,
+                model,
+                options
+            )
+        if (
+            CircuitJsonValidationProof.#requireModelData(readonlyDocument) !==
+                model ||
+            !CircuitJsonValidationProof.#matches(readonlyDocument, model)
+        ) {
+            throw new TypeError(
+                'CircuitJSON document model changed while sealing its validation proof.'
+            )
+        }
+        return readonlyDocument
+    }
+
+    /**
+     * Yields through an injected scheduler, the browser scheduler API, or a
+     * zero-delay host task in that order.
+     * @param {(() => Promise<void> | void) | undefined} yieldControl Optional host scheduler.
+     * @returns {Promise<void>}
+     */
+    static async #yieldToHost(yieldControl) {
+        if (yieldControl !== undefined) {
+            if (typeof yieldControl !== 'function') {
+                throw new TypeError(
+                    'Structured-clone yield control must be a function.'
+                )
+            }
+            await yieldControl()
+            return
+        }
+        const scheduler = globalThis.scheduler
+        const schedulerYield = scheduler?.yield
+        if (typeof schedulerYield === 'function') {
+            await Reflect.apply(schedulerYield, scheduler, [])
+            return
+        }
+        await new Promise((resolve) => globalThis.setTimeout(resolve, 0))
     }
 
     /**

@@ -1,4 +1,5 @@
 import { BinaryDataSnapshot } from './BinaryDataSnapshot.mjs'
+import { StructuredCloneAdoption } from './StructuredCloneAdoption.mjs'
 
 const METADATA_MAX_DEPTH = 256
 const METADATA_MAX_ITEMS = 100_000
@@ -78,6 +79,58 @@ export class StructuredDataSnapshot {
             throw new TypeError('Invalid source-metadata capture state.')
         }
         return StructuredDataSnapshot.#capture(value, state, 0)
+    }
+
+    /**
+     * Adopts a proven standard structured-clone graph synchronously.
+     * @param {unknown} value Structured-cloned metadata candidate.
+     * @param {Record<string, any>} state Shared capture state.
+     * @returns {unknown} Adopted graph.
+     */
+    static adoptStructuredClone(value, state) {
+        return StructuredCloneAdoption.adopt(
+            value,
+            state,
+            (candidate, captureState, depth) =>
+                StructuredDataSnapshot.#capture(candidate, captureState, depth)
+        )
+    }
+
+    /**
+     * Adopts and seals a proven structured-clone graph in bounded work slices.
+     * @param {unknown} value Structured-cloned metadata candidate.
+     * @param {Record<string, any>} state Shared capture state.
+     * @param {() => Promise<void> | void} yieldControl Host scheduler.
+     * @returns {Promise<unknown>} Adopted and sealed graph.
+     */
+    static async adoptStructuredCloneAsync(value, state, yieldControl) {
+        return StructuredCloneAdoption.adoptAndSealAsync(
+            value,
+            state,
+            (candidate, captureState, depth) =>
+                StructuredDataSnapshot.#capture(candidate, captureState, depth),
+            yieldControl
+        )
+    }
+
+    /**
+     * Consumes the sealing plan produced by synchronous clone adoption.
+     * @param {unknown} value Adopted graph root.
+     * @returns {object | null} Trusted one-use sealing plan.
+     * @internal
+     */
+    static consumeStructuredCloneAdoption(value) {
+        return StructuredCloneAdoption.consume(value)
+    }
+
+    /**
+     * Seals one synchronously adopted graph from its trusted plan.
+     * @param {object} plan Trusted adoption plan.
+     * @returns {void}
+     * @internal
+     */
+    static sealStructuredCloneAdoption(plan) {
+        StructuredCloneAdoption.seal(plan)
     }
 
     /**

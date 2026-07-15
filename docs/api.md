@@ -131,6 +131,44 @@ cross-realm, proxy-backed, or prototype-modified input. The general path keeps
 intrinsic binary slots authoritative and preserves altered-prototype
 `ArrayBuffer`, `SharedArrayBuffer`, typed-array, and `DataView` values.
 
+To split model validation and extension sealing across host tasks, use the
+cooperative equivalent:
+
+```js
+const context = await CircuitJsonDocumentContext.prepareStructuredCloneAsync(
+    message.data,
+    {
+        indexes: ['elements', 'relations'],
+        ownership: 'exclusive',
+        yield: () => scheduler.yield()
+    }
+)
+```
+
+`ownership: 'exclusive'` is mandatory. It transfers the exact platform
+structured-clone graph destructively; the caller must relinquish all aliases
+and shared-memory writers until the promise settles. The optional `yield`
+callback is awaited after model validation and repeatedly between bounded
+slices of dense-array traversal, Map/Set normalization, immutable text
+accounting, binary copying and installation, and property locking. Individual
+plain extension records are limited to 16,384 properties on this path.
+
+Existing `CircuitJsonDocumentContext` inputs are already immutable and are
+reused immediately without an ownership declaration. During a new transfer,
+ordinary extension records retain their identity. Dense arrays are normalized
+into clean arrays while retaining graph aliases and cycles, so non-clone hidden
+properties cannot leave mutable state in the prepared context.
+
+Acquired containers are shape-locked and their descriptors are checked during
+sealing. This is not a transactional snapshot of retained aliases: a caller
+that violates exclusive ownership can change a node before it is acquired, and
+a rejected transfer may leave part of the graph locked. Without an injected
+callback the method uses `scheduler.yield()` when available, then falls back to
+a zero-delay host task. The promise resolves to the same prepared context
+returned by the synchronous methods, including the same requested indexes and
+cache behavior. Use `prepareStructuredClone()` for uninterrupted same-thread
+adoption or `prepare()` for arbitrary caller-owned graphs.
+
 ## Root entrypoint
 
 `circuitjson-toolkit` has an exact 17-class root. The 14 canonical classes are:
@@ -202,6 +240,24 @@ Packed release checks reject any missing or additional root export.
 ## Parser
 
 Import from the root or `circuitjson-toolkit/parser`.
+
+### `DocumentResult.createValidatedOwned(fields, runtime?)`
+
+Creates the same validated `ecad-toolkit.document.v1` envelope as
+`DocumentResult.createValidated(fields, runtime?)`, but adopts ordinary model
+and extension graph nodes that the calling toolkit just constructed. The
+model and retained extension nodes keep their identities and are validated and
+deeply frozen in place. The envelope schema, parameters, source-reference
+runtime option, and public return fields are unchanged. Binary payloads still
+pass through the defensive binary-property boundary.
+
+This is a destructive ownership transfer for source-toolkit convergence
+builders. Call it only when the complete ordinary graph is newly created,
+mutable, has standard local built-ins, and is no longer shared with code that
+expects to mutate it. Raw parser input, arbitrary caller objects, cross-realm
+values, proxies, and prototype-modified graphs must use
+`DocumentResult.createValidated()` instead. The method is exported from
+`circuitjson-toolkit/parser`, not from the exact root surface.
 
 ### `Parser.parse(input, options?)`
 
@@ -331,6 +387,34 @@ set without duplicating the element graph.
 The class constructor is not a public construction path. It throws before
 observing caller input; use `prepare()` so every context carries a
 validation-bound authority that downstream viewers and applications can trust.
+
+### `CircuitJsonDocumentContext.prepareStructuredCloneAsync(input, options?)`
+
+Cooperatively validates and adopts an exact platform structured-clone result.
+`options.ownership` must be the literal string `exclusive`; it declares a
+destructive transfer and requires the caller to relinquish every alias and
+shared-memory writer until settlement. `options.indexes` accepts the same names
+as `prepare()`. `options.yield` may be an async or synchronous function; it is
+awaited after model validation and between bounded slices of extension
+adoption and sealing. If omitted, the runtime uses `scheduler.yield()` when
+present or a zero-delay host task. The method returns a promise for the same
+immutable context shape. The cooperative path enforces the normal extension
+limits plus a 16,384-property limit on each individual plain record.
+
+When `input` is already a `CircuitJsonDocumentContext`, the method performs no
+transfer and reuses it immediately, so `options.ownership` is not required.
+Transferred ordinary records are adopted in place; dense arrays are normalized
+to clean arrays with aliases and cycles preserved.
+
+Use this only at a provenance boundary that guarantees standard local
+built-ins and ordinary enumerable string properties. Large strings, binary
+payloads, dense arrays, and Map/Set values are processed across cooperative
+pauses, then acquired containers are progressively locked before the proof and
+envelope are sealed. Mutation before a node is acquired is outside the
+exclusive-transfer contract and cannot be detected reliably; rejection can
+leave a partially locked graph. Use `prepareStructuredClone()` for
+uninterrupted same-thread adoption and `prepare()` for untrusted or otherwise
+arbitrary caller graphs.
 
 ### `context.getIndex(name)` and `context.hasIndex(name)`
 

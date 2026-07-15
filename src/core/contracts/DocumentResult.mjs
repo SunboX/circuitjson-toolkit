@@ -17,16 +17,17 @@ export class DocumentResult {
      * @returns {Record<string, any>} Canonical document result.
      */
     static create(fields = {}) {
-        return DocumentResult.#create(fields, false)
+        return DocumentResult.#create(fields, false, false)
     }
 
     /**
      * Creates the common envelope with the requested extension ownership mode.
      * @param {Record<string, any>} fields Document fields.
      * @param {boolean} readonlyExtensions Whether to capture immutable extensions now.
+     * @param {boolean} standardBuiltins Whether extension data is a toolkit-owned ordinary graph.
      * @returns {Record<string, any>} Canonical document result.
      */
-    static #create(fields, readonlyExtensions) {
+    static #create(fields, readonlyExtensions, standardBuiltins) {
         const source = DocumentResult.#source(fields)
         const audit = CircuitJsonSerializedInputAudit.inspect(
             fields.model,
@@ -46,7 +47,7 @@ export class DocumentResult {
             extensions: DocumentResult.extensionForSource(
                 source.format,
                 fields.extensions,
-                { readonly: readonlyExtensions }
+                { readonly: readonlyExtensions, standardBuiltins }
             ),
             assets: Array.isArray(fields.assets)
                 ? fields.assets.map((asset) =>
@@ -75,7 +76,29 @@ export class DocumentResult {
      * @returns {Record<string, any>} Proven canonical document result.
      */
     static createValidated(fields = {}, runtime = {}) {
-        const document = DocumentResult.#create(fields, true)
+        return DocumentResult.#createValidated(fields, runtime, false)
+    }
+
+    /**
+     * Creates a validated envelope by consuming toolkit-owned ordinary
+     * extension data without an intermediate defensive graph copy.
+     * @param {Record<string, any>} [fields] Toolkit-owned document fields.
+     * @param {{ sourceReference?: object }} [runtime] Runtime-only fields.
+     * @returns {Record<string, any>} Proven canonical document result.
+     */
+    static createValidatedOwned(fields = {}, runtime = {}) {
+        return DocumentResult.#createValidated(fields, runtime, true)
+    }
+
+    /**
+     * Creates one validated envelope with explicit extension provenance.
+     * @param {Record<string, any>} fields Document fields.
+     * @param {{ sourceReference?: object }} runtime Runtime-only fields.
+     * @param {boolean} standardBuiltins Whether extension data is toolkit-owned.
+     * @returns {Record<string, any>} Proven canonical document result.
+     */
+    static #createValidated(fields, runtime, standardBuiltins) {
+        const document = DocumentResult.#create(fields, true, standardBuiltins)
         if (Object.hasOwn(runtime || {}, 'sourceReference')) {
             Object.defineProperty(document, 'sourceReference', {
                 configurable: false,
@@ -84,7 +107,9 @@ export class DocumentResult {
                 writable: false
             })
         }
-        return CircuitJsonValidationProof.validateAndAttach(document)
+        return CircuitJsonValidationProof.validateAndAttach(document, {
+            standardBuiltins
+        })
     }
 
     /**
@@ -113,7 +138,7 @@ export class DocumentResult {
      * Selects and normalizes the extension namespace owned by a source.
      * @param {string} format Source format.
      * @param {unknown} extensions Extension candidates.
-     * @param {{ readonly?: boolean }} [options] Extension ownership options.
+     * @param {{ readonly?: boolean, standardBuiltins?: boolean }} [options] Extension ownership options.
      * @returns {Record<string, any>} Normalized extension map.
      */
     static extensionForSource(format, extensions, options = {}) {
@@ -122,6 +147,13 @@ export class DocumentResult {
         const hasCandidate = candidate && typeof candidate === 'object'
         if (!hasCandidate) return {}
         if (options.readonly === true && hasCandidate) {
+            if (options.standardBuiltins === true) {
+                return CircuitJsonReadOnlyDocument.copyReadonlyExtensionValue(
+                    DocumentResult.#normalizedExtension(format, candidate),
+                    null,
+                    { standardBuiltins: true }
+                )
+            }
             return CircuitJsonReadOnlyDocument.copyReadonlyExtensionValue(
                 candidate,
                 (snapshot) =>

@@ -211,7 +211,7 @@ export class Parser {
             normalized.options.retainSource === 'reference'
                 ? { sourceReference: normalized.sourceReference }
                 : {}
-        return DocumentResult.createValidated(
+        return DocumentResult.createValidatedOwned(
             {
                 fileName: normalized.input.fileName,
                 fileType: 'circuitjson',

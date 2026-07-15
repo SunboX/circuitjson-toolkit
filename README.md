@@ -69,6 +69,14 @@ input. Cross-realm and altered-prototype buffers, typed views, byte limits,
 defensive copies, and all existing return shapes remain supported.
 See the [1.3.0 release notes](docs/release-notes-v1.3.0.md).
 
+Version 1.4.0 adds cooperative structured-clone preparation and a documented
+owned-document construction path for source toolkits. Hosts can yield
+throughout large extension traversal, binary protection, and property locking,
+and format parsers can retain the identity of graphs they just created instead
+of defensively copying them again. The resulting model, extensions,
+parameters, and `DocumentResult` shape are unchanged. See the
+[1.4.0 release notes](docs/release-notes-v1.4.0.md).
+
 Before 1.1.0:
 
 ```js
@@ -115,6 +123,8 @@ const model = document.model
   cancellation, and controlled buffer transfer
 - One-pass ownership for selected source extensions, with a separate 128 MiB /
   4,000,000-item bound and exact direct/worker result parity
+- Cooperative structured-clone preparation with in-place ordinary records and
+  clean alias/cycle-preserving dense-array normalization
 - Machine-readable capability inventory and packed downstream conformance
   harness
 - Explicit `/extensions` surface retaining every previous specialized API
@@ -156,6 +166,43 @@ const components = QueryService.create(context).query({
 
 console.log(document.model, svg, hits, components.items)
 ```
+
+Browser hosts that receive the exact result of a platform structured clone can
+prepare it cooperatively:
+
+```js
+const context = await CircuitJsonDocumentContext.prepareStructuredCloneAsync(
+    message.data,
+    {
+        indexes: ['elements', 'relations'],
+        ownership: 'exclusive',
+        yield: () => scheduler.yield()
+    }
+)
+```
+
+`ownership: 'exclusive'` is required and transfers the graph destructively.
+The caller must relinquish every alias, including shared-memory writers, until
+the promise settles. A mutation to a node that has not been acquired yet cannot
+be reconstructed or detected later, and rejection may leave part of the graph
+locked. Use `prepareStructuredClone()` for uninterrupted same-thread adoption,
+or `prepare()` for arbitrary caller-owned values.
+
+An already prepared `CircuitJsonDocumentContext` is reused immediately and
+does not require an ownership declaration because no graph is transferred.
+Ordinary extension records are adopted in place. Dense arrays are normalized
+into clean arrays while preserving aliases and cycles, preventing unsupported
+hidden properties from carrying mutable state into the context.
+
+The model is validated and frozen before extension adoption begins. Dense
+arrays, Map/Set normalization, immutable text accounting, binary copying,
+binary installation, and property locking are divided into bounded slices.
+Individual plain extension records are limited to 16,384 properties on this
+cooperative path. The method returns the same
+`CircuitJsonDocumentContext` shape as the synchronous preparation methods.
+Omit `yield` to use `scheduler.yield()` when available and a zero-delay host
+task otherwise. This entry point accepts only exact platform structured-clone
+results with ordinary enumerable string properties.
 
 `Parser.parse()` returns the exact clone-safe `ecad-toolkit.document.v1`
 envelope:
@@ -338,6 +385,7 @@ copy while keeping sync, direct async, and worker results mutation-isolated.
 - [1.2.0 release notes](docs/release-notes-v1.2.0.md)
 - [1.2.1 release notes](docs/release-notes-v1.2.1.md)
 - [1.3.0 release notes](docs/release-notes-v1.3.0.md)
+- [1.4.0 release notes](docs/release-notes-v1.4.0.md)
 - [Library scope](spec/library-scope.md)
 
 ## Package scope

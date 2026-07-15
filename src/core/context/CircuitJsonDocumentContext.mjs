@@ -89,6 +89,31 @@ export class CircuitJsonDocumentContext {
     }
 
     /**
+     * Destructively adopts an exclusively transferred structured-clone graph
+     * while allowing hosts to service input and paint between bounded slices.
+     * @param {unknown} input Structured-cloned document result or existing context.
+     * @param {{ indexes?: unknown, ownership: 'exclusive', yield?: () => Promise<void> | void }} [options] Requested indexes, required exclusive ownership authority, and host scheduler.
+     * @returns {Promise<CircuitJsonDocumentContext>} Prepared request-scoped context.
+     */
+    static async prepareStructuredCloneAsync(input, options = {}) {
+        if (CircuitJsonDocumentContext.#isContext(input)) {
+            return CircuitJsonDocumentContext.#prepare(input, options, true)
+        }
+        if (options?.ownership !== 'exclusive') {
+            throw new TypeError(
+                'Cooperative structured-clone preparation requires exclusive ownership.'
+            )
+        }
+        const context = await CircuitJsonDocumentContext.#fromInputAsync(
+            input,
+            true,
+            options?.yield
+        )
+        context.#indexes.ensure(options?.indexes || [])
+        return context
+    }
+
+    /**
      * Prepares one context with explicit metadata provenance.
      * @param {unknown} input Document result, CircuitJSON model, or context.
      * @param {{ indexes?: unknown }} options Requested context options.
@@ -217,6 +242,36 @@ export class CircuitJsonDocumentContext {
                 standardBuiltins
             }
         )
+        const model = CircuitJsonDocumentContext.#ownData(
+            readonlyDocument,
+            'model'
+        )
+        return new CircuitJsonDocumentContext(
+            readonlyDocument,
+            model,
+            validationPasses,
+            CONTEXT_CONSTRUCTION_AUTHORITY
+        )
+    }
+
+    /**
+     * Creates one context while yielding between model validation and envelope
+     * sealing for a proven structured-clone graph.
+     * @param {unknown} input Document result or CircuitJSON model.
+     * @param {boolean} standardBuiltins Whether metadata built-ins have standard local prototypes.
+     * @param {(() => Promise<void> | void) | undefined} yieldControl Host scheduler.
+     * @returns {Promise<CircuitJsonDocumentContext>} New context.
+     */
+    static async #fromInputAsync(input, standardBuiltins, yieldControl) {
+        const document = CircuitJsonDocumentContext.#normalizeDocument(input)
+        const validationPasses = CircuitJsonValidationProof.has(document)
+            ? 0
+            : 1
+        const readonlyDocument =
+            await CircuitJsonValidationProof.validateAndAttachAsync(document, {
+                standardBuiltins,
+                yield: yieldControl
+            })
         const model = CircuitJsonDocumentContext.#ownData(
             readonlyDocument,
             'model'

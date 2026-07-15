@@ -1,4 +1,5 @@
 import { BinaryDataSnapshot } from './BinaryDataSnapshot.mjs'
+import { CircuitJsonExtensionBoundary } from './CircuitJsonExtensionBoundary.mjs'
 import { CircuitJsonMetadataBoundary } from './CircuitJsonMetadataBoundary.mjs'
 import { CircuitJsonValidationAuthority } from './CircuitJsonValidationAuthority.mjs'
 import { ProtectedExtensionBinaryBoundary } from './ProtectedExtensionBinaryBoundary.mjs'
@@ -10,12 +11,6 @@ const SEALED_ASSETS = new WeakSet()
 const ASSET_PAYLOAD_LENGTHS = new WeakMap()
 const OWNED_METADATA_ROOTS = new WeakSet()
 const METADATA_BUDGETS = new WeakMap()
-const EXTENSION_METADATA_LIMITS = Object.freeze({
-    label: 'Canonical extension data',
-    maxBytes: 128 * 1024 * 1024,
-    maxItems: 4_000_000,
-    preserveBinary: true
-})
 const ASSET_SCALAR_FIELDS = new Set([
     'id',
     'kind',
@@ -83,6 +78,53 @@ export class CircuitJsonReadOnlyDocument {
     }
 
     /**
+     * Cooperatively seals an envelope whose exact model is already validated.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @param {object[]} model Exact deeply frozen model owned by the proof.
+     * @param {{ standardBuiltins?: boolean, yield: () => Promise<void> | void }} options Proven provenance and host scheduler.
+     * @returns {Promise<Record<string, any>>} The same read-only envelope.
+     */
+    static async freezeValidatedAsync(document, model, options) {
+        if (!CircuitJsonValidationAuthority.permitsSeal(model)) {
+            throw new TypeError(
+                'Validated document sealing requires an unforgeable validation proof.'
+            )
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(document, 'model')
+        if (
+            !descriptor ||
+            !Object.hasOwn(descriptor, 'value') ||
+            descriptor.value !== model ||
+            !Array.isArray(model) ||
+            !Object.isFrozen(model) ||
+            typeof options?.yield !== 'function'
+        ) {
+            throw new TypeError(
+                'Validated document sealing requires its exact frozen model.'
+            )
+        }
+        const frozenRoots = new Set([model])
+        const sourceReference = Object.getOwnPropertyDescriptor(
+            document,
+            'sourceReference'
+        )
+        if (
+            sourceReference &&
+            Object.hasOwn(sourceReference, 'value') &&
+            sourceReference.value &&
+            typeof sourceReference.value === 'object'
+        ) {
+            frozenRoots.add(sourceReference.value)
+        }
+        return CircuitJsonReadOnlyDocument.#freezeDocumentAsync(
+            document,
+            frozenRoots,
+            options?.standardBuiltins === true,
+            options.yield
+        )
+    }
+
+    /**
      * Captures owned boundaries and freezes an envelope with known frozen roots.
      * @param {Record<string, any>} document Canonical document envelope.
      * @param {Set<object>} frozenRoots Deeply frozen roots that need no revisit.
@@ -97,6 +139,43 @@ export class CircuitJsonReadOnlyDocument {
             CircuitJsonReadOnlyDocument.#captureDocumentExtensions(
                 document,
                 standardBuiltins
+            )
+        if (extensions && typeof extensions === 'object') {
+            frozenRoots.add(extensions)
+        }
+        CircuitJsonMetadataBoundary.normalize(document, assets, (value) =>
+            CircuitJsonReadOnlyDocument.#captureMetadataRoot(
+                value,
+                metadataState
+            )
+        )
+        CircuitJsonReadOnlyDocument.#freezeValue(document, frozenRoots)
+        return document
+    }
+
+    /**
+     * Captures ordinary document boundaries while adopting extensions in
+     * bounded work slices.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @param {Set<object>} frozenRoots Deeply frozen roots.
+     * @param {boolean} standardBuiltins Whether built-ins have local prototypes.
+     * @param {() => Promise<void> | void} yieldControl Host scheduler.
+     * @returns {Promise<Record<string, any>>} The same read-only envelope.
+     */
+    static async #freezeDocumentAsync(
+        document,
+        frozenRoots,
+        standardBuiltins,
+        yieldControl
+    ) {
+        const assets = CircuitJsonReadOnlyDocument.#documentAssets(document)
+        const metadataState = StructuredDataSnapshot.createState()
+        CircuitJsonReadOnlyDocument.#captureAssetData(assets, metadataState)
+        const extensions =
+            await CircuitJsonReadOnlyDocument.#captureDocumentExtensionsAsync(
+                document,
+                standardBuiltins,
+                yieldControl
             )
         if (extensions && typeof extensions === 'object') {
             frozenRoots.add(extensions)
@@ -184,7 +263,8 @@ export class CircuitJsonReadOnlyDocument {
         if (
             value &&
             typeof value === 'object' &&
-            OWNED_METADATA_ROOTS.has(value) &&
+            (OWNED_METADATA_ROOTS.has(value) ||
+                CircuitJsonExtensionBoundary.owns(value)) &&
             Object.isFrozen(value)
         ) {
             return value
@@ -209,35 +289,11 @@ export class CircuitJsonReadOnlyDocument {
      * @returns {unknown} Deeply immutable owned extension metadata.
      */
     static copyReadonlyExtensionValue(value, normalize = null, options = {}) {
-        if (
-            value &&
-            typeof value === 'object' &&
-            OWNED_METADATA_ROOTS.has(value) &&
-            Object.isFrozen(value) &&
-            normalize === null
-        ) {
-            return value
-        }
-        if (normalize !== null && typeof normalize !== 'function') {
-            throw new TypeError('Extension normalizer must be a function.')
-        }
-        const snapshot = StructuredDataSnapshot.capture(
+        return CircuitJsonExtensionBoundary.copyReadonly(
             value,
-            StructuredDataSnapshot.createState({
-                ...EXTENSION_METADATA_LIMITS,
-                standardBuiltins: options?.standardBuiltins === true
-            })
+            normalize,
+            options
         )
-        ProtectedExtensionBinaryBoundary.protect(snapshot)
-        const normalized = normalize ? normalize(snapshot) : snapshot
-        if (normalized !== snapshot) {
-            ProtectedExtensionBinaryBoundary.protect(normalized)
-        }
-        CircuitJsonReadOnlyDocument.#freezeValue(normalized, new Set())
-        if (normalized && typeof normalized === 'object') {
-            OWNED_METADATA_ROOTS.add(normalized)
-        }
-        return normalized
     }
 
     /**
@@ -341,31 +397,30 @@ export class CircuitJsonReadOnlyDocument {
      * @returns {unknown} Owned extension root or undefined.
      */
     static #captureDocumentExtensions(document, standardBuiltins) {
-        let descriptor
-        try {
-            descriptor = Object.getOwnPropertyDescriptor(document, 'extensions')
-        } catch {
-            throw new TypeError(
-                'Canonical document extensions could not be inspected safely.'
-            )
-        }
-        if (!descriptor) return undefined
-        if (!Object.hasOwn(descriptor, 'value')) {
-            throw new TypeError(
-                'Canonical document extensions must be an own data property.'
-            )
-        }
-        const captured = CircuitJsonReadOnlyDocument.copyReadonlyExtensionValue(
-            descriptor.value,
-            null,
-            { standardBuiltins }
+        return CircuitJsonExtensionBoundary.captureDocument(
+            document,
+            standardBuiltins
         )
-        if (captured === descriptor.value) return captured
-        Object.defineProperty(document, 'extensions', {
-            ...descriptor,
-            value: captured
-        })
-        return captured
+    }
+
+    /**
+     * Cooperatively captures a worker extension root and rejects document-level
+     * replacement races across scheduling boundaries.
+     * @param {Record<string, any>} document Canonical document envelope.
+     * @param {boolean} standardBuiltins Whether built-ins have local prototypes.
+     * @param {() => Promise<void> | void} yieldControl Host scheduler.
+     * @returns {Promise<unknown>} Owned extension root or undefined.
+     */
+    static async #captureDocumentExtensionsAsync(
+        document,
+        standardBuiltins,
+        yieldControl
+    ) {
+        return CircuitJsonExtensionBoundary.captureDocumentAsync(
+            document,
+            standardBuiltins,
+            yieldControl
+        )
     }
 
     /**
@@ -684,7 +739,8 @@ export class CircuitJsonReadOnlyDocument {
         if (
             value &&
             typeof value === 'object' &&
-            OWNED_METADATA_ROOTS.has(value)
+            (OWNED_METADATA_ROOTS.has(value) ||
+                CircuitJsonExtensionBoundary.owns(value))
         ) {
             return value
         }

@@ -275,6 +275,33 @@ function createDocumentsAliasProject(document, extensionsFirst) {
     )
 }
 
+test('validated owned documents seal toolkit-built native graphs without copying them', () => {
+    const native = createNativeModel(4)
+
+    const document = DocumentResult.createValidatedOwned({
+        source: {
+            format: 'altium',
+            fileName: 'owned-neutral.PcbDoc',
+            fileType: 'pcbdoc'
+        },
+        model: [],
+        extensions: {
+            altium: {
+                $meta: {
+                    schema: 'ecad-toolkit.extension.v1',
+                    completeness: 'canonical',
+                    included: ['altium.native-model'],
+                    omitted: []
+                },
+                native
+            }
+        }
+    })
+
+    assert.strictEqual(document.extensions.altium.native, native)
+    assert.equal(Object.isFrozen(native.pcb.pads[0]), true)
+})
+
 test('validated documents own realistic large native extensions in one bounded pass', () => {
     const native = createNativeModel(LARGE_NATIVE_PAD_COUNT)
     const started = performance.now()

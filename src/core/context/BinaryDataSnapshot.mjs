@@ -242,6 +242,44 @@ export class BinaryDataSnapshot {
     }
 
     /**
+     * Copies one bounded byte range into an existing isolated byte array.
+     * @param {{ buffer: ArrayBuffer | SharedArrayBuffer, byteOffset: number, byteLength: number }} range Captured intrinsic range.
+     * @param {Uint8Array} target Isolated destination bytes.
+     * @param {number} offset Visible-range byte offset.
+     * @param {number} count Number of bytes to copy.
+     * @returns {void}
+     * @internal
+     */
+    static copyBytesInto(range, target, offset, count) {
+        if (
+            !(target instanceof Uint8Array) ||
+            !Number.isSafeInteger(offset) ||
+            !Number.isSafeInteger(count) ||
+            offset < 0 ||
+            count < 0 ||
+            offset + count > range?.byteLength ||
+            target.byteLength !== range?.byteLength
+        ) {
+            throw new TypeError('Invalid binary copy range.')
+        }
+        try {
+            const source = new Uint8Array(
+                range.buffer,
+                range.byteOffset + offset,
+                count
+            )
+            const destination = new Uint8Array(
+                target.buffer,
+                target.byteOffset + offset,
+                count
+            )
+            UINT8_ARRAY_SET.call(destination, source)
+        } catch {
+            throw new TypeError('Binary data changed during capture.')
+        }
+    }
+
+    /**
      * Copies one binary metadata value while retaining its common view type.
      * @param {unknown} value Binary metadata.
      * @param {{ buffer: ArrayBuffer | SharedArrayBuffer, byteOffset: number, byteLength: number, kind: 'buffer' | 'typed-array' | 'data-view' } | null} [capturedRange] Previously captured intrinsic range.
@@ -254,6 +292,27 @@ export class BinaryDataSnapshot {
         if (range.kind === 'buffer') return bytes.buffer
         if (range.kind === 'data-view') return new DataView(bytes.buffer)
 
+        const Constructor = BinaryDataSnapshot.#typedArrayConstructor(value)
+        if (!Constructor || Constructor === Uint8Array) return bytes
+        const bytesPerElement = Constructor.BYTES_PER_ELEMENT
+        if (bytes.byteLength % bytesPerElement !== 0) return bytes
+        return new Constructor(bytes.buffer)
+    }
+
+    /**
+     * Restores one common binary view type from completely isolated bytes.
+     * @param {unknown} value Original binary value used only for view type.
+     * @param {{ kind: 'buffer' | 'typed-array' | 'data-view' }} range Captured intrinsic kind.
+     * @param {Uint8Array} bytes Completely copied isolated bytes.
+     * @returns {ArrayBuffer | Uint8Array | DataView} Isolated binary clone.
+     * @internal
+     */
+    static cloneFromBytes(value, range, bytes) {
+        if (!(bytes instanceof Uint8Array)) {
+            throw new TypeError('Expected isolated binary bytes.')
+        }
+        if (range.kind === 'buffer') return bytes.buffer
+        if (range.kind === 'data-view') return new DataView(bytes.buffer)
         const Constructor = BinaryDataSnapshot.#typedArrayConstructor(value)
         if (!Constructor || Constructor === Uint8Array) return bytes
         const bytesPerElement = Constructor.BYTES_PER_ELEMENT

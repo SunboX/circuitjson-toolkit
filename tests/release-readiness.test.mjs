@@ -107,11 +107,14 @@ test('release metadata and migration ledger agree', async () => {
     const ownershipPerformanceReleaseNotes = await text(
         'docs/release-notes-v1.3.0.md'
     )
+    const cooperativeOwnershipReleaseNotes = await text(
+        'docs/release-notes-v1.4.0.md'
+    )
     const readme = await text('README.md')
     const modelFormat = await text('docs/model-format.md')
     const migratedFeatures = firstTableColumnValues(appendices.join('\n'))
 
-    assert.equal(pkg.version, '1.3.0')
+    assert.equal(pkg.version, '1.4.0')
     assert.equal(pkg.dependencies, undefined)
     assert.equal(
         ledger.every((row) => {
@@ -143,6 +146,14 @@ test('release metadata and migration ledger agree', async () => {
         /Faster canonical extension ownership/u
     )
     assert.match(
+        cooperativeOwnershipReleaseNotes,
+        /Owned document construction/u
+    )
+    assert.match(
+        cooperativeOwnershipReleaseNotes,
+        /Cooperative structured-clone preparation/u
+    )
+    assert.match(
         modelFormat,
         /legacy array[^.]*mutable[^.]*element graph[^.]*deeply immutable/iu
     )
@@ -155,6 +166,7 @@ test('release metadata and migration ledger agree', async () => {
     assert.equal(pkg.files.includes('docs/release-notes-v1.2.0.md'), true)
     assert.equal(pkg.files.includes('docs/release-notes-v1.2.1.md'), true)
     assert.equal(pkg.files.includes('docs/release-notes-v1.3.0.md'), true)
+    assert.equal(pkg.files.includes('docs/release-notes-v1.4.0.md'), true)
     for (const path of migrationPages) {
         assert.match(migration, new RegExp(path.replace('docs/migration/', '')))
     }
