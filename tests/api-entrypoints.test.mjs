@@ -10,6 +10,7 @@ test('root entrypoint exposes canonical APIs and viewer compatibility', () => {
     assert.equal(typeof rootApi.CircuitJsonDocument, 'function')
     assert.equal(typeof rootApi.CircuitJsonIndexer, 'function')
     assert.equal(typeof rootApi.CircuitJsonUnits, 'function')
+    assert.equal(typeof rootApi.SelfAdjustingComputation, 'function')
     assert.equal(typeof rootApi.Parser, 'function')
     assert.equal(typeof rootApi.ProjectLoader, 'function')
     assert.equal(typeof rootApi.CircuitJsonDocumentContext, 'function')

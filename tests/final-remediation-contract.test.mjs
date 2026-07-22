@@ -411,7 +411,7 @@ test('legacy contracts have exact extension owners and four-toolkit availability
     }
 })
 
-test('root is the exact 17-class CircuitJSON release contract', () => {
+test('root is the exact 18-class CircuitJSON contract', () => {
     const expected = [
         'Parser',
         'ProjectLoader',
@@ -425,6 +425,7 @@ test('root is the exact 17-class CircuitJSON release contract', () => {
         'SimulationService',
         'PcbScene3dBuilder',
         'PcbScene3dPreparator',
+        'SelfAdjustingComputation',
         'ToolkitCapabilities',
         'ToolkitError',
         'CircuitJsonDocument',

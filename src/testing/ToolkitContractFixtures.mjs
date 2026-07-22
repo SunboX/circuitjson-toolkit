@@ -11,6 +11,7 @@ const CANONICAL_CLASS_NAMES = Object.freeze([
     'SimulationService',
     'PcbScene3dBuilder',
     'PcbScene3dPreparator',
+    'SelfAdjustingComputation',
     'ToolkitCapabilities',
     'ToolkitError'
 ])

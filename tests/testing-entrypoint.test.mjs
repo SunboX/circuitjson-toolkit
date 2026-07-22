@@ -11,6 +11,7 @@ import { Parser } from '../src/core/Parser.mjs'
 import { PcbInteractionIndex } from '../src/core/PcbInteractionIndex.mjs'
 import { ProjectLoader } from '../src/core/ProjectLoader.mjs'
 import { SimulationService } from '../src/core/SimulationService.mjs'
+import { SelfAdjustingComputation } from '../src/core/SelfAdjustingComputation.mjs'
 import { ToolkitCapabilities } from '../src/core/ToolkitCapabilities.mjs'
 import { CircuitJsonDocumentContext } from '../src/core/context/CircuitJsonDocumentContext.mjs'
 import { ToolkitError } from '../src/core/contracts/ToolkitError.mjs'
@@ -32,6 +33,7 @@ const CANONICAL_NAMES = [
     'SimulationService',
     'PcbScene3dBuilder',
     'PcbScene3dPreparator',
+    'SelfAdjustingComputation',
     'ToolkitCapabilities',
     'ToolkitError'
 ]
@@ -85,6 +87,7 @@ function contractToolkit(overrides = {}) {
         SimulationService,
         PcbScene3dBuilder: ContractScene3dBuilder,
         PcbScene3dPreparator: ContractScene3dPreparator,
+        SelfAdjustingComputation,
         ToolkitCapabilities,
         ToolkitError,
         ...overrides

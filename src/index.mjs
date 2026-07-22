@@ -1,6 +1,7 @@
 export { CircuitJsonDocument } from './core/CircuitJsonDocument.mjs'
 export { CircuitJsonIndexer } from './core/CircuitJsonIndexer.mjs'
 export { CircuitJsonUnits } from './core/CircuitJsonUnits.mjs'
+export { SelfAdjustingComputation } from './core/SelfAdjustingComputation.mjs'
 export { Parser } from './core/Parser.mjs'
 export { ProjectLoader } from './core/ProjectLoader.mjs'
 export { CircuitJsonDocumentContext } from './core/context/CircuitJsonDocumentContext.mjs'

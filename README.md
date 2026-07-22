@@ -8,8 +8,9 @@ SPDX-License-Identifier: CC-BY-SA-4.0
 
 CircuitJSON Toolkit is the dependency-free common runtime for the ECAD toolkit
 family. It provides the same parser, project, rendering, interaction, query,
-manufacturing, simulation, 3D scene, capability, error, and worker contracts
-used by `gerber-toolkit`, `altium-toolkit`, and `kicad-toolkit`.
+manufacturing, simulation, 3D scene, self-adjusting computation, capability,
+error, and worker contracts used by `gerber-toolkit`, `altium-toolkit`, and
+`kicad-toolkit`.
 
 CircuitJSON is the shared immutable model. Source-format packages keep their
 native decoders and fidelity data in explicit extension namespaces while
@@ -76,6 +77,11 @@ and format parsers can retain the identity of graphs they just created instead
 of defensively copying them again. The resulting model, extensions,
 parameters, and `DocumentResult` shape are unchanged. See the
 [1.4.0 release notes](docs/release-notes-v1.4.0.md).
+
+Version 1.4.1 adds the canonical `SelfAdjustingComputation` runtime with
+dynamic data/control dependencies, changed-root reader lists, stale-trace
+replacement, explicit reclamation, and from-scratch consistency coverage. See
+the [1.4.1 release notes](docs/release-notes-v1.4.1.md).
 
 Before 1.1.0:
 
@@ -386,6 +392,7 @@ copy while keeping sync, direct async, and worker results mutation-isolated.
 - [1.2.1 release notes](docs/release-notes-v1.2.1.md)
 - [1.3.0 release notes](docs/release-notes-v1.3.0.md)
 - [1.4.0 release notes](docs/release-notes-v1.4.0.md)
+- [1.4.1 release notes](docs/release-notes-v1.4.1.md)
 - [Library scope](spec/library-scope.md)
 
 ## Package scope

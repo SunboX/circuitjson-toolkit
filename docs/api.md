@@ -16,6 +16,38 @@ this document for new code. Thirty-seven previous CircuitJSON-specific classes
 remain under `circuitjson-toolkit/extensions`; the three documented viewer
 compatibility classes remain on the root. See [migration.md](migration.md).
 
+### `SelfAdjustingComputation`
+
+The root API exports the shared synchronous change-propagation runtime used by
+ECAD Forge and reusable toolkit consumers. It records dynamic property reads
+for stable named computations, maintains reverse reader lists, validates only
+the traces reached from explicit changed roots, and replaces stale control-flow
+dependencies after re-execution.
+
+```js
+import { SelfAdjustingComputation } from 'circuitjson-toolkit'
+
+const runtime = new SelfAdjustingComputation()
+const results = runtime.propagate(
+    { locale: 'en', status: 'ready' },
+    [['status']],
+    [
+        {
+            name: 'status-label',
+            computation: (state) => state.locale + ':' + state.status
+        }
+    ]
+)
+```
+
+Computations must be synchronous and treat their tracked input as read-only.
+`forget(name)` reclaims one trace, `clear()` reclaims the graph, and
+`getStatistics()` exposes bounded trace counts. Plain objects and arrays are
+traversed; non-plain objects are atomic identity dependencies unless the
+constructor's `isAtomic(value, path)` option selects an earlier boundary.
+Callers must supply conservative changed paths and test propagated results
+against a fresh execution for the same input.
+
 ## Common conventions
 
 ### Document input
@@ -171,7 +203,7 @@ adoption or `prepare()` for arbitrary caller-owned graphs.
 
 ## Root entrypoint
 
-`circuitjson-toolkit` has an exact 17-class root. The 14 canonical classes are:
+`circuitjson-toolkit` has an exact 18-class root. The 15 canonical classes are:
 
 - `Parser`
 - `ProjectLoader`
@@ -185,6 +217,7 @@ adoption or `prepare()` for arbitrary caller-owned graphs.
 - `SimulationService`
 - `PcbScene3dBuilder`
 - `PcbScene3dPreparator`
+- `SelfAdjustingComputation`
 - `ToolkitCapabilities`
 - `ToolkitError`
 
