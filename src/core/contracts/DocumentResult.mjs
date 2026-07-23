@@ -1,4 +1,5 @@
 import { CircuitJsonValidationProof } from '../context/CircuitJsonValidationProof.mjs'
+import { CircuitJsonExtensionBoundary } from '../context/CircuitJsonExtensionBoundary.mjs'
 import { CircuitJsonReadOnlyDocument } from '../context/CircuitJsonReadOnlyDocument.mjs'
 import { CircuitJsonSerializedInputAudit } from '../CircuitJsonSerializedInputAudit.mjs'
 import { ToolkitAsset } from './ToolkitAsset.mjs'
@@ -147,6 +148,14 @@ export class DocumentResult {
         const hasCandidate = candidate && typeof candidate === 'object'
         if (!hasCandidate) return {}
         if (options.readonly === true && hasCandidate) {
+            // This private brand proves the frozen namespace was already
+            // captured, bounded, and sealed by this runtime.
+            if (
+                CircuitJsonExtensionBoundary.owns(extensions) &&
+                Object.isFrozen(extensions)
+            ) {
+                return extensions
+            }
             if (options.standardBuiltins === true) {
                 return CircuitJsonReadOnlyDocument.copyReadonlyExtensionValue(
                     DocumentResult.#normalizedExtension(format, candidate),

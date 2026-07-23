@@ -506,10 +506,9 @@ class StructuredCloneAdoptionTraversal {
     }
 
     /**
-     * Locks one target property-by-property so large dense containers never
-     * require one monolithic Object.freeze operation.
+     * Validates and atomically freezes one acquired target.
      * @param {object} seal Target sealing snapshot.
-     * @returns {Generator<void, void, void>} Bounded-work locking pass.
+     * @returns {Generator<void, void, void>} Cooperative locking pass.
      */
     *#sealTargetCooperatively(seal) {
         StructuredCloneAdoptionTraversal.#requireTargetShape(seal)
@@ -530,31 +529,16 @@ class StructuredCloneAdoptionTraversal {
                     'Canonical asset source changed during adoption.'
                 )
             }
-            if (!property.binary) {
-                try {
-                    Object.defineProperty(seal.target, property.key, {
-                        ...descriptor,
-                        configurable: false,
-                        writable: false
-                    })
-                } catch {
-                    throw new TypeError(
-                        'Canonical document values could not be frozen safely.'
-                    )
-                }
-            }
-            yield* this.#checkpoint()
         }
         StructuredCloneAdoptionTraversal.#requireTargetShape(seal)
-        if (!seal.shapeLocked) {
-            try {
-                Object.preventExtensions(seal.target)
-            } catch {
-                throw new TypeError(
-                    'Canonical document values could not be frozen safely.'
-                )
-            }
+        try {
+            Object.freeze(seal.target)
+        } catch {
+            throw new TypeError(
+                'Canonical document values could not be frozen safely.'
+            )
         }
+        yield* this.#checkpoint(seal.properties.length || 1)
     }
 
     /**

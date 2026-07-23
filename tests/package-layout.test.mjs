@@ -42,6 +42,7 @@ test('required project files exist', async () => {
         'docs/release-notes-v1.3.0.md',
         'docs/release-notes-v1.4.0.md',
         'docs/release-notes-v1.4.1.md',
+        'docs/release-notes-v1.4.2.md',
         'spec/library-scope.md',
         'scripts/run-tests.mjs',
         'src/index.mjs',

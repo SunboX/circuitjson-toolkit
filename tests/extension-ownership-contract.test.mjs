@@ -302,6 +302,34 @@ test('validated owned documents seal toolkit-built native graphs without copying
     assert.equal(Object.isFrozen(native.pcb.pads[0]), true)
 })
 
+test('validated rebuilds retain an already-owned extension root', () => {
+    const document = DocumentResult.createValidated({
+        source: {
+            format: 'altium',
+            fileName: 'owned-rebuild.PcbDoc',
+            fileType: 'pcbdoc'
+        },
+        model: [],
+        extensions: {
+            altium: {
+                records: Array.from({ length: 3 }, (_, index) => ({ index }))
+            }
+        }
+    })
+
+    const rebuilt = DocumentResult.createValidated({
+        source: document.source,
+        model: document.model,
+        extensions: document.extensions,
+        assets: document.assets,
+        diagnostics: document.diagnostics,
+        statistics: document.statistics
+    })
+
+    assert.strictEqual(rebuilt.extensions, document.extensions)
+    assert.equal(Object.isFrozen(rebuilt.extensions.altium.records[0]), true)
+})
+
 test('validated documents own realistic large native extensions in one bounded pass', () => {
     const native = createNativeModel(LARGE_NATIVE_PAD_COUNT)
     const started = performance.now()

@@ -83,6 +83,12 @@ dynamic data/control dependencies, changed-root reader lists, stale-trace
 replacement, explicit reclamation, and from-scratch consistency coverage. See
 the [1.4.1 release notes](docs/release-notes-v1.4.1.md).
 
+Version 1.4.2 accelerates immutable document rebuilding and cooperative
+structured-clone adoption. Toolkit-owned frozen extension roots retain their
+identity, and cooperative finalization freezes each validated container
+atomically instead of redefining every property. See the
+[1.4.2 release notes](docs/release-notes-v1.4.2.md).
+
 Before 1.1.0:
 
 ```js
@@ -393,6 +399,7 @@ copy while keeping sync, direct async, and worker results mutation-isolated.
 - [1.3.0 release notes](docs/release-notes-v1.3.0.md)
 - [1.4.0 release notes](docs/release-notes-v1.4.0.md)
 - [1.4.1 release notes](docs/release-notes-v1.4.1.md)
+- [1.4.2 release notes](docs/release-notes-v1.4.2.md)
 - [Library scope](spec/library-scope.md)
 
 ## Package scope

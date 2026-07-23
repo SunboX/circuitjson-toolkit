@@ -511,7 +511,7 @@ test('exclusive ownership violation of an acquired record is rejected', async ()
     assert.ok(yields > 1)
 })
 
-test('asynchronous structured-clone adoption chunks large container locking', async () => {
+test('asynchronous structured-clone adoption freezes each acquired container atomically', async () => {
     const document = structuredClone({
         schema: 'ecad-toolkit.document.v1',
         id: 'document-cooperative-container-lock',
@@ -532,7 +532,7 @@ test('asynchronous structured-clone adoption chunks large container locking', as
         statistics: {}
     })
     const values = document.extensions.fake.values
-    let sawProgressiveLock = false
+    let sawPartialLock = false
     let context
     Object.defineProperty(Array.prototype, 'inheritedTraversalProbe', {
         configurable: true,
@@ -558,7 +558,7 @@ test('asynchronous structured-clone adoption chunks large container locking', as
                         last?.writable === true &&
                         !Object.isExtensible(current)
                     ) {
-                        sawProgressiveLock = true
+                        sawPartialLock = true
                     }
                 }
             }
@@ -567,7 +567,7 @@ test('asynchronous structured-clone adoption chunks large container locking', as
         delete Array.prototype.inheritedTraversalProbe
     }
 
-    assert.equal(sawProgressiveLock, true)
+    assert.equal(sawPartialLock, false)
     assert.equal(Object.isFrozen(context.extensions.fake.values), true)
 })
 
