@@ -102,12 +102,12 @@ must not duplicate the CircuitJSON model or keep a renamed renderer model.
 Default parsing excludes raw/base64/full-payload graphs.
 
 When a caller explicitly selects a native extension, the toolkit captures and
-freezes that graph once under a distinct ceiling of 4,000,000 structured items
+freezes that graph once under a distinct ceiling of 8,000,000 structured items
 and 128 MiB of string or binary content. The ceiling is shared across the
 selected namespace and applies equally after worker transfer. Canonical
-standalone documents allow the extension plus envelope overhead within five
-million result values and 250 MB. Exact project envelopes allow eight million
-aggregate values and 256 MiB, while each document stays within five million
+standalone documents allow the extension plus envelope overhead within ten
+million result values and 250 MB. Exact project envelopes allow sixteen million
+aggregate values and 256 MiB, while each document stays within ten million
 values and 250 MB and non-document project metadata stays within two million
 values and 250 MB. Reused graphs are charged independently to each local scope,
 and repeated accounting work is itself bounded by the aggregate project

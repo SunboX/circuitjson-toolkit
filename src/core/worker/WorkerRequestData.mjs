@@ -3,82 +3,21 @@ import { CircuitJsonReadOnlyDocument } from '../context/CircuitJsonReadOnlyDocum
 import { ProtectedExtensionBinaryBoundary } from '../context/ProtectedExtensionBinaryBoundary.mjs'
 import { RuntimeProxyBoundary } from '../contracts/RuntimeProxyBoundary.mjs'
 import { WorkerResultShape } from './WorkerResultShape.mjs'
+import { WorkerBinaryData } from './WorkerBinaryData.mjs'
+import { NativeParserWorkerTransport } from './NativeParserWorkerTransport.mjs'
 
-const ARRAY_BUFFER_BYTE_LENGTH_GETTER = Object.getOwnPropertyDescriptor(
-    ArrayBuffer.prototype,
-    'byteLength'
-)?.get
-const ARRAY_BUFFER_RESIZABLE_GETTER = Object.getOwnPropertyDescriptor(
-    ArrayBuffer.prototype,
-    'resizable'
-)?.get
-const SHARED_ARRAY_BUFFER_BYTE_LENGTH_GETTER =
-    typeof SharedArrayBuffer === 'function'
-        ? Object.getOwnPropertyDescriptor(
-              SharedArrayBuffer.prototype,
-              'byteLength'
-          )?.get
-        : null
-const TYPED_ARRAY_PROTOTYPE = Object.getPrototypeOf(Uint8Array.prototype)
-const TYPED_ARRAY_BUFFER_GETTER = Object.getOwnPropertyDescriptor(
-    TYPED_ARRAY_PROTOTYPE,
-    'buffer'
-)?.get
-const TYPED_ARRAY_BYTE_LENGTH_GETTER = Object.getOwnPropertyDescriptor(
-    TYPED_ARRAY_PROTOTYPE,
-    'byteLength'
-)?.get
-const TYPED_ARRAY_BYTE_OFFSET_GETTER = Object.getOwnPropertyDescriptor(
-    TYPED_ARRAY_PROTOTYPE,
-    'byteOffset'
-)?.get
-const TYPED_ARRAY_TAG_GETTER = Object.getOwnPropertyDescriptor(
-    TYPED_ARRAY_PROTOTYPE,
-    Symbol.toStringTag
-)?.get
-const DATA_VIEW_BUFFER_GETTER = Object.getOwnPropertyDescriptor(
-    DataView.prototype,
-    'buffer'
-)?.get
-const DATA_VIEW_BYTE_LENGTH_GETTER = Object.getOwnPropertyDescriptor(
-    DataView.prototype,
-    'byteLength'
-)?.get
-const DATA_VIEW_BYTE_OFFSET_GETTER = Object.getOwnPropertyDescriptor(
-    DataView.prototype,
-    'byteOffset'
-)?.get
-const DATA_VIEW_CONSTRUCTOR = DataView
-const UINT8_ARRAY_CONSTRUCTOR = Uint8Array
-const UINT8_ARRAY_SET = Uint8Array.prototype.set
+const ARRAY_IS_ARRAY = Array.isArray
 const STRUCTURED_CLONE = globalThis.structuredClone
 const MAX_REQUEST_BYTES = 100_000_000
 const MAX_REQUEST_DEPTH = 256
 const MAX_REQUEST_VALUES = 100_000
 const MAX_RESULT_BYTES = 250_000_000
 const MAX_RESULT_VALUES = 2_000_000
-const MAX_DOCUMENT_RESULT_VALUES = 5_000_000
+const MAX_DOCUMENT_RESULT_VALUES = 10_000_000
 // Project documents retain the single-result ceiling independently while this
 // aggregate ceiling bounds total worker traversal regardless of document count.
-const MAX_PROJECT_RESULT_VALUES = 8_000_000
+const MAX_PROJECT_RESULT_VALUES = 16_000_000
 const MAX_PROJECT_RESULT_BYTES = 256 * 1024 * 1024
-const TYPED_ARRAYS = new Map(
-    [
-        Int8Array,
-        Uint8Array,
-        Uint8ClampedArray,
-        Int16Array,
-        Uint16Array,
-        Int32Array,
-        Uint32Array,
-        Float32Array,
-        Float64Array,
-        typeof BigInt64Array === 'function' ? BigInt64Array : null,
-        typeof BigUint64Array === 'function' ? BigUint64Array : null
-    ]
-        .filter(Boolean)
-        .map((Constructor) => [Constructor.name, Constructor])
-)
 
 /**
  * Validates and prepares bounded structured-clone worker request data.
@@ -151,10 +90,12 @@ export class WorkerRequestData {
      * @returns {unknown} Owned clone-safe result data.
      */
     static prepareResponse(value) {
-        return WorkerRequestData.#prepare(value, {
+        const received = NativeParserWorkerTransport.consumeResult(value)
+        return WorkerRequestData.#prepare(received ? received.value : value, {
             bytes: MAX_RESULT_BYTES,
-            copyBinary: true,
+            copyBinary: !received,
             output: true,
+            standardBuiltins: Boolean(received),
             strictDescriptors: true,
             transferInput: false,
             trustProof: false,
@@ -165,7 +106,7 @@ export class WorkerRequestData {
     /**
      * Runs the shared bounded structured-data preparation pass.
      * @param {unknown} value Data candidate.
-     * @param {{ bytes: number, copyBinary: boolean, output: boolean, strictDescriptors: boolean, transferInput: boolean, trustProof: boolean, values: number }} limits Preparation limits.
+     * @param {{ bytes: number, copyBinary: boolean, output: boolean, standardBuiltins?: boolean, strictDescriptors: boolean, transferInput: boolean, trustProof: boolean, values: number }} limits Preparation limits.
      * @returns {{ value: unknown, transfer: Transferable[] }} Prepared data.
      */
     static #prepare(value, limits) {
@@ -187,6 +128,7 @@ export class WorkerRequestData {
             projectResult: false,
             reaccountValues: 0,
             strictDescriptors: limits.strictDescriptors,
+            standardBuiltins: limits.standardBuiltins === true,
             transfer: { items: [], seen: new Set() },
             transferInput: limits.transferInput,
             trustProof: limits.trustProof,
@@ -265,36 +207,18 @@ export class WorkerRequestData {
         WorkerRequestData.#accountedScope(state)?.add(value)
         state.visiting.add(value)
         try {
-            const bufferLength = WorkerRequestData.#bufferLength(value)
-            if (bufferLength !== null) {
-                WorkerRequestData.#reserveBytes(state, bufferLength)
-                const isolate =
-                    state.copyBinary ||
-                    WorkerRequestData.#isResizableBuffer(value)
-                const prepared = isolate
-                    ? WorkerRequestData.#copyBuffer(value, 0, bufferLength)
-                    : value
-                state.prepared.set(value, prepared)
-                if (state.transferInput) {
-                    WorkerRequestData.#addTransfer(state.transfer, prepared)
-                }
-                return prepared
+            // Array and view brands are disjoint from raw buffers, including
+            // cross-realm values and values with replaced prototypes.
+            if (ARRAY_IS_ARRAY(value)) {
+                return WorkerRequestData.#prepareContainer(value, state, depth)
             }
-            const sharedLength = WorkerRequestData.#sharedBufferLength(value)
-            if (sharedLength !== null) {
-                WorkerRequestData.#reserveBytes(state, sharedLength)
-                const copied = WorkerRequestData.#copyBuffer(
-                    value,
-                    0,
-                    sharedLength
-                )
-                state.prepared.set(value, copied)
-                if (state.transferInput) {
-                    WorkerRequestData.#addTransfer(state.transfer, copied)
-                }
-                return copied
+            if (
+                state.standardBuiltins &&
+                WorkerBinaryData.isStandardRecord(value)
+            ) {
+                return WorkerRequestData.#prepareContainer(value, state, depth)
             }
-            const view = WorkerRequestData.#view(value)
+            const view = WorkerBinaryData.view(value)
             if (view) {
                 WorkerRequestData.#reserveBytes(state, view.byteLength)
                 const prepared = WorkerRequestData.#prepareView(
@@ -304,6 +228,35 @@ export class WorkerRequestData {
                 )
                 state.prepared.set(value, prepared)
                 return prepared
+            }
+            const bufferLength = WorkerBinaryData.bufferLength(value)
+            if (bufferLength !== null) {
+                WorkerRequestData.#reserveBytes(state, bufferLength)
+                const isolate =
+                    state.copyBinary ||
+                    WorkerBinaryData.isResizableBuffer(value)
+                const prepared = isolate
+                    ? WorkerBinaryData.copyBuffer(value, 0, bufferLength)
+                    : value
+                state.prepared.set(value, prepared)
+                if (state.transferInput) {
+                    WorkerRequestData.#addTransfer(state.transfer, prepared)
+                }
+                return prepared
+            }
+            const sharedLength = WorkerBinaryData.sharedBufferLength(value)
+            if (sharedLength !== null) {
+                WorkerRequestData.#reserveBytes(state, sharedLength)
+                const copied = WorkerBinaryData.copyBuffer(
+                    value,
+                    0,
+                    sharedLength
+                )
+                state.prepared.set(value, copied)
+                if (state.transferInput) {
+                    WorkerRequestData.#addTransfer(state.transfer, copied)
+                }
+                return copied
             }
             return WorkerRequestData.#prepareContainer(value, state, depth)
         } finally {
@@ -598,19 +551,30 @@ export class WorkerRequestData {
         if (accounted.has(value)) return
         accounted.add(value)
         WorkerRequestData.#reserveAccountedValues(state, 1)
-        const bufferLength = WorkerRequestData.#bufferLength(value)
+        if (ARRAY_IS_ARRAY(value)) {
+            WorkerRequestData.#accountPreparedContainer(value, state, depth)
+            return
+        }
+        if (
+            state.standardBuiltins &&
+            WorkerBinaryData.isStandardRecord(value)
+        ) {
+            WorkerRequestData.#accountPreparedContainer(value, state, depth)
+            return
+        }
+        const view = WorkerBinaryData.view(value)
+        if (view) {
+            WorkerRequestData.#reserveAccountedBytes(state, view.byteLength)
+            return
+        }
+        const bufferLength = WorkerBinaryData.bufferLength(value)
         if (bufferLength !== null) {
             WorkerRequestData.#reserveAccountedBytes(state, bufferLength)
             return
         }
-        const sharedLength = WorkerRequestData.#sharedBufferLength(value)
+        const sharedLength = WorkerBinaryData.sharedBufferLength(value)
         if (sharedLength !== null) {
             WorkerRequestData.#reserveAccountedBytes(state, sharedLength)
-            return
-        }
-        const view = WorkerRequestData.#view(value)
-        if (view) {
-            WorkerRequestData.#reserveAccountedBytes(state, view.byteLength)
             return
         }
         WorkerRequestData.#accountPreparedContainer(value, state, depth)
@@ -708,8 +672,11 @@ export class WorkerRequestData {
      * @returns {ArrayBufferView} Prepared exact view.
      */
     static #prepareView(original, view, state) {
-        const backingLength = WorkerRequestData.#bufferLength(view.buffer)
-        const sharedLength = WorkerRequestData.#sharedBufferLength(view.buffer)
+        const backingLength = WorkerBinaryData.bufferLength(view.buffer)
+        const sharedLength =
+            backingLength === null
+                ? WorkerBinaryData.sharedBufferLength(view.buffer)
+                : null
         const exactArrayBuffer =
             backingLength !== null &&
             view.byteOffset === 0 &&
@@ -717,7 +684,7 @@ export class WorkerRequestData {
         if (
             exactArrayBuffer &&
             !state.copyBinary &&
-            !WorkerRequestData.#isResizableBuffer(view.buffer)
+            !WorkerBinaryData.isResizableBuffer(view.buffer)
         ) {
             if (state.transferInput) {
                 WorkerRequestData.#addTransfer(state.transfer, view.buffer)
@@ -727,132 +694,16 @@ export class WorkerRequestData {
         if (backingLength === null && sharedLength === null) {
             throw new TypeError('Worker request binary view is invalid.')
         }
-        const copy = WorkerRequestData.#copyBuffer(
+        const copy = WorkerBinaryData.copyBuffer(
             view.buffer,
             view.byteOffset,
             view.byteLength
         )
-        const prepared = WorkerRequestData.#recreateView(view, copy)
+        const prepared = WorkerBinaryData.recreateView(view, copy)
         if (state.transferInput) {
             WorkerRequestData.#addTransfer(state.transfer, copy)
         }
         return prepared
-    }
-
-    /**
-     * Recreates one intrinsic view on an exact isolated backing buffer.
-     * @param {{ byteLength: number, tag: string }} view View fields.
-     * @param {ArrayBuffer} buffer Exact copied buffer.
-     * @returns {ArrayBufferView} Recreated view.
-     */
-    static #recreateView(view, buffer) {
-        if (view.tag === 'DataView') return new DATA_VIEW_CONSTRUCTOR(buffer)
-        const Constructor = TYPED_ARRAYS.get(view.tag)
-        if (!Constructor || view.byteLength % Constructor.BYTES_PER_ELEMENT) {
-            throw new TypeError('Worker request binary view is unsupported.')
-        }
-        return new Constructor(
-            buffer,
-            0,
-            view.byteLength / Constructor.BYTES_PER_ELEMENT
-        )
-    }
-
-    /**
-     * Reads genuine typed-array or DataView internal slots.
-     * @param {unknown} value View candidate.
-     * @returns {{ buffer: ArrayBufferLike, byteOffset: number, byteLength: number, tag: string } | null} Intrinsic view fields.
-     */
-    static #view(value) {
-        try {
-            if (
-                DATA_VIEW_BUFFER_GETTER &&
-                DATA_VIEW_BYTE_OFFSET_GETTER &&
-                DATA_VIEW_BYTE_LENGTH_GETTER
-            ) {
-                const buffer = DATA_VIEW_BUFFER_GETTER.call(value)
-                return {
-                    buffer,
-                    byteOffset: DATA_VIEW_BYTE_OFFSET_GETTER.call(value),
-                    byteLength: DATA_VIEW_BYTE_LENGTH_GETTER.call(value),
-                    tag: 'DataView'
-                }
-            }
-        } catch {
-            // The typed-array intrinsic check below is independent.
-        }
-        try {
-            const tag = TYPED_ARRAY_TAG_GETTER?.call(value)
-            if (!TYPED_ARRAYS.has(tag)) return null
-            return {
-                buffer: TYPED_ARRAY_BUFFER_GETTER.call(value),
-                byteOffset: TYPED_ARRAY_BYTE_OFFSET_GETTER.call(value),
-                byteLength: TYPED_ARRAY_BYTE_LENGTH_GETTER.call(value),
-                tag
-            }
-        } catch {
-            return null
-        }
-    }
-
-    /** @param {unknown} value Candidate. @returns {number | null} Byte length. */
-    static #bufferLength(value) {
-        if (!ARRAY_BUFFER_BYTE_LENGTH_GETTER) return null
-        try {
-            return ARRAY_BUFFER_BYTE_LENGTH_GETTER.call(value)
-        } catch {
-            return null
-        }
-    }
-
-    /** @param {unknown} value Candidate. @returns {number | null} Byte length. */
-    static #sharedBufferLength(value) {
-        if (!SHARED_ARRAY_BUFFER_BYTE_LENGTH_GETTER) return null
-        try {
-            return SHARED_ARRAY_BUFFER_BYTE_LENGTH_GETTER.call(value)
-        } catch {
-            return null
-        }
-    }
-
-    /**
-     * Returns whether a genuine ArrayBuffer can change size after accounting.
-     * @param {unknown} value Buffer candidate.
-     * @returns {boolean} Whether the buffer is resizable.
-     */
-    static #isResizableBuffer(value) {
-        if (!ARRAY_BUFFER_RESIZABLE_GETTER) return false
-        try {
-            return ARRAY_BUFFER_RESIZABLE_GETTER.call(value) === true
-        } catch {
-            return false
-        }
-    }
-
-    /**
-     * Copies one already-accounted intrinsic byte range into a fixed buffer.
-     * The explicit range prevents a growable backing store from widening the
-     * copy between its limit check and snapshot.
-     * @param {ArrayBufferLike} buffer Source buffer.
-     * @param {number} byteOffset Captured byte offset.
-     * @param {number} byteLength Captured byte length.
-     * @returns {ArrayBuffer} Fixed owned snapshot.
-     */
-    static #copyBuffer(buffer, byteOffset, byteLength) {
-        try {
-            const source = new UINT8_ARRAY_CONSTRUCTOR(
-                buffer,
-                byteOffset,
-                byteLength
-            )
-            const copy = new UINT8_ARRAY_CONSTRUCTOR(byteLength)
-            UINT8_ARRAY_SET.call(copy, source)
-            return TYPED_ARRAY_BUFFER_GETTER.call(copy)
-        } catch {
-            throw new TypeError(
-                'Worker request binary data changed while it was copied.'
-            )
-        }
     }
 
     /** @param {PropertyDescriptor | undefined} descriptor Descriptor. @returns {unknown} Data value. */

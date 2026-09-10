@@ -1,5 +1,7 @@
 import { RuntimeProxyBoundary } from '../contracts/RuntimeProxyBoundary.mjs'
 
+const ARRAY_IS_ARRAY = Array.isArray
+
 const DOCUMENT_FIELDS = Object.freeze([
     'schema',
     'id',
@@ -64,7 +66,10 @@ export class WorkerResultShape {
                   )
                 : keys
         if (
-            prototype !== Array.prototype ||
+            // A foreign intrinsic Array.prototype has the same array brand.
+            // Only the receiver's own descriptors are used below; inherited
+            // properties are never read or copied into the normalized array.
+            (prototype !== Array.prototype && !ARRAY_IS_ARRAY(prototype)) ||
             !Number.isSafeInteger(length) ||
             length < 0 ||
             (output && !strictDescriptors

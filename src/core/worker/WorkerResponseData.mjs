@@ -5,6 +5,9 @@ import { CircuitJsonValidationProof } from '../context/CircuitJsonValidationProo
 import { TOOLKIT_WORKER_PROTOCOL } from './ToolkitWorkerProtocol.mjs'
 import { WorkerRequestData } from './WorkerRequestData.mjs'
 
+const PREPARE_RESPONSE = WorkerRequestData.prepareResponse
+const VALIDATE_AND_ATTACH = CircuitJsonValidationProof.validateAndAttach
+
 const ARRAY_BUFFER_BYTE_LENGTH_GETTER = Object.getOwnPropertyDescriptor(
     ArrayBuffer.prototype,
     'byteLength'
@@ -154,7 +157,7 @@ export class WorkerResponseData {
      * @returns {object} Original validated result.
      */
     static result(operation, value) {
-        const prepared = WorkerRequestData.prepareResponse(value)
+        const prepared = PREPARE_RESPONSE(value)
         const fields = WorkerResponseData.#record(
             prepared,
             'Toolkit worker result'
@@ -330,7 +333,11 @@ export class WorkerResponseData {
             'statistics'
         ])
         try {
-            CircuitJsonValidationProof.validateAndAttach(document)
+            // Preparation allocated every container and normalized every binary
+            // built-in without exposing the owned graph to caller callbacks.
+            VALIDATE_AND_ATTACH(document, {
+                standardBuiltins: true
+            })
         } catch (error) {
             throw WorkerResponseData.#error(
                 'Toolkit worker document model is invalid.',

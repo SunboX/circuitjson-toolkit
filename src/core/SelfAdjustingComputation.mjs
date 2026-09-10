@@ -17,14 +17,8 @@ export class SelfAdjustingComputation {
     /** @type {Set<string> | null} */
     #affectedComputations
 
-    /** @type {(value: object, path: PropertyKey[]) => boolean} */
+    /** @type {((value: object, path: PropertyKey[]) => boolean) | null} */
     #isAtomic
-
-    /** @type {Map<symbol, number>} */
-    #symbolIds
-
-    /** @type {number} */
-    #nextSymbolId
 
     /**
      * @param {{ isAtomic?: (value: object, path: PropertyKey[]) => boolean }} [options] Dependency-tracking options.
@@ -36,11 +30,7 @@ export class SelfAdjustingComputation {
         this.#propagationInput = null
         this.#affectedComputations = null
         this.#isAtomic =
-            typeof options.isAtomic === 'function'
-                ? options.isAtomic
-                : () => false
-        this.#symbolIds = new Map()
-        this.#nextSymbolId = 1
+            typeof options.isAtomic === 'function' ? options.isAtomic : null
     }
 
     /**
@@ -264,16 +254,14 @@ export class SelfAdjustingComputation {
      * @returns {{ dependencies: object[], value: any }} Successful trace.
      */
     #trace(input, computation) {
-        const dependencies = new Map()
+        const dependencies = []
         const proxyCache = new WeakMap()
         const proxyMetadata = new WeakMap()
-        const trackedInput = this.#createProxy({
-            target: input,
-            path: [],
-            dependencies,
-            proxyCache,
-            proxyMetadata
-        })
+        const trackedInput = this.#createProxy(
+            { dependencies, proxyCache, proxyMetadata },
+            input,
+            { path: [], children: null, observations: null }
+        )
         const trackedValue = computation(trackedInput)
         if (SelfAdjustingComputation.#isPromiseLike(trackedValue)) {
             throw new TypeError(
@@ -287,39 +275,44 @@ export class SelfAdjustingComputation {
                 ? proxyMetadata.get(trackedValue)
                 : null
         if (metadata) {
-            this.#record(dependencies, {
-                type: 'value',
-                path: metadata.path,
-                expected: metadata.target
-            })
+            this.#record(
+                dependencies,
+                metadata.pathNode,
+                'value',
+                metadata.target
+            )
         }
 
         return {
-            dependencies: [...dependencies.values()],
+            // Later reads of a returned container must not rewrite this trace.
+            dependencies: dependencies.map((dependency) => ({ ...dependency })),
             value: metadata?.target ?? trackedValue
         }
     }
 
     /**
      * Creates a read-tracking proxy for one traversable input container.
-     * @param {{ target: object, path: PropertyKey[], dependencies: Map<string, object>, proxyCache: WeakMap<object, Map<string, object>>, proxyMetadata: WeakMap<object, { target: object, path: PropertyKey[] }> }} context Tracking context.
+     * @param {{ dependencies: object[], proxyCache: WeakMap<object, Map<object, object>>, proxyMetadata: WeakMap<object, { target: object, pathNode: object }> }} context Shared trace context.
+     * @param {object} target Traversable raw input container.
+     * @param {object} pathNode Interned input path in this trace.
      * @returns {object} Read-tracking proxy.
      */
-    #createProxy(context) {
-        const pathKey = this.#pathKey(context.path)
-        const cachedByPath = context.proxyCache.get(context.target)
-        if (cachedByPath?.has(pathKey)) {
-            return cachedByPath.get(pathKey)
+    #createProxy(context, target, pathNode) {
+        const cachedByPath = context.proxyCache.get(target)
+        const cached = cachedByPath?.get(pathNode)
+        if (cached) {
+            return cached
         }
 
-        const proxy = new Proxy(context.target, {
+        const proxyContext = { ...context, pathNode }
+        const proxy = new Proxy(target, {
             get: (target, property) =>
-                this.#readProperty(context, target, property),
+                this.#readProperty(proxyContext, target, property),
             has: (target, property) =>
-                this.#readPresence(context, target, property),
-            ownKeys: (target) => this.#readKeys(context, target),
+                this.#readPresence(proxyContext, target, property),
+            ownKeys: (target) => this.#readKeys(proxyContext, target),
             getOwnPropertyDescriptor: (target, property) =>
-                this.#readDescriptor(context, target, property),
+                this.#readDescriptor(proxyContext, target, property),
             set: () => this.#rejectWrite(),
             defineProperty: () => this.#rejectWrite(),
             deleteProperty: () => this.#rejectWrite(),
@@ -327,13 +320,13 @@ export class SelfAdjustingComputation {
             preventExtensions: () => this.#rejectWrite()
         })
         const nextCachedByPath = cachedByPath || new Map()
-        nextCachedByPath.set(pathKey, proxy)
+        nextCachedByPath.set(pathNode, proxy)
         if (!cachedByPath) {
-            context.proxyCache.set(context.target, nextCachedByPath)
+            context.proxyCache.set(target, nextCachedByPath)
         }
         context.proxyMetadata.set(proxy, {
-            target: context.target,
-            path: [...context.path]
+            target,
+            pathNode
         })
         return proxy
     }
@@ -347,21 +340,18 @@ export class SelfAdjustingComputation {
      */
     #readProperty(context, target, property) {
         const value = Reflect.get(target, property, target)
-        const path = [...context.path, property]
-        if (this.#isTraversable(value, path)) {
-            this.#record(context.dependencies, {
-                type: 'kind',
-                path,
-                expected: SelfAdjustingComputation.#valueKind(value)
-            })
-            return this.#createProxy({ ...context, target: value, path })
+        const pathNode = this.#childPath(context.pathNode, property)
+        if (this.#isTraversable(value, pathNode.path)) {
+            this.#record(
+                context.dependencies,
+                pathNode,
+                'kind',
+                SelfAdjustingComputation.#valueKind(value)
+            )
+            return this.#createProxy(context, value, pathNode)
         }
 
-        this.#record(context.dependencies, {
-            type: 'value',
-            path,
-            expected: value
-        })
+        this.#record(context.dependencies, pathNode, 'value', value)
         return value
     }
 
@@ -373,13 +363,9 @@ export class SelfAdjustingComputation {
      * @returns {boolean} Whether the property exists.
      */
     #readPresence(context, target, property) {
-        const path = [...context.path, property]
+        const pathNode = this.#childPath(context.pathNode, property)
         const expected = Reflect.has(target, property)
-        this.#record(context.dependencies, {
-            type: 'has',
-            path,
-            expected
-        })
+        this.#record(context.dependencies, pathNode, 'has', expected)
         return expected
     }
 
@@ -391,11 +377,7 @@ export class SelfAdjustingComputation {
      */
     #readKeys(context, target) {
         const expected = Reflect.ownKeys(target)
-        this.#record(context.dependencies, {
-            type: 'keys',
-            path: [...context.path],
-            expected
-        })
+        this.#record(context.dependencies, context.pathNode, 'keys', expected)
         return expected
     }
 
@@ -408,11 +390,12 @@ export class SelfAdjustingComputation {
      */
     #readDescriptor(context, target, property) {
         const descriptor = Reflect.getOwnPropertyDescriptor(target, property)
-        this.#record(context.dependencies, {
-            type: 'descriptor',
-            path: [...context.path, property],
-            expected: SelfAdjustingComputation.#descriptorState(descriptor)
-        })
+        this.#record(
+            context.dependencies,
+            this.#childPath(context.pathNode, property),
+            'descriptor',
+            SelfAdjustingComputation.#descriptorState(descriptor)
+        )
         return descriptor
     }
 
@@ -424,23 +407,50 @@ export class SelfAdjustingComputation {
      */
     #isTraversable(value, path) {
         if (!value || typeof value !== 'object') return false
-        if (this.#isAtomic(value, [...path])) return false
+        if (this.#isAtomic?.(value, [...path])) return false
         if (Array.isArray(value)) return true
         const prototype = Reflect.getPrototypeOf(value)
         return prototype === Object.prototype || prototype === null
     }
 
     /**
-     * Stores or replaces one dependency by type and input path.
-     * @param {Map<string, object>} dependencies Dependency registry.
-     * @param {{ type: string, path: PropertyKey[], expected: any }} dependency Dependency record.
+     * Interns one child path using property identity without encoding its ancestors.
+     * Path and proxy caches belong to one trace and are never reused by a later snapshot.
+     * @param {object} parent Parent path node.
+     * @param {PropertyKey} property Observed property key.
+     * @returns {object} Canonical child path node for this trace.
+     */
+    #childPath(parent, property) {
+        const previous = parent.children?.get(property)
+        if (previous) return previous
+        const child = {
+            path: [...parent.path, property],
+            children: null,
+            observations: null
+        }
+        parent.children ??= new Map()
+        parent.children.set(property, child)
+        return child
+    }
+
+    /**
+     * Stores the last observation of each dependency type at an interned path.
+     * @param {object[]} dependencies Dependency registry in first-observed order.
+     * @param {object} pathNode Interned path node.
+     * @param {string} type Dependency comparison category.
+     * @param {any} expected Most recently observed value or structural state.
      * @returns {void}
      */
-    #record(dependencies, dependency) {
-        dependencies.set(
-            dependency.type + ':' + this.#pathKey(dependency.path),
-            dependency
-        )
+    #record(dependencies, pathNode, type, expected) {
+        const previous = pathNode.observations?.get(type)
+        if (previous) {
+            previous.expected = expected
+            return
+        }
+        const dependency = { type, path: pathNode.path, expected }
+        pathNode.observations ??= new Map()
+        pathNode.observations.set(type, dependency)
+        dependencies.push(dependency)
     }
 
     /**
@@ -528,27 +538,6 @@ export class SelfAdjustingComputation {
             value = Reflect.get(value, property, value)
         }
         return { found: true, value }
-    }
-
-    /**
-     * Creates a collision-free string key for a property path.
-     * @param {PropertyKey[]} path Input path.
-     * @returns {string} Registry key.
-     */
-    #pathKey(path) {
-        return path
-            .map((property) => {
-                if (typeof property === 'symbol') {
-                    if (!this.#symbolIds.has(property)) {
-                        this.#symbolIds.set(property, this.#nextSymbolId)
-                        this.#nextSymbolId += 1
-                    }
-                    return 'y' + this.#symbolIds.get(property)
-                }
-                const text = String(property)
-                return 's' + text.length + ':' + text
-            })
-            .join('|')
     }
 
     /**

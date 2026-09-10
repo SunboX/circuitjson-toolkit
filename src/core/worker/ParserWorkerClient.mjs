@@ -3,6 +3,7 @@ import { RuntimeProxyBoundary } from '../contracts/RuntimeProxyBoundary.mjs'
 import { TOOLKIT_WORKER_PROTOCOL } from './ToolkitWorkerProtocol.mjs'
 import { WorkerRequestData } from './WorkerRequestData.mjs'
 import { WorkerResponseData } from './WorkerResponseData.mjs'
+import { NativeParserWorkerTransport } from './NativeParserWorkerTransport.mjs'
 
 const ABORTED_GETTER = Object.getOwnPropertyDescriptor(
     AbortSignal.prototype,
@@ -73,12 +74,20 @@ export class ParserWorkerClient {
         }
     }
 
-    /**
-     * Returns the process-local default client, creating it lazily.
-     * @returns {ParserWorkerClient} Default worker client.
-     */
+    /** @returns {ParserWorkerClient} Lazily-created process-local default client. */
     static defaultClient() {
         return ParserWorkerClient.#defaultClientFor(null)
+    }
+
+    /**
+     * Creates a client whose native worker and received graphs remain private.
+     * @param {string | URL} workerUrl Worker module URL.
+     * @returns {ParserWorkerClient} Client using native clone provenance.
+     */
+    static fromWorkerUrl(workerUrl) {
+        return new ParserWorkerClient({
+            createWorker: () => NativeParserWorkerTransport.create(workerUrl)
+        })
     }
 
     /**
@@ -91,26 +100,15 @@ export class ParserWorkerClient {
             throw ParserWorkerClient.#unavailableError(attemptToken)
         }
         if (!ParserWorkerClient.#defaultClient) {
-            ParserWorkerClient.#defaultClient = new ParserWorkerClient({
-                createWorker: () => {
-                    const WorkerConstructor = globalThis.Worker
-                    return Reflect.construct(WorkerConstructor, [
-                        new URL(
-                            '../../workers/parser.worker.mjs',
-                            import.meta.url
-                        ),
-                        { type: 'module' }
-                    ])
-                }
-            })
+            ParserWorkerClient.#defaultClient =
+                ParserWorkerClient.fromWorkerUrl(
+                    new URL('../../workers/parser.worker.mjs', import.meta.url)
+                )
         }
         return ParserWorkerClient.#defaultClient
     }
 
-    /**
-     * Disposes the process-local default worker client when one exists.
-     * @returns {void}
-     */
+    /** Disposes the process-local default worker client. @returns {void} */
     static disposeDefault() {
         ParserWorkerClient.#defaultClient?.dispose()
         ParserWorkerClient.#defaultClient = null

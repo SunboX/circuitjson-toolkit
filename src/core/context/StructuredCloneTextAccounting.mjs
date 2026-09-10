@@ -1,4 +1,5 @@
 const TEXT_ACCOUNTING_CHUNK_CHARACTERS = 64 * 1_024
+const SHORT_TEXT_CHARACTERS = 256
 const STRING_CHAR_CODE_AT = String.prototype.charCodeAt
 const STRING_SLICE = String.prototype.slice
 const TEXT_ENCODER = new TextEncoder()
@@ -17,6 +18,14 @@ export class StructuredCloneTextAccounting {
      */
     static *reserve(value, state, operations) {
         if (state.maxBytes === Number.MAX_SAFE_INTEGER) return
+        if (value.length <= SHORT_TEXT_CHARACTERS) {
+            const length = StructuredCloneTextAccounting.#shortByteLength(value)
+            if (state.bytes + length > state.maxBytes) {
+                throw new TypeError(`${state.label} is too large.`)
+            }
+            operations.reserve(length)
+            return
+        }
         let length = 0
         let offset = 0
         while (offset < value.length) {
@@ -48,6 +57,35 @@ export class StructuredCloneTextAccounting {
             if (offset < value.length) yield* operations.checkpoint()
         }
         operations.reserve(length)
+    }
+
+    /**
+     * Counts bounded short text without allocating an encoded byte buffer.
+     * Lone surrogates consume the three UTF-8 bytes of a replacement character.
+     * @param {string} value Short immutable text.
+     * @returns {number} UTF-8 byte length.
+     */
+    static #shortByteLength(value) {
+        let length = 0
+        for (let index = 0; index < value.length; index += 1) {
+            const code = STRING_CHAR_CODE_AT.call(value, index)
+            if (code <= 0x7f) {
+                length += 1
+            } else if (code <= 0x7ff) {
+                length += 2
+            } else if (code >= 0xd800 && code <= 0xdbff) {
+                const next = STRING_CHAR_CODE_AT.call(value, index + 1)
+                if (next >= 0xdc00 && next <= 0xdfff) {
+                    length += 4
+                    index += 1
+                } else {
+                    length += 3
+                }
+            } else {
+                length += 3
+            }
+        }
+        return length
     }
 }
 

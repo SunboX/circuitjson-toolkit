@@ -85,11 +85,12 @@ make the common shape smaller.
 
 Validated source documents own selected extension values as one deeply
 immutable, descriptor-safe snapshot. This uses a distinct 128 MiB payload and
-4,000,000-item ceiling so large native renderer graphs do not inherit the
+8,000,000-item ceiling so large native renderer graphs do not inherit the
 compact metadata limit. The shared worker protocol applies the same ownership
 boundary after structured cloning. Canonical standalone documents retain a
-250 MB byte ceiling; exact multi-document projects use a 256 MiB aggregate
-ceiling with independent 250 MB document and project-metadata limits. Binary
+10,000,000-value and 250 MB byte ceiling; exact multi-document projects use a
+16,000,000-value and 256 MiB aggregate ceiling with independent 250 MB document
+and project-metadata limits. Binary
 values preserve their `ArrayBuffer`/typed-view shape behind defensive copy
 access, so payload bytes do not inflate into one JavaScript number per byte.
 
@@ -317,6 +318,15 @@ Performs bounded format detection and returns a boolean.
 The parser subpath additionally exports `ParserWorkerClient`,
 `ToolkitWorkerProtocol`, and the `TOOLKIT_WORKER_PROTOCOL` version constant for
 hosts that own a custom worker lifecycle.
+
+`ParserWorkerClient.fromWorkerUrl(url)` creates a lazy module-worker client
+that privately owns its native worker and received result graphs. Native
+message provenance avoids repeated binary brand probing on ordinary records;
+all result shape, model, depth, count, and byte limits still apply. Shared and
+resizable buffers remain isolated. `new ParserWorkerClient({ createWorker })`
+continues to fully inspect custom-worker results, including genuine events
+whose payloads an earlier listener may have changed. Replacing the host Worker
+constructor also retains that defensive path.
 
 ### `ToolkitAsset.measure(asset)`
 
@@ -711,3 +721,9 @@ circuitjson-toolkit/testing
 circuitjson-toolkit/workers/parser.worker.mjs
 circuitjson-toolkit/styles/renderers.css
 ```
+
+Worker payload preparation uses captured array/view brand checks before raw
+buffer probes. Short strings are counted directly in UTF-8, including surrogate
+pairs and replacement characters, without allocating encoded byte buffers.
+Cross-realm buffers, changed prototypes, and bounded binary ownership retain
+the same validation rules.
