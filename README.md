@@ -89,6 +89,9 @@ identity, and cooperative finalization freezes each validated container
 atomically instead of redefining every property. See the
 [1.4.2 release notes](docs/release-notes-v1.4.2.md).
 
+Version 1.4.4 forwards native worker failures even when the browser dispatches
+a plain error event. See the [1.4.4 release notes](docs/release-notes-v1.4.4.md).
+
 Before 1.1.0:
 
 ```js
@@ -400,6 +403,7 @@ copy while keeping sync, direct async, and worker results mutation-isolated.
 - [1.4.0 release notes](docs/release-notes-v1.4.0.md)
 - [1.4.1 release notes](docs/release-notes-v1.4.1.md)
 - [1.4.2 release notes](docs/release-notes-v1.4.2.md)
+- [1.4.4 release notes](docs/release-notes-v1.4.4.md)
 - [Library scope](spec/library-scope.md)
 
 ## Package scope

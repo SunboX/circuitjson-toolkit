@@ -150,8 +150,16 @@ export class NativeParserWorkerTransport {
                 }
             }
         } else if (type === 'error') {
+            let error = null
+            if (ERROR_DATA) {
+                try {
+                    error = REFLECT_APPLY(ERROR_DATA, event, [])
+                } catch {
+                    // Some worker failures dispatch Event rather than ErrorEvent.
+                }
+            }
             forwarded = {
-                error: ERROR_DATA ? REFLECT_APPLY(ERROR_DATA, event, []) : null
+                error
             }
         }
         for (const listener of this.#listeners.get(type) || []) {

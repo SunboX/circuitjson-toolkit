@@ -1,6 +1,6 @@
 {
     "name": "circuitjson-toolkit",
-    "version": "1.4.3",
+    "version": "1.4.4",
     "description": "Canonical CircuitJSON parsing, project, rendering, query, manufacturing, simulation, and scene contracts",
     "keywords": [
         "circuitjson",
@@ -59,6 +59,7 @@
         "docs/release-notes-v1.4.0.md",
         "docs/release-notes-v1.4.1.md",
         "docs/release-notes-v1.4.2.md",
+        "docs/release-notes-v1.4.4.md",
         "docs/testing.md",
         "spec",
         "LICENSE",
