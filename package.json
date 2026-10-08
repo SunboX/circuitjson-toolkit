@@ -1,6 +1,6 @@
 {
     "name": "circuitjson-toolkit",
-    "version": "1.4.4",
+    "version": "1.5.0",
     "description": "Canonical CircuitJSON parsing, project, rendering, query, manufacturing, simulation, and scene contracts",
     "keywords": [
         "circuitjson",
@@ -60,6 +60,7 @@
         "docs/release-notes-v1.4.1.md",
         "docs/release-notes-v1.4.2.md",
         "docs/release-notes-v1.4.4.md",
+        "docs/release-notes-v1.5.0.md",
         "docs/testing.md",
         "spec",
         "LICENSE",
@@ -84,6 +85,7 @@
         "benchmark": "node --expose-gc scripts/run-benchmarks.mjs --compare benchmarks/baseline-v1.0.17.json"
     },
     "devDependencies": {
+        "@xmldom/xmldom": "^0.9.12",
         "circuit-json": "0.0.446",
         "format-si-unit": "0.0.7",
         "prettier": "^3.4.2",

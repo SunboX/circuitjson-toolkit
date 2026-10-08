@@ -1,3 +1,4 @@
+import { CircuitJsonTextStrokeGeometry } from './CircuitJsonTextStrokeGeometry.mjs'
 import { optionalAngle, optionalLength } from './CircuitJsonUnitParsers.mjs'
 
 const TOOLKIT_ELEMENT_TYPES = new Set([
@@ -197,6 +198,11 @@ export class CircuitJsonToolkitElementSchema {
      * @returns {boolean} Whether the extension fields match their contract.
      */
     static #pcbTextExtensions(value, type) {
+        if (
+            value.source_stroke_geometry !== undefined &&
+            !CircuitJsonTextStrokeGeometry.isValid(value.source_stroke_geometry)
+        )
+            return false
         for (const field of ['font_width', 'font_height']) {
             if (
                 value[field] !== undefined &&
