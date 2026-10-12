@@ -46,10 +46,10 @@ export class NativeParserWorkerTransport {
      * @param {string | URL} url Worker module URL.
      */
     constructor(url) {
-        this.#worker = REFLECT_CONSTRUCT(WORKER_CONSTRUCTOR, [
-            url,
-            { type: 'module' }
-        ])
+        this.#worker = NativeParserWorkerTransport.#createModuleWorker(
+            WORKER_CONSTRUCTOR,
+            url
+        )
         for (const type of ['message', 'error', 'messageerror']) {
             const listener = (event) => this.#receive(type, event)
             this.#nativeListeners.set(type, listener)
@@ -73,9 +73,40 @@ export class NativeParserWorkerTransport {
             !EVENT_CURRENT_TARGET ||
             !EVENT_TRUSTED
         ) {
-            return REFLECT_CONSTRUCT(Constructor, [url, { type: 'module' }])
+            return NativeParserWorkerTransport.#createModuleWorker(
+                Constructor,
+                url
+            )
         }
         return new NativeParserWorkerTransport(url)
+    }
+
+    /**
+     * Detects hosts that silently ignore WorkerOptions.type before their
+     * classic script can execute module imports. Construction failures let
+     * the parser's request-scoped auto mode fall back without losing input.
+     * Replaced constructors keep the existing injected-worker contract.
+     * @param {Function} Constructor Browser worker constructor.
+     * @param {string | URL} url Worker module URL.
+     * @returns {Worker} Worker with module options consumed by the native host.
+     */
+    static #createModuleWorker(Constructor, url) {
+        let typeRead = false
+        const worker = REFLECT_CONSTRUCT(Constructor, [
+            url,
+            {
+                /** @returns {string} Requested worker script type. */
+                get type() {
+                    typeRead = true
+                    return 'module'
+                }
+            }
+        ])
+        if (Constructor === WORKER_CONSTRUCTOR && !typeRead) {
+            REFLECT_APPLY(WORKER_TERMINATE, worker, [])
+            throw new TypeError('This browser does not support module workers.')
+        }
+        return worker
     }
 
     /**

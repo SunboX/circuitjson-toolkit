@@ -119,7 +119,7 @@ test('release metadata and migration ledger agree', async () => {
     const modelFormat = await text('docs/model-format.md')
     const migratedFeatures = firstTableColumnValues(appendices.join('\n'))
 
-    assert.equal(pkg.version, '1.5.0')
+    assert.equal(pkg.version, '1.5.1')
     assert.equal(pkg.dependencies, undefined)
     assert.equal(
         ledger.every((row) => {

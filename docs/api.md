@@ -114,6 +114,12 @@ Asynchronous parser and project calls accept:
 unavailable. Protocol, post-message, parser, and runtime errors stay visible.
 Worker and direct results have the same serialized shape.
 
+The native worker boundary also treats hosts that ignore `WorkerOptions.type`
+as unavailable. It terminates their classic worker during construction, before
+posting input, so `'auto'` uses direct parsing instead of executing module
+imports as a classic script. Explicit `worker: true` still reports a construction
+error. Replaced or injected worker constructors retain their existing contract.
+
 Requests waiting behind active worker work take ownership immediately after
 admission. The default mode clones the exact binary graph into a private queue
 snapshot and leaves caller buffers intact. `transferInput: true` detaches exact

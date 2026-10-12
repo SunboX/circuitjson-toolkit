@@ -256,7 +256,19 @@ and runtime rendering remain explicit host responsibilities.
 PCB note, fabrication-note and silkscreen text may carry `source_stroke_geometry`:
 
 ```json
-{"version":1,"units":"mm","coordinate_space":"board","stroke_width":0.15,"paths":[[[1,2],[3,4],[5,2]]]}
+{
+    "version": 1,
+    "units": "mm",
+    "coordinate_space": "board",
+    "stroke_width": 0.15,
+    "paths": [
+        [
+            [1, 2],
+            [3, 4],
+            [5, 2]
+        ]
+    ]
+}
 ```
 
 Each path is an open polyline of at least two finite `[x,y]` points. All anchors,

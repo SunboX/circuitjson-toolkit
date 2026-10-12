@@ -37,7 +37,9 @@ export class PrintSvgSnapshot {
         if (!(unitScale > 0) || !Number.isFinite(unitScale))
             throw new Error('Print SVG requires known physical units')
         const hiddenLayers = new Set([
-            ...(options.includeOverlays ? [] : ['diagnostics', 'measurements', 'hover', 'selection']),
+            ...(options.includeOverlays
+                ? []
+                : ['diagnostics', 'measurements', 'hover', 'selection']),
             ...(options.hiddenLayers || []).map(String)
         ])
         const hiddenObjects = new Set((options.hiddenObjects || []).map(String))

@@ -263,10 +263,14 @@ test('glyph visibility uses inverse affine clip for rotated mirrored source stro
 })
 
 test('print defaults exclude semantic diagnostic and transient overlay layers', () => {
-    const svg = '<svg viewBox="0 0 10 10"><path d="M0 0L1 1"/><g data-layer="diagnostics"><text>Warning</text></g><g data-layer="measurements"><text>12mm</text></g></svg>'
+    const svg =
+        '<svg viewBox="0 0 10 10"><path d="M0 0L1 1"/><g data-layer="diagnostics"><text>Warning</text></g><g data-layer="measurements"><text>12mm</text></g></svg>'
     const result = PrintSvgSnapshot.fromSvg(svg, options)
     assert.doesNotMatch(result.svg, /Warning|12mm/u)
     assert.equal(result.textRuns.length, 0)
-    const included = PrintSvgSnapshot.fromSvg(svg, {...options,includeOverlays:true})
-    assert.match(included.svg,/Warning/u)
+    const included = PrintSvgSnapshot.fromSvg(svg, {
+        ...options,
+        includeOverlays: true
+    })
+    assert.match(included.svg, /Warning/u)
 })

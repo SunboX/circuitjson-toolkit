@@ -5,9 +5,10 @@ import test from 'node:test'
 class NativeEventWorker extends EventTarget {
     static latest = null
 
-    /** Captures the worker instance created by the transport. */
-    constructor() {
+    /** Captures the instance and consumes module options like the native host. */
+    constructor(url, options) {
         super()
+        this.type = options.type
         NativeEventWorker.latest = this
     }
 

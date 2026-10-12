@@ -30,6 +30,72 @@ async function serveModules() {
 }
 
 test(
+    'auto parsing falls back when a browser host ignores module worker options',
+    { skip: !process.env.WORKER_BROWSER_MODULE, timeout: 30_000 },
+    async () => {
+        const { chromium } = await import(process.env.WORKER_BROWSER_MODULE)
+        const { server, url } = await serveModules()
+        let browser
+        try {
+            browser = await chromium.launch({
+                headless: true,
+                executablePath: process.env.WORKER_BROWSER_EXECUTABLE
+            })
+            const page = await browser.newPage()
+            const errors = []
+            page.on('pageerror', (error) => errors.push(error.message))
+            await page.goto(url)
+            const result = await page.evaluate(async () => {
+                const NativeWorker = globalThis.Worker
+                globalThis.Worker = class extends NativeWorker {
+                    /** Models a host that treats every worker as a classic script. */
+                    constructor(url) {
+                        super(url)
+                    }
+                }
+                const { Parser, ParserWorkerClient } =
+                    await import('/src/parser.mjs')
+                try {
+                    const document = await Parser.parseAsync(
+                        { fileName: 'fake.json', data: '[]' },
+                        { worker: 'auto' }
+                    )
+                    let forcedError = null
+                    try {
+                        await Parser.parseAsync(
+                            { fileName: 'fake.json', data: '[]' },
+                            { worker: true }
+                        )
+                    } catch (error) {
+                        forcedError = {
+                            code: error.code,
+                            phase: error.details.phase
+                        }
+                    }
+                    return {
+                        schema: document.schema,
+                        model: document.model,
+                        forcedError
+                    }
+                } finally {
+                    ParserWorkerClient.disposeDefault()
+                    globalThis.Worker = NativeWorker
+                }
+            })
+            assert.deepEqual(result, {
+                schema: 'ecad-toolkit.document.v1',
+                model: [],
+                forcedError: { code: 'ERR_WORKER_REQUEST', phase: 'construct' }
+            })
+            assert.deepEqual(errors, [])
+        } finally {
+            await browser?.close()
+            await new Promise((resolve) => server.close(resolve))
+        }
+    }
+)
+
+test(
     'native browser workers preserve ownership, bounds, and private clone provenance',
     { skip: !process.env.WORKER_BROWSER_MODULE, timeout: 120_000 },
     async (context) => {
