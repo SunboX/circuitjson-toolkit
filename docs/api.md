@@ -114,11 +114,10 @@ Asynchronous parser and project calls accept:
 unavailable. Protocol, post-message, parser, and runtime errors stay visible.
 Worker and direct results have the same serialized shape.
 
-The native worker boundary also treats hosts that ignore `WorkerOptions.type`
-as unavailable. It terminates their classic worker during construction, before
-posting input, so `'auto'` uses direct parsing instead of executing module
-imports as a classic script. Explicit `worker: true` still reports a construction
-error. Replaced or injected worker constructors retain their existing contract.
+Native hosts that ignore `WorkerOptions.type` are treated as unavailable. Their
+classic worker is terminated during construction before input is posted, so
+`worker: 'auto'` uses direct parsing. Explicit worker requests still fail.
+Replaced or injected worker constructors retain their existing contract.
 
 Requests waiting behind active worker work take ownership immediately after
 admission. The default mode clones the exact binary graph into a private queue
@@ -733,19 +732,3 @@ buffer probes. Short strings are counted directly in UTF-8, including surrogate
 pairs and replacement characters, without allocating encoded byte buffers.
 Cross-realm buffers, changed prototypes, and bounded binary ownership retain
 the same validation rules.
-
-## Print SVG snapshot v1
-
-`PrintSvgSnapshot.fromSvg(markup, options)` (`circuitjson-toolkit/renderers`, also forwarded by the format toolkit renderer entrypoints) converts toolkit SVG into a detached, recursively frozen print artifact. It accepts `sheetId`, `documentRevision`, `hiddenLayers`, `hiddenObjects`, and `semanticTextAvailable`. Browser DOMParser/XMLSerializer are used by default; Node consumers supply `parseSvg` and `serializeSvg` callbacks. No runtime dependency or network operation is introduced.
-
-The artifact carries `apiVersion: 1`, `schemaVersion: 1`, `units: 'mm'`, `bounds: {x,y,width,height}`, `svg`, an identity `transform`, `textRuns`, and `diagnostics`. Renderer-owned `data-ecad-unit-mm` is the millimeters-per-SVG-user-unit factor. The snapshot rescales both vectors and full text matrices to millimeters, retaining local glyph coordinates. If no owner unit declaration exists, callers may supply `units` (`mm`, `mil`, `inch`, `pt`, `px`; legacy default `mm`).
-
-`textRuns` contains only paths whose owning renderer supplied original text layout through `data-ecad-print-text`. Each visible line contains `sourceId` (sheet-instance and render-location qualified), `semanticSourceId`, `text` (resolved Unicode in reading order), `originalText`, `renderMode: 'stroke'`, `fontFamily`, `fontSize`, local `position`/`baseline`/`bounds`, `glyphs: [{text,x,y,advance,fontSize}]`, and the full affine `matrix` (`transform` alias). Glyph `y` is a baseline; advances come from the same layout that created the visible strokes, including tabs and sub/superscripts. Repeated equal strings remain separate runs. Consumers keep the vectors and use glyph-positioned invisible PDF text with rendering mode 3, an embedded replacement font, and Unicode mapping.
-
-Native SVG `<text>` stays exclusively in `svg`; it must not receive a second hidden overlay. Native text font embedding, Unicode mapping, and exact clipping belong to the consumer's font-aware SVG conversion. Hidden layer/object subtrees and hidden source text are removed; SVG visibility inheritance permits explicitly visible descendants. Source metadata sidecars are removed. Rectangular user-space clips suppress fully clipped stroke runs and yield `clipBounds` in page millimeters; rotated, rounded, arbitrary-path, and object-bounding-box clips require an owner-resolved layout and currently fail explicitly. Clip visibility for native text must be resolved by the font-aware consumer before emitting PDF text objects.
-
-Geometry-only Gerber exports should pass `semanticTextAvailable: false`; the artifact reports `SOURCE_TEXT_UNAVAILABLE` and never invents text.
-
-Print snapshots also accept `opacityRules: [{ selector, opacity }]` from the owning UI category mapping. Selectors are one class (`.pcb-track`) or exact attribute (`[data-pcb-component-side='bottom']`); opacity is 0–1. Rules apply in order as inline important opacity before visibility extraction. Zero-opacity subtrees are removed with their semantics; partial opacity remains vector alpha. Unsupported selectors reject explicitly.
-
-Stroke glyph visibility uses original source polylines, including overbars and inherited round stroke width, against the inverse-transformed visible rectangle. Each output glyph includes `visible`; encoders must skip false glyphs while preserving surviving glyph positions/advances. Whitespace without ink is retained only between surviving glyphs; all-hidden runs are omitted. This prevents invisible glyphs in partially clipped runs from leaking into PDF search/extraction. A partially clipped legacy run without original glyph geometry rejects explicitly.

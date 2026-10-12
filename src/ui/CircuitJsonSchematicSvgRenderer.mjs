@@ -41,7 +41,7 @@ export class CircuitJsonSchematicSvgRenderer {
             : SchematicGeometryBounds.legacy(index)
         const viewBox = CircuitJsonSchematicSvgRenderer.#viewBox(bounds)
         return (
-            '<svg class="schematic-svg schematic-svg--circuitjson" xmlns="http://www.w3.org/2000/svg" data-ecad-unit-mm="1" role="img"' +
+            '<svg class="schematic-svg schematic-svg--circuitjson" xmlns="http://www.w3.org/2000/svg" role="img"' +
             (prepared ? ' font-size="1"' : '') +
             ' viewBox="' +
             CircuitJsonSchematicSvgRenderer.#formatViewBox(viewBox) +

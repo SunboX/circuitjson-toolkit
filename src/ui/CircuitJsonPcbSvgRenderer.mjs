@@ -70,7 +70,7 @@ export class CircuitJsonPcbSvgRenderer {
         return (
             '<svg class="pcb-svg pcb-svg--app-palette pcb-svg--circuitjson pcb-svg--' +
             side +
-            '" xmlns="http://www.w3.org/2000/svg" data-ecad-unit-mm="1" role="img" viewBox="' +
+            '" xmlns="http://www.w3.org/2000/svg" role="img" viewBox="' +
             CircuitJsonPcbSvgRenderer.#formatViewBox(viewBox) +
             '">' +
             CircuitJsonPcbBoardSvgRenderer.render(model) +

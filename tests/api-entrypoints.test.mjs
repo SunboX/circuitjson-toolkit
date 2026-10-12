@@ -38,14 +38,12 @@ test('parser entrypoint exposes canonical parser contracts', () => {
     )
 })
 
-test('renderer entrypoint exposes canonical renderers and print snapshots', () => {
+test('renderer entrypoint exposes only canonical renderers', () => {
     assert.deepEqual(Object.keys(rendererApi).sort(), [
         'BomTableRenderer',
         'PcbSvgRenderer',
-        'PrintSvgSnapshot',
         'SchematicSvgRenderer'
     ])
-    assert.equal(typeof rendererApi.PrintSvgSnapshot.fromSvg, 'function')
 })
 
 test('extensions entrypoint retains migrated CircuitJSON APIs', () => {

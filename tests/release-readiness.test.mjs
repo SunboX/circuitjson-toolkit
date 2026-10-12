@@ -114,12 +114,11 @@ test('release metadata and migration ledger agree', async () => {
     const clonePerformanceReleaseNotes = await text(
         'docs/release-notes-v1.4.2.md'
     )
-    const printSnapshotReleaseNotes = await text('docs/release-notes-v1.5.0.md')
     const readme = await text('README.md')
     const modelFormat = await text('docs/model-format.md')
     const migratedFeatures = firstTableColumnValues(appendices.join('\n'))
 
-    assert.equal(pkg.version, '1.5.1')
+    assert.equal(pkg.version, '1.4.5')
     assert.equal(pkg.dependencies, undefined)
     assert.equal(
         ledger.every((row) => {
@@ -164,8 +163,6 @@ test('release metadata and migration ledger agree', async () => {
         /Atomic cooperative finalization/u
     )
     assert.match(clonePerformanceReleaseNotes, /Owned extension root reuse/u)
-    assert.match(printSnapshotReleaseNotes, /PrintSvgSnapshot\.fromSvg/u)
-    assert.match(printSnapshotReleaseNotes, /data-ecad-unit-mm/u)
     assert.match(
         modelFormat,
         /legacy array[^.]*mutable[^.]*element graph[^.]*deeply immutable/iu
@@ -182,7 +179,6 @@ test('release metadata and migration ledger agree', async () => {
     assert.equal(pkg.files.includes('docs/release-notes-v1.4.0.md'), true)
     assert.equal(pkg.files.includes('docs/release-notes-v1.4.1.md'), true)
     assert.equal(pkg.files.includes('docs/release-notes-v1.4.2.md'), true)
-    assert.equal(pkg.files.includes('docs/release-notes-v1.5.0.md'), true)
     for (const path of migrationPages) {
         assert.match(migration, new RegExp(path.replace('docs/migration/', '')))
     }

@@ -29,18 +29,12 @@ const COMMON_SUBPATH_EXPORTS = {
         'ArchiveEntryPath',
         'ZipArchiveInspector'
     ],
-    renderers: [
-        'PcbSvgRenderer',
-        'SchematicSvgRenderer',
-        'BomTableRenderer',
-        'PrintSvgSnapshot'
-    ],
+    renderers: ['PcbSvgRenderer', 'SchematicSvgRenderer', 'BomTableRenderer'],
     interaction: ['PcbInteractionIndex', 'PcbSpatialIndex'],
     query: ['QueryService'],
     manufacturing: ['ManufacturingService'],
     simulation: ['SimulationService'],
     scene3d: [
-        'CircuitJsonTextStrokeGeometry',
         'PcbScene3dBuilder',
         'PcbScene3dPreparator',
         'SceneAssetResolver'

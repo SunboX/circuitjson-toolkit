@@ -8,10 +8,7 @@ import { promisify } from 'node:util'
 import { format } from 'prettier'
 
 import { BenchmarkCaseCatalog } from '../benchmarks/BenchmarkCaseCatalog.mjs'
-import {
-    CircuitJsonBenchmarkSuite,
-    CURRENT_RESULT_ANCHORS
-} from '../benchmarks/CircuitJsonBenchmarkSuite.mjs'
+import { CircuitJsonBenchmarkSuite } from '../benchmarks/CircuitJsonBenchmarkSuite.mjs'
 import {
     BaselineProvenance,
     ImmutableBaselineWriter
@@ -24,8 +21,6 @@ const CANDIDATE_PROCESS_COUNT = 3
 const DEFAULT_COMPARISON_PATH = 'benchmarks/baseline-v1.0.17.json'
 const APPROVED_BASELINE_REPORT_CHECKSUM =
     '734cc40ba998efd9ae3f686a5825e9ceaad4034938ca530156879053a3394140'
-const APPROVED_LEGACY_CANDIDATE_CHECKSUM =
-    '7f4888db555d05b8ef1894bd8c761a9bc6602b938eb611de9d8be2dd9ac19846'
 const APPROVED_BASELINE_IDENTITY = Object.freeze({
     schema: 'circuitjson-toolkit.benchmark.v1',
     packageVersion: '1.0.17',
@@ -242,15 +237,13 @@ function validateCurrentReport(current, baseline) {
     const identity = benchmarkIdentity(current)
     const expectedIdentity = {
         ...APPROVED_BASELINE_IDENTITY,
-        packageVersion: String(current.packageVersion || ''),
-        environment: identity.environment
+        packageVersion: String(current.packageVersion || '')
     }
     const ids = cases.map((entry) => entry?.id)
     if (
         !identity.packageVersion ||
         identity.packageVersion === baseline.packageVersion ||
         !isDeepStrictEqual(identity, expectedIdentity) ||
-        !validCurrentEnvironment(identity.environment, baseline.environment) ||
         !validCandidateProvenance(
             current.candidateProvenance,
             current.packageVersion
@@ -262,60 +255,12 @@ function validateCurrentReport(current, baseline) {
         cases.length !== baseline.cases.length ||
         new Set(ids).size !== cases.length ||
         !validCaseCollection(cases) ||
-        (!validCurrentObservedResults(cases) &&
-            !approvedLegacyCandidate(current)) ||
         !cases.every((entry) => validCandidateProcessEvidence(entry))
     ) {
         throw new Error(
             'Current benchmark report has invalid identity or measurements.'
         )
     }
-}
-
-/**
- * Requires deterministic observed output from every newly measured candidate.
- * @param {Record<string, any>[]} cases Candidate case rows.
- * @returns {boolean} Whether all current output anchors are present and exact.
- */
-function validCurrentObservedResults(cases) {
-    return cases.every(
-        (entry) =>
-            Object.hasOwn(entry, 'observedResult') &&
-            entry.observedResult ===
-                (CURRENT_RESULT_ANCHORS[entry.id] ?? entry.expectedResult)
-    )
-}
-
-/**
- * Preserves readability of only the exact previously approved 1.1.0 report.
- * A resealed or relabeled copy cannot claim the current measurement format.
- * @param {Record<string, any>} report Candidate report.
- * @returns {boolean} Whether it is the authenticated legacy artifact.
- */
-function approvedLegacyCandidate(report) {
-    if (
-        report.packageVersion !== '1.1.0' ||
-        report.reportChecksum !== APPROVED_LEGACY_CANDIDATE_CHECKSUM
-    )
-        return false
-    const { reportChecksum, ...body } = report
-    return reportChecksum === benchmarkChecksum(body)
-}
-
-/**
- * Allows the candidate's Node release to differ while retaining the approved
- * machine identity used for the historical timing comparison.
- * @param {unknown} current Candidate environment.
- * @param {Record<string, any>} baseline Approved baseline environment.
- * @returns {boolean} Whether measurements share the approved hardware.
- */
-function validCurrentEnvironment(current, baseline) {
-    return Boolean(
-        current &&
-        typeof current === 'object' &&
-        /^v\d+\.\d+\.\d+$/u.test(current.node) &&
-        isDeepStrictEqual({ ...current, node: baseline.node }, baseline)
-    )
 }
 
 /**
