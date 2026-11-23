@@ -43,7 +43,7 @@ export class QueryNetlistBuilder {
             ComponentGrouping.components(elements, relations),
             traces
         )
-        const nets = ComponentGrouping.nets(elements, traces)
+        const nets = ComponentGrouping.nets(elements, traces, components)
         const diagnostics = (connectivity.diagnostics || []).map((row) =>
             ToolkitDiagnostic.create({
                 code: row.code || row.type || 'QUERY_CONNECTIVITY_DIAGNOSTIC',

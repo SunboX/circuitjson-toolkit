@@ -91,6 +91,7 @@ async function packedModules(packageRoot) {
 
 test('release metadata and migration ledger agree', async () => {
     const pkg = JSON.parse(await text('package.json'))
+    const lock = JSON.parse(await text('package-lock.json'))
     const ledger = JSON.parse(await text('spec/feature-preservation.json'))
     const migration = await text('docs/migration.md')
     const appendices = await Promise.all(
@@ -118,7 +119,8 @@ test('release metadata and migration ledger agree', async () => {
     const modelFormat = await text('docs/model-format.md')
     const migratedFeatures = firstTableColumnValues(appendices.join('\n'))
 
-    assert.equal(pkg.version, '1.4.5')
+    assert.equal(pkg.version, lock.version)
+    assert.equal(pkg.version, lock.packages[''].version)
     assert.equal(pkg.dependencies, undefined)
     assert.equal(
         ledger.every((row) => {

@@ -227,6 +227,43 @@ test('QueryService returns exact clone-safe query and netlist records', () => {
     assert.notEqual(service.buildNetlist().components[0].name, 'mutated')
 })
 
+test('QueryService retains source net names and explicit memberships without traces', () => {
+    const model = [
+        {
+            type: 'source_component',
+            source_component_id: 'source_u1',
+            name: 'U1',
+            ftype: 'simple_chip'
+        },
+        {
+            type: 'source_port',
+            source_port_id: 'source_u1_pin1',
+            source_component_id: 'source_u1',
+            name: 'IO',
+            pin_number: 1,
+            connected_source_net_ids: ['source_net_aux']
+        },
+        {
+            type: 'source_net',
+            source_net_id: 'source_net_aux',
+            name: 'AUX',
+            raw_name: '/~{AUX}',
+            member_source_group_ids: []
+        }
+    ]
+    const result = QueryService.create(model).buildNetlist()
+    assert.deepEqual(result.nets, [
+        {
+            id: 'source_net_aux',
+            name: 'AUX',
+            rawName: '/~{AUX}',
+            traceIds: [],
+            portIds: ['source_u1_pin1']
+        }
+    ])
+    assert.deepEqual(result.components[0].pins[0].netIds, ['source_net_aux'])
+})
+
 test('QueryService accepts prepared contexts without rebuilding indexes', () => {
     const context = CircuitJsonDocumentContext.prepare(
         createConnectedDocument(),

@@ -80,10 +80,20 @@ export class ComponentGrouping {
      * Builds source-net rows with trace and port membership.
      * @param {Record<string, any>} elementsIndex Prepared elements index.
      * @param {object[]} traces Canonical trace records.
+     * @param {object[]} components Components with explicit and trace-derived pin memberships.
      * @returns {object[]} Stable net records.
      */
-    static nets(elementsIndex, traces) {
+    static nets(elementsIndex, traces, components) {
         const nets = elementsIndex.elementsByType.get('source_net') || []
+        const portsByNetId = new Map()
+        for (const { pins } of components) {
+            for (const pin of pins) {
+                for (const netId of pin.netIds) {
+                    if (!portsByNetId.has(netId)) portsByNetId.set(netId, [])
+                    portsByNetId.get(netId).push(pin.id)
+                }
+            }
+        }
         const tracesByNetId = new Map()
         for (const trace of traces) {
             for (const netId of trace.sourceNetIds) {
@@ -100,11 +110,17 @@ export class ComponentGrouping {
                 return {
                     id,
                     name: String(net.name || id),
+                    ...ComponentGrouping.#withoutEmpty({
+                        rawName: ComponentGrouping.#text(net.raw_name)
+                    }),
                     traceIds: connected.map((trace) => trace.id),
                     portIds: [
-                        ...new Set(
-                            connected.flatMap((trace) => trace.sourcePortIds)
-                        )
+                        ...new Set([
+                            ...connected.flatMap(
+                                (trace) => trace.sourcePortIds
+                            ),
+                            ...(portsByNetId.get(id) || [])
+                        ])
                     ].sort(ComponentGrouping.compareIds)
                 }
             })
